@@ -27,6 +27,20 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center?.delegate = self
     }
 
+    /// A one-off message, such as an account switch. Uses the "needs you" setting.
+    func post(title: String, body: String, tabID: String) {
+        guard UserDefaults.standard.object(forKey: Self.attentionKey) as? Bool ?? true, let center else { return }
+        withPermission(center) { granted in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.threadIdentifier = tabID
+            content.userInfo = ["tabID": tabID]
+            center.add(UNNotificationRequest(identifier: "\(tabID).\(UUID().uuidString)", content: content, trigger: nil))
+        }
+    }
+
     func post(status: TabStatus, tabID: String, topic: String, folder: String) {
         let defaults = UserDefaults.standard
         let body: String

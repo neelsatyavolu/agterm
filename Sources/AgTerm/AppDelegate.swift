@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         askForDiskAccessIfNeeded()
         TeamsSync.shared.start()
+        UsageMonitor.shared.start()
         RemoteClient.shared.startIfEnabled()
     }
 

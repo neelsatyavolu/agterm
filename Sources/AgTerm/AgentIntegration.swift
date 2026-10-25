@@ -134,6 +134,7 @@ enum AgentIntegration {
             argv = kind.bypassingPermissions(args) ?? args
         }
         let userArgs = argv
+        if let provider = AccountProvider(rawValue: agent) { useAccount(provider, args: args, env: env) }
         // Marks Codex sessions as started in agterm (their header's originator), which is how
         // agmux Teams reporting tells them apart from sessions started elsewhere.
         if agent == "codex", env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == nil {
@@ -155,6 +156,36 @@ enum AgentIntegration {
         execv(real, cArgs)
         fputs("agterm: couldn't start \(real): \(String(cString: strerror(errno)))\n", stderr)
         exit(126)
+    }
+
+    /// Points the agent at its login (CLAUDE_CONFIG_DIR / CODEX_HOME) and records which one,
+    /// with your arguments, so a switch can resume it on another. In order: the login a switch
+    /// named (AGTERM_ACCOUNT), a folder you set yourself, then the one for new sessions.
+    private static func useAccount(_ provider: AccountProvider, args: [String], env: [String: String]) {
+        unsetenv("AGTERM_ACCOUNT")
+        guard let kind = AgentKind.named(provider.rawValue), kind.startsSession(args) else { return }
+        let settings = AccountStore.loadSettings()
+        var id: String
+        if let chosen = env["AGTERM_ACCOUNT"] {
+            id = chosen
+        } else if let home = env[provider.homeVariable] {
+            id = settings.accounts.first { $0.provider == provider && AccountStore.home($0.id).path == home }?.id ?? AccountStore.external
+        } else {
+            id = settings.autoSwitch ? AccountStore.loadRouting().active[provider.rawValue] ?? AccountStore.native : AccountStore.native
+        }
+        if id != AccountStore.native, id != AccountStore.external {
+            if settings.accounts.contains(where: { $0.id == id && $0.provider == provider }),
+               let home = try? AccountStore.prepareHome(id, provider: provider) {
+                setenv(provider.homeVariable, home.path, 1)
+                for key in provider == .claude ? ClaudeAuthEnv.keys : ClaudeAuthEnv.codexKeys { unsetenv(key) }
+            } else {
+                id = AccountStore.native
+            }
+        }
+        if id == AccountStore.native, env["AGTERM_ACCOUNT"] != nil { unsetenv(provider.homeVariable) }
+        if let tab = env["AGTERM_TAB_ID"] {
+            AccountStore.recordLaunch(TabLaunch(provider: provider, account: id, args: args, startedAt: Date()), tabID: tab)
+        }
     }
 
     static let memoryInstructions = """

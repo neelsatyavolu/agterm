@@ -66,6 +66,9 @@ final class QuickCommandRunner {
         DispatchQueue.global(qos: .utility).async { _ = self.path() }
     }
 
+    /// Your login shell's PATH plus the usual install folders (waits for it the first time).
+    var searchPath: String { path() }
+
     /// True once the PATH is known, so asking what's installed won't wait on your shell.
     var isReady: Bool {
         lock.lock()

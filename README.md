@@ -39,6 +39,17 @@ agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own
 - **Skip permission prompts.** Settings → Permissions can start each installed agent with its own bypass flag, such as `--dangerously-skip-permissions` (Claude Code, Antigravity), `--dangerously-bypass-approvals-and-sandbox` (Codex, which also turns off its sandbox), `--permission-mode bypassPermissions` (Grok), `--yolo` (Gemini, Kimi, Qwen, Crush), `--force` (Cursor), `--auto` (OpenCode) or `--yes-always` (Aider). Off by default. Runs where you pass a permission flag yourself, and subcommands like `mcp` or `login`, are left alone.
 - **⌘K writes a command.** Describe what you want; ⏎ puts the command at your prompt to check, ⌘⏎ runs it. It goes through the CLI you're already signed in to, at its fastest setting: Claude Haiku (about 2.5 s), Codex's Luna model at its lowest effort (about 4 s) or Grok at low effort (about 5 s). Automatic uses the first one installed. The model gets your request, the tab's folder, your shell and the last 20 lines on screen. It has no tools, and the run isn't kept in the CLI's history.
 
+## Switching accounts when an agent runs out
+
+Add more Claude Code or Codex logins in Settings → Accounts. Each one signs in through the CLI's own login, in a tab, into its own folder (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`). Conversations, settings, skills and MCP servers are shared with your own login through symlinks, so any login can resume any conversation.
+
+- **Sees the limit at once.** Claude Code writes a 429 record into the conversation when it stops at a limit, and Codex logs a usage-limit event. agterm follows each agent tab's transcript and reacts within a second, instead of waiting for a usage poll.
+- **Picks a login that has room.** It checks every login's usage through its own CLI (Claude Code's `get_usage`, Codex's app-server `account/rateLimits/read`; no Keychain reads, no model calls) and takes the one with the most left.
+- **Resumes the same conversation.** It stops the agent, runs `claude --resume <id>` or `codex resume <id>` with your original options on the new login in the same tab, and tells it to continue, so the turn that hit the limit finishes. You get a notification saying which account it moved to.
+- **New sessions** start on your own login while it has usage, and on the login with the most left while it doesn't. At most 3 switches per tab in 30 minutes, so two empty logins can't loop.
+
+Grok isn't supported yet.
+
 ## agmux Teams and the phone app
 
 - **Teams.** Settings → Teams & Phone links agterm as its own device (a browser sign-in, like agmux) and reports hourly totals for Claude Code and Codex sessions started in agterm: tokens, estimated cost, active time, turns, tool calls by kind, and lines changed as counts. Never prompts, replies, code, diffs, paths or terminal output, and never sessions started elsewhere. Codex sessions are marked with `originator: agterm`; Claude sessions are the ones agterm saw in its tabs. The counting is a port of agmux's own, with its tests.
@@ -69,7 +80,7 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |
 | ⌘= ⌘- ⌘0 | Font size |
-| ⌘, | Settings: General, Appearance, Agents, Permissions, Command (⌘K), Teams & Phone |
+| ⌘, | Settings: General, Appearance, Agents, Permissions, Accounts, Command (⌘K), Teams & Phone |
 | Drag onto a tab | Files and folders type their escaped paths, as in Terminal.app. Images from a browser or screenshot tool are saved to a temp file first, so Claude Code can attach them. |
 
 Closing a tab or quitting asks first if a program is still running. When an agent finishes or needs you in a tab you aren't looking at, agterm can post a notification and play a sound; clicking it opens that tab.

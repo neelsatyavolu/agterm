@@ -41,6 +41,9 @@ public struct StatusSignals: Equatable, Sendable {
     public var exited = false
     /// An agent's permission prompt or other choice is on screen (see `PermissionPrompt`).
     public var promptVisible = false
+    /// The agent's own report of whether it's in a turn (Claude Code's session file), when it has one.
+    public var agentBusy: Bool?
+    public var lastBusyChange: Date?
 
     public init() {}
 }
@@ -75,6 +78,14 @@ public enum StatusRules {
 
     public static func isWorking(_ s: StatusSignals, now: Date) -> Bool {
         if s.promptVisible { return false }
+        if let busy = s.agentBusy {
+            // The agent's own word beats the title, which pauses between subagents.
+            guard busy else { return false }
+            // After Esc/Ctrl-C, wait for a sign of a new turn: the flag flipping or the title moving again.
+            let lastSign = max(s.lastBusyChange ?? .distantPast, s.lastTitleChange ?? .distantPast)
+            if let interrupt = s.lastInterrupt, interrupt >= lastSign { return false }
+            return true
+        }
         switch s.titleActivity {
         case .working:
             // An interrupt ends the turn until the spinner moves again.

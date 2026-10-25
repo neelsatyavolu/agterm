@@ -51,3 +51,28 @@ final class PermissionPromptTests: XCTestCase {
         XCTAssertEqual(StatusRules.status(s, now: Date()), .working)
     }
 }
+
+final class AgentBusyTests: XCTestCase {
+    func testBusyFlagOutranksAPausedSpinner() {
+        var s = StatusSignals()
+        let start = Date()
+        s.titleActivity = .idle          // title shows idle between subagents
+        s.agentBusy = true
+        s.lastBusyChange = start
+        XCTAssertTrue(StatusRules.isWorking(s, now: start.addingTimeInterval(30)))
+        s.lastWorking = start.addingTimeInterval(30)
+        s.lastSeen = start
+        XCTAssertEqual(StatusRules.status(s, now: start.addingTimeInterval(30)), .working)
+        s.agentBusy = false               // the whole turn is over
+        XCTAssertEqual(StatusRules.status(s, now: start.addingTimeInterval(31)), .done)
+    }
+
+    func testInterruptStillStopsABusyAgent() {
+        var s = StatusSignals()
+        let start = Date()
+        s.agentBusy = true
+        s.lastBusyChange = start
+        s.lastInterrupt = start.addingTimeInterval(2)
+        XCTAssertFalse(StatusRules.isWorking(s, now: start.addingTimeInterval(3)))
+    }
+}

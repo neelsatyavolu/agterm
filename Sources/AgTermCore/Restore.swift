@@ -68,7 +68,8 @@ public enum AgentResume {
 
     /// `argv` is the foreground process's full argument list; `claudeSessionID` comes from
     /// Claude Code's per-process record. Returns nil for programs that shouldn't be rerun.
-    public static func commandLine(argv: [String], claudeSessionID: String?) -> String? {
+    /// `prompt`, if given, is sent as the first message of the resumed session.
+    public static func commandLine(argv: [String], claudeSessionID: String?, prompt: String? = nil) -> String? {
         guard let args = claudeArguments(argv) else { return nil }
         if args.contains("-p") || args.contains("--print") { return nil }
 
@@ -94,7 +95,54 @@ public enum AgentResume {
             i += 1
         }
         let session = claudeSessionID.map { ["--resume", $0] } ?? ["--continue"]
-        return (["command", "claude"] + (session + kept).map(ShellEscape.path)).joined(separator: " ")
+        // The prompt goes straight after the session, before any option that takes several values.
+        return (["command", "claude"] + (session + (prompt.map { [$0] } ?? []) + kept).map(ShellEscape.path)).joined(separator: " ")
+    }
+
+    /// Codex options that take a value; everything else starting with "-" is a switch.
+    private static let codexValueFlags: Set<String> = [
+        "-m", "--model", "-c", "--config", "-s", "--sandbox", "-a", "--ask-for-approval", "-p", "--profile",
+        "-C", "--cd", "--add-dir", "--local-provider", "--enable", "--disable",
+    ]
+
+    /// Codex subcommands that don't run an interactive session.
+    private static let codexOtherCommands: Set<String> = [
+        "exec", "e", "review", "apply", "a", "login", "logout", "mcp", "mcp-server", "app-server", "completion",
+        "sandbox", "debug", "cloud", "features", "help", "update", "doctor",
+    ]
+
+    /// `codex resume <id>` with the options you started Codex with, minus the opening prompt
+    /// and any session choice. Nil for runs that aren't an interactive session (exec, review…).
+    /// `prompt`, if given, is sent as the first message of the resumed session.
+    public static func codexCommandLine(userArgs: [String], sessionID: String, prompt: String? = nil) -> String? {
+        var args = userArgs
+        if let first = args.first, !first.hasPrefix("-") {
+            if codexOtherCommands.contains(first) { return nil }
+            if ["resume", "fork"].contains(first) { args.removeFirst() }
+        }
+        var kept: [String] = []
+        var i = 0
+        while i < args.count {
+            let arg = args[i]
+            if codexValueFlags.contains(arg), i + 1 < args.count {
+                kept += [arg, args[i + 1]]
+                i += 2
+                continue
+            }
+            // Bare words are the opening prompt (or the old session id); resuming must not resend them.
+            if arg.hasPrefix("-"), arg != "--last", arg != "--all" { kept.append(arg) }
+            i += 1
+        }
+        return (["command", "codex", "resume", sessionID] + ((prompt.map { [$0] } ?? []) + kept).map(ShellEscape.path))
+            .joined(separator: " ")
+    }
+
+    /// A Codex rollout's session id, from its first line (`session_meta.payload.id`).
+    public static func codexSessionID(rolloutHeader: String) -> String? {
+        guard let record = (try? JSONSerialization.jsonObject(with: Data(rolloutHeader.utf8))) as? [String: Any],
+              let id = (record["payload"] as? [String: Any])?["id"] as? String,
+              id.range(of: #"^[0-9A-Za-z-]{8,64}$"#, options: .regularExpression) != nil else { return nil }
+        return id
     }
 
     /// The arguments after the program itself, if the process is Claude Code (native or via node).

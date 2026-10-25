@@ -42,6 +42,7 @@ enum SelfTest {
             print("selftest: teams preview buckets:", (payload["buckets"] as? [Any])?.count ?? 0)
             exit(0)
         }
+        if let fakes = ProcessInfo.processInfo.environment["AGTERM_SWITCH_CHECK"] { return switchCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
@@ -185,6 +186,68 @@ enum SelfTest {
             let orphanSleep = out.split(separator: "\n").contains { $0.hasSuffix("sleep 777") }
             print("selftest: shells=\(shells) zombies=\(zombies) orphanedJob=\(orphanSleep)")
             exit(zombies == 0 && shells == 0 && !orphanSleep ? 0 : 2)
+        }
+    }
+
+    /// Account switching end to end, with a stand-in `claude` (in `fakes`) that hits its limit:
+    /// usage probes of your real logins, the switch, the resume on the other login, and "continue".
+    private static func switchCheck(_ controller: MainWindowController, fakes: String) {
+        let store = AccountStore.shared
+        let provider = AccountProvider(rawValue: ProcessInfo.processInfo.environment["AGTERM_SWITCH_PROVIDER"] ?? "claude") ?? .claude
+        let test = StoredAccount(id: "switch-test", provider: provider, label: "test@example.com", email: "test@example.com",
+                                 plan: nil, enabled: true)
+        store.update { $0.autoSwitch = true; $0.continueAfterSwitch = true }
+        store.add(test)
+        AccountStore.saveRouting(AccountRouting())
+        // The stand-in account isn't really signed in; a signed-out login is never switched to.
+        UsageMonitor.shared.stubs[UsageMonitor.key(provider, test.id)] = UsageReading(
+            windows: [UsageWindow(name: "Weekly", usedPercent: 50, resetsAt: Date().addingTimeInterval(86_400))],
+            email: test.email, checkedAt: Date())
+        DispatchQueue.global().async {
+            for provider in AccountProvider.allCases where ProcessInfo.processInfo.environment["AGTERM_SWITCH_PROVIDER"] == nil {
+                let result = UsageProbe.read(provider, home: nil)
+                let windows = result.reading?.windows.map { "\($0.name) \(Int($0.usedPercent))%" }.joined(separator: ", ") ?? "none"
+                print("selftest: probe \(provider.rawValue) signedIn=\(result.signedIn) plan=\(result.reading?.plan ?? "?") windows=[\(windows)] error=\(result.error ?? "none")")
+            }
+        }
+        let tab = controller.sessions[0]
+        after(2) {
+            tab.view.send(txt: "export PATH=\"$AGTERM_BIN:\(fakes):$PATH\"; clear; FAKE_HIT_AFTER=3 \(provider.rawValue)\r")
+        }
+        after(6) { print("selftest: switch: before:", screenLine(tab, containing: "start resume=0") ?? "agent didn't start") }
+        after(32) {
+            let home = AccountStore.home(test.id).path
+            print("selftest: switch: limit seen:", screenLine(tab, containing: "hit limit") != nil)
+            print("selftest: switch: resumed:", screenLine(tab, containing: "resume=1") ?? "no")
+            print("selftest: switch: on test account:", screenLine(tab, containing: "accounts/switch") != nil, home.suffix(30))
+            let args = tab.screenText().split(separator: "\n").filter { $0.contains("FAKE-ARGS") }.last.map(String.init) ?? "no"
+            print("selftest: switch: resumed with:", args.replacingOccurrences(of: "FAKE-ARGS:", with: "").prefix(160))
+            print("selftest: switch: told to continue:", args.contains("Continue where you left off."))
+            print("selftest: switch: launch record:", AccountStore.launch(tabID: tab.tabID, provider: provider).map { "\($0.account) args=\($0.args)" } ?? "none")
+            print("selftest: switch: routing:", AccountStore.loadRouting())
+            let fm = FileManager.default
+            let items = ((try? fm.contentsOfDirectory(atPath: home)) ?? []).sorted().map { name -> String in
+                (try? fm.destinationOfSymbolicLink(atPath: home + "/" + name)).map { "\(name)→\(($0 as NSString).lastPathComponent)" } ?? name
+            }
+            print("selftest: switch: home:", items.joined(separator: " "))
+            if provider == .codex, let config = try? String(contentsOfFile: home + "/config.toml", encoding: .utf8) {
+                print("selftest: switch: codex config head:", config.split(separator: "\n").prefix(3).joined(separator: " | "))
+            }
+            if provider == .claude, let data = fm.contents(atPath: home + "/.claude.json"),
+               let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                print("selftest: switch: claude state keys:", state.keys.sorted().prefix(12).joined(separator: ","), "oauthAccount copied:", state["oauthAccount"] != nil)
+            }
+            controller.sessions.forEach { $0.terminate() }
+            store.remove(test.id)
+            AccountStore.saveRouting(AccountRouting())
+            try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.claude/projects/-agterm-switch-test")
+            let sessions = URL(fileURLWithPath: NSHomeDirectory() + "/.codex/sessions")
+            if let files = FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: nil) {
+                for case let file as URL in files where file.lastPathComponent.hasPrefix("rollout-agtermtest-") {
+                    try? FileManager.default.removeItem(at: file)
+                }
+            }
+            after(3) { exit(0) }
         }
     }
 

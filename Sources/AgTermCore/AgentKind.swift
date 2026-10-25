@@ -76,11 +76,15 @@ public struct AgentKind: Hashable, Sendable {
 
     public static func named(_ id: String) -> AgentKind? { all.first { $0.id == id } }
 
+    /// False for subcommands like `mcp` or `login` and for --help/--version: runs that don't open a session.
+    public func startsSession(_ userArgs: [String]) -> Bool {
+        guard let first = userArgs.first else { return true }
+        return !(utilityCommands.contains(first) || ["-h", "--help", "-v", "-V", "--version"].contains(first))
+    }
+
     /// `userArgs` with permission prompts turned off, or nil to run them unchanged.
     public func bypassingPermissions(_ userArgs: [String]) -> [String]? {
-        guard let bypassFlags else { return nil }
-        if let first = userArgs.first, utilityCommands.contains(first) || first == "-h" || first == "--help"
-            || first == "-v" || first == "-V" || first == "--version" { return nil }
+        guard let bypassFlags, startsSession(userArgs) else { return nil }
         let chosen = userArgs.contains { arg in
             let name = arg.split(separator: "=", maxSplits: 1).first.map(String.init) ?? arg
             // A short option with its value attached, like -sread-only.

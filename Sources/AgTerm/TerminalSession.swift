@@ -188,10 +188,12 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         let name = ProcInfo.name(pid: fg)
         updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
         updatePrompt()
-        if agentName == "claude", let id = ProcInfo.claudeSessionID(pid: fg) {
-            claudeSessionID = id
-            TeamsClaims.shared.recordClaude(id)
+        let claude = agentName == "claude" ? ProcInfo.claudeSession(pid: fg) : nil
+        if let claude {
+            claudeSessionID = claude.id
+            TeamsClaims.shared.recordClaude(claude.id)
         }
+        updateBusy(claude?.busy)
         let dir = ProcInfo.cwd(pid: fg) ?? ProcInfo.cwd(pid: shellPid) ?? cwd
         guard name != foregroundName || dir != cwd else { return }
         // Back at the prompt: forget the agent's title so a stale spinner or topic doesn't stick.
@@ -203,6 +205,15 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundName = name
         cwd = dir
         onChange?()
+    }
+
+    /// Claude Code's own busy/idle flag. It stays busy while subagents run, when the title
+    /// spinner can pause, so a subagent finishing doesn't look like the session finishing.
+    private func updateBusy(_ busy: Bool?) {
+        guard busy != signals.agentBusy else { return }
+        signals.agentBusy = busy
+        signals.lastBusyChange = Date()
+        tick(now: Date())
     }
 
     /// An agent waiting on a permission prompt is "needs you", even in the tab you're looking at.
@@ -234,6 +245,20 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         guard summary != git else { return }
         git = summary
         onChange?()
+    }
+
+    /// The process group in the foreground, if it isn't the shell (an agent, say).
+    var foregroundGroup: pid_t? {
+        guard !signals.exited, let group = ProcInfo.foregroundPid(ptyFd: view.process.childfd),
+              group != view.process.shellPid else { return nil }
+        return group
+    }
+
+    /// Signals the job in the foreground (an agent), leaving the shell running.
+    func signalForeground(_ signal: Int32) {
+        let shell = view.process.shellPid
+        guard let group = ProcInfo.foregroundPid(ptyFd: view.process.childfd), group != shell, group > 0 else { return }
+        killpg(group, signal)
     }
 
     /// Ends the shell the way Terminal.app does: SIGHUP to the shell and to the foreground job

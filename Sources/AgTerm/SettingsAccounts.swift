@@ -1,0 +1,171 @@
+import AgTermCore
+import SwiftUI
+
+/// Settings → Accounts: your logins for each agent, their usage, and automatic switching.
+struct AccountsPane: View {
+    @ObservedObject var store: AccountStore
+    @ObservedObject var monitor: UsageMonitor
+    @ObservedObject var login: AccountLogin
+    @State private var installed: Set<AccountProvider>?
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Switch accounts when an agent runs out of usage", isOn: binding(\.autoSwitch))
+                Toggle("Then tell the agent to continue", isOn: binding(\.continueAfterSwitch))
+                    .disabled(!store.settings.autoSwitch)
+            } header: {
+                Text("Automatic switching")
+            } footer: {
+                Footnote("When Claude Code or Codex stops at its usage limit, agterm sees it in the conversation within "
+                         + "a second, checks your other accounts, and resumes the same conversation in the same tab on the "
+                         + "one with the most left. New sessions start on your own login while it has usage. "
+                         + "Every account shares your conversations, settings and MCP servers.")
+            }
+
+            ForEach(providers, id: \.self) { provider in
+                ProviderSection(provider: provider, store: store, monitor: monitor, login: login)
+            }
+        }
+        .task {
+            installed = await Task.detached {
+                Set(AccountProvider.allCases.filter { QuickCommandRunner.shared.executable($0.rawValue) != nil })
+            }.value
+            for provider in providers where monitor.reading(provider, AccountStore.native) == nil {
+                for id in monitor.ids(provider) { monitor.refresh(provider, id) }
+            }
+        }
+    }
+
+    private var providers: [AccountProvider] { AccountProvider.allCases.filter { installed?.contains($0) ?? true } }
+
+    private func binding(_ keyPath: WritableKeyPath<AccountStore.Settings, Bool>) -> Binding<Bool> {
+        Binding(get: { store.settings[keyPath: keyPath] }, set: { value in store.update { $0[keyPath: keyPath] = value } })
+    }
+}
+
+private struct ProviderSection: View {
+    let provider: AccountProvider
+    @ObservedObject var store: AccountStore
+    @ObservedObject var monitor: UsageMonitor
+    @ObservedObject var login: AccountLogin
+
+    var body: some View {
+        Section {
+            AccountRow(title: "Your login", subtitle: subtitle(email: nil, plan: nil, id: AccountStore.native),
+                       reading: monitor.reading(provider, AccountStore.native),
+                       error: monitor.errors[UsageMonitor.key(provider, AccountStore.native)],
+                       checking: monitor.checking.contains(UsageMonitor.key(provider, AccountStore.native)))
+            ForEach(store.accounts(provider)) { account in
+                AccountRow(title: account.label, subtitle: subtitle(email: account.email, plan: account.plan, id: account.id),
+                           reading: monitor.reading(provider, account.id),
+                           error: monitor.errors[UsageMonitor.key(provider, account.id)],
+                           checking: monitor.checking.contains(UsageMonitor.key(provider, account.id)),
+                           enabled: account.enabled) {
+                    Menu {
+                        Button(account.enabled ? "Don't Switch to This Account" : "Switch to This Account Again") {
+                            var changed = account
+                            changed.enabled.toggle()
+                            store.add(changed)
+                        }
+                        Button("Check Usage") { monitor.refresh(provider, account.id) }
+                        Divider()
+                        Button("Remove", role: .destructive) { store.remove(account.id) }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+            }
+            HStack {
+                if login.pending[provider] != nil {
+                    ProgressView().controlSize(.small)
+                    Text("Waiting for the sign-in…").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { login.cancel(provider) }
+                } else {
+                    Button("Add \(provider.title) Account…") { login.start(provider) }
+                    Spacer()
+                    Button("Check Usage") { for id in monitor.ids(provider) { monitor.refresh(provider, id) } }
+                }
+            }
+        } header: {
+            Text(provider.title)
+        } footer: {
+            if let message = login.message[provider] { Footnote(message) }
+        }
+    }
+
+    private func subtitle(email: String?, plan: String?, id: String) -> String {
+        let reading = monitor.reading(provider, id)
+        return [reading?.email ?? email, reading?.plan ?? plan].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// One login: name, email and plan, and a bar per usage window.
+private struct AccountRow<Accessory: View>: View {
+    let title: String
+    let subtitle: String
+    let reading: UsageReading?
+    let error: String?
+    let checking: Bool
+    var enabled = true
+    @ViewBuilder var accessory: () -> Accessory
+
+    init(title: String, subtitle: String, reading: UsageReading?, error: String?, checking: Bool, enabled: Bool = true,
+         @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }) {
+        self.title = title
+        self.subtitle = subtitle
+        self.reading = reading
+        self.error = error
+        self.checking = checking
+        self.enabled = enabled
+        self.accessory = accessory
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).foregroundStyle(enabled ? .primary : .secondary)
+                if !subtitle.isEmpty {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                if !enabled {
+                    Text("Not used for switching").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                if let reading, !reading.windows.isEmpty {
+                    ForEach(reading.windows, id: \.name) { UsageBar(window: $0) }
+                } else if checking {
+                    ProgressView().controlSize(.small)
+                } else if let error {
+                    Text(error).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                }
+            }
+            accessory()
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct UsageBar: View {
+    let window: UsageWindow
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(window.name).font(.caption).foregroundStyle(.secondary)
+            ProgressView(value: min(window.usedPercent, 100), total: 100)
+                .progressViewStyle(.linear)
+                .tint(window.usedPercent >= 100 ? .red : window.usedPercent >= 80 ? .orange : .accentColor)
+                .frame(width: 70)
+            Text("\(Int(window.usedPercent.rounded()))%")
+                .font(.caption.monospacedDigit())
+                .frame(width: 34, alignment: .trailing)
+        }
+        .help(window.resetsAt.map { "Resets \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "")
+    }
+}

@@ -38,6 +38,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         }
         startTimers()
         configureCommandBar()
+        NotificationCenter.default.addObserver(forName: .agtermOpenTab, object: nil, queue: .main) { [weak self] note in
+            guard let self, let command = note.userInfo?["command"] as? String else { return }
+            self.addTab(cwd: NSHomeDirectory(), restoring: nil, command: command)
+            self.window?.makeKeyAndOrderFront(nil)
+        }
         RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
         Notifier.shared.onOpen = { [weak self] tabID in
             guard let self, let index = self.sessions.firstIndex(where: { $0.tabID == tabID }) else { return }
@@ -107,7 +112,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     private func startTimers() {
         let fast = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.tickStatus() }
-        let medium = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.sessions.forEach { $0.pollProcess() } }
+        let medium = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.sessions.forEach { $0.pollProcess() }
+            AccountSwitcher.shared.poll(self.sessions)
+        }
         let slow = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in self?.pollGit() }
         // Also save now and then, so a crash or forced restart loses at most a minute.
         let autosave = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.saveWorkspace() }
