@@ -47,15 +47,16 @@ final class AppearanceSettingsTests: XCTestCase {
 
     func testRoundTrip() {
         let defaults = freshDefaults()
-        let s = AppearanceSettings(themeID: "paper", fontFamily: "Menlo", fontSize: 15, opacity: 0.8, blur: true)
+        let s = AppearanceSettings(themeID: "paper", fontFamily: "Menlo", fontSize: 15, opacity: 0.8, blur: 0.3)
         s.save(to: defaults)
         XCTAssertEqual(AppearanceSettings.load(from: defaults), s)
     }
 
     func testOutOfRangeValuesAreClamped() {
-        let s = AppearanceSettings(themeID: "ink", fontFamily: nil, fontSize: 200, opacity: 0.01, blur: false)
+        let s = AppearanceSettings(themeID: "ink", fontFamily: nil, fontSize: 200, opacity: 0.01, blur: 7)
         XCTAssertEqual(s.fontSize, AppearanceSettings.fontSizeRange.upperBound)
         XCTAssertEqual(s.opacity, AppearanceSettings.opacityRange.lowerBound)
+        XCTAssertEqual(s.blur, 1)
     }
 
     func testCorruptStoredValuesFallBack() {

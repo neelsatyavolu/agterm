@@ -42,8 +42,11 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | ⌘= ⌘- ⌘0 | Font size |
 | ⌘, | Settings: theme, font, background opacity and blur, updates |
+| Drag onto a tab | Files and folders type their escaped paths, as in Terminal.app. Images from a browser or screenshot tool are saved to a temp file first, so Claude Code can attach them. |
 
 Closing a tab or quitting asks first if a program is still running.
+
+A see-through background blurs what's behind it, more strongly the more transparent it is, so text in other windows doesn't show through sharp. Full screen is always solid.
 
 ## Build from source
 

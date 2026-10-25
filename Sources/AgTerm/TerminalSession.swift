@@ -48,6 +48,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     }
 
     private func configure() {
+        view.enableDrops()
         view.onOutput = { [weak self] in self?.signals.lastOutput = Date() }
         view.onInput = { [weak self] in self?.signals.lastInput = Date() }
         view.onBell = { [weak self] in

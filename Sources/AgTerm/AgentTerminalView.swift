@@ -1,3 +1,4 @@
+import AgTermCore
 import AppKit
 import SwiftTerm
 
@@ -18,6 +19,41 @@ final class AgentTerminalView: LocalProcessTerminalView {
         super.send(source: source, data: data)
     }
 
+
+    // MARK: Drag and drop
+
+    func enableDrops() {
+        registerForDraggedTypes(DropReader.acceptedTypes)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        showDropTarget(true)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        showDropTarget(false)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        showDropTarget(false)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        showDropTarget(false)
+        DropReader.text(from: sender.draggingPasteboard) { [weak self] text in
+            guard let self, let text, !text.isEmpty else { return }
+            self.send(txt: DropText.wrap(text, bracketed: self.getTerminal().bracketedPasteMode))
+            self.window?.makeFirstResponder(self)
+        }
+        return true
+    }
+
+    private func showDropTarget(_ on: Bool) {
+        wantsLayer = true
+        layer?.borderColor = Theme.accent.cgColor
+        layer?.borderWidth = on ? 2 : 0
+    }
 
     /// The tab shows the bell instead of beeping.
     override func bell(source: Terminal) {

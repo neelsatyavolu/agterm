@@ -55,6 +55,10 @@ enum SelfTest {
         after(10.8) { snapshotSettings("\(outDir)/6-settings.png") }
         after(11.2) { Preferences.shared.update { $0 = saved } }
 
+        // Drops: a file with spaces in its name, then a raw image with no file behind it.
+        after(11.25) { checkDrops(into: controller.sessions[0], outDir: outDir) }
+        after(11.28) { checkBlur() }
+
         // One tab runs a long job in the foreground, like an agent would.
         after(11.3) { controller.sessions[0].view.send(txt: "sleep 777\r") }
         after(12) { controller.sessions.forEach { $0.terminate() } }
@@ -75,6 +79,45 @@ enum SelfTest {
             print("selftest: shells=\(shells) zombies=\(zombies) orphanedJob=\(orphanSleep)")
             exit(zombies == 0 && shells == 0 && !orphanSleep ? 0 : 2)
         }
+    }
+
+    private static func checkDrops(into session: TerminalSession, outDir: String) {
+        let file = URL(fileURLWithPath: outDir).appendingPathComponent("My Shot (1).png")
+        FileManager.default.createFile(atPath: file.path, contents: Data())
+        let files = NSPasteboard(name: .init("agterm.selftest.files"))
+        files.clearContents()
+        files.writeObjects([file as NSURL])
+        DropReader.text(from: files) { text in
+            print("selftest: file drop ->", text ?? "nil")
+            session.view.send(txt: "echo " + (text ?? "") + "\r")
+        }
+        let image = NSImage(size: NSSize(width: 8, height: 8))
+        image.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(x: 0, y: 0, width: 8, height: 8).fill()
+        image.unlockFocus()
+        let images = NSPasteboard(name: .init("agterm.selftest.image"))
+        images.clearContents()
+        images.writeObjects([image])
+        DropReader.text(from: images) { text in
+            let path = text?.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\\", with: "") ?? ""
+            print("selftest: image drop ->", text ?? "nil", "exists:", FileManager.default.fileExists(atPath: path))
+        }
+        after(0.6) {
+            let screen = (0..<session.view.getTerminal().rows).compactMap { session.view.getTerminal().getLine(row: $0)?.translateToString(trimRight: true) }
+            print("selftest: shell echoed:", screen.first { $0.hasPrefix("My Shot") || $0.contains("/My Shot (1).png") } ?? "not found")
+        }
+    }
+
+    /// A tiny borderless window far off screen, so the window server has a real window to blur.
+    private static func checkBlur() {
+        let probe = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 1, height: 1),
+                             styleMask: .borderless, backing: .buffered, defer: false)
+        probe.isOpaque = false
+        probe.backgroundColor = .clear
+        probe.orderBack(nil)
+        print("selftest: blur api available:", BackgroundBlur.isAvailable, "applied:", BackgroundBlur.set(probe, radius: 20))
+        probe.orderOut(nil)
     }
 
     private static func send(_ controller: MainWindowController, _ index: Int, _ line: String) {

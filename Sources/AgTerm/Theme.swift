@@ -8,10 +8,10 @@ enum Theme {
     private(set) static var opacity: CGFloat = 1
     private(set) static var settings = AppearanceSettings()
 
-    static func apply(_ settings: AppearanceSettings) {
+    static func apply(_ settings: AppearanceSettings, fullScreen: Bool = false) {
         self.settings = settings
         palette = settings.theme
-        opacity = CGFloat(settings.opacity)
+        opacity = CGFloat(WindowBlur.effectiveOpacity(settings.opacity, fullScreen: fullScreen))
     }
 
     static func color(_ rgb: RGB, alpha: CGFloat = 1) -> NSColor {

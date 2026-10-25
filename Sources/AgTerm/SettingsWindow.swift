@@ -67,8 +67,15 @@ struct SettingsView: View {
                             .frame(width: 40, alignment: .trailing)
                     }
                 }
-                Toggle("Blur behind the window", isOn: binding(\.blur))
-                    .disabled(settings.opacity >= 1)
+                LabeledContent("Blur") {
+                    HStack {
+                        Slider(value: binding(\.blur), in: 0...1)
+                        Text(settings.blur == 0 ? "Off" : "\(Int((settings.blur * 100).rounded()))%")
+                            .monospacedDigit()
+                            .frame(width: 40, alignment: .trailing)
+                    }
+                }
+                .disabled(settings.opacity >= 1)
             }
 
             if Updater.shared.isAvailable {

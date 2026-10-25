@@ -9,6 +9,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// Paints the margins around the terminal; the terminal paints its own area, so a
     /// see-through background isn't layered twice.
     private let backdrop = MarginView()
+    /// Fallback blur, used only if the window server's blur radius call is unavailable.
     private let blur = NSVisualEffectView()
     private(set) var sessions: [TerminalSession] = []
     private var selected = 0
@@ -22,12 +23,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                               backing: .buffered, defer: false)
         super.init(window: window)
         configure(window)
-        Theme.apply(Preferences.shared.appearance)
         applyAppearance()
         newTab()
         startTimers()
         appearanceSubscription = Preferences.shared.$appearance.dropFirst().sink { [weak self] settings in
-            Theme.apply(settings)
             self?.applyAppearance()
         }
     }
@@ -197,13 +196,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     // MARK: Appearance
 
     /// Pushes the current `Theme` to the window, tab bar and every terminal.
+    /// Full screen forces a solid background (see `WindowBlur.effectiveOpacity`).
     private func applyAppearance() {
         guard let window else { return }
+        let settings = Preferences.shared.appearance
+        Theme.apply(settings, fullScreen: window.styleMask.contains(.fullScreen))
         let seeThrough = Theme.opacity < 1
         window.appearance = Theme.appearance
         window.isOpaque = !seeThrough
         window.backgroundColor = seeThrough ? .clear : Theme.bg
-        blur.isHidden = !(seeThrough && Theme.settings.blur)
+        let radius = WindowBlur.radius(opacity: Double(Theme.opacity), blur: settings.blur)
+        let blurred = BackgroundBlur.set(window, radius: radius)
+        blur.isHidden = blurred || radius == 0
         backdrop.color = Theme.bg
         tabBar.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
@@ -230,6 +234,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func windowDidResignKey(_ notification: Notification) {
         if sessions.indices.contains(selected) { sessions[selected].setFocused(false, now: Date()) }
     }
+
+    func windowDidEnterFullScreen(_ notification: Notification) { applyAppearance() }
+    func windowDidExitFullScreen(_ notification: Notification) { applyAppearance() }
+
+    /// The window server window exists only once shown, so apply the blur radius again then.
+    func windowDidChangeOcclusionState(_ notification: Notification) { applyAppearance() }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender.attachedSheet == nil else { return false }
