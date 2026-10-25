@@ -3,14 +3,34 @@ import Darwin
 import Foundation
 import SQLite3
 
-/// Gives agents started in agterm the same MCP servers agmux gives its agents: agmux project
-/// memory and consult. agterm doesn't launch agents itself, so its shells get small `claude` and
-/// `codex` wrappers first on PATH; each wrapper re-enters this binary (`--agterm-exec`), which
-/// works out the servers for the current folder and then execs the real CLI with them.
+/// Gives agents started in agterm the same MCP servers agmux gives its agents (agmux project
+/// memory and consult) and, if you ask for it, starts them without permission prompts. agterm's
+/// shells get small `claude`, `codex` and `grok` wrappers first on PATH; each wrapper re-enters
+/// this binary (`--agterm-exec`), which works out the extra arguments and execs the real CLI.
 enum AgentIntegration {
-    static let agents = ["claude", "codex"]
+    /// Agents that get a wrapper: Claude Code and Codex always (MCP servers), others only while
+    /// "skip permission prompts" is on for them, so agterm shadows as few commands as it can.
+    static var wrappedAgents: [AgentKind] {
+        AgentKind.all.filter { $0 == .claude || $0 == .codex || ($0.bypassFlags != nil && UserDefaults.standard.bool(forKey: bypassKey($0))) }
+    }
     static let memoryKey = "integrationMemory"
     static let consultKey = "integrationConsult"
+
+    /// UserDefaults key for starting `agent` without permission prompts (off unless you turn it on).
+    static func bypassKey(_ agent: AgentKind) -> String { "bypassPermissions." + agent.id }
+
+    /// The agent ⌥⌘T starts.
+    static let launchAgentKey = "quickLaunchAgent"
+    static var launchAgent: AgentKind {
+        UserDefaults.standard.string(forKey: launchAgentKey).flatMap(AgentKind.named) ?? .claude
+    }
+
+    /// Agents found on your login shell's PATH, in registry order. Nil until the PATH is known.
+    static func installedAgents() -> [AgentKind]? {
+        let runner = QuickCommandRunner.shared
+        guard runner.isReady else { return nil }
+        return AgentKind.all.filter { $0.commands.contains { runner.executable($0) != nil } }
+    }
 
     static var supportDir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -27,9 +47,14 @@ enum AgentIntegration {
         do {
             try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: zshDir, withIntermediateDirectories: true)
-            for agent in agents {
-                let url = binDir.appendingPathComponent(agent)
-                try wrapper(agent: agent, helper: helper).write(to: url, atomically: true, encoding: .utf8)
+            let wanted = Set(wrappedAgents.map(\.command))
+            for agent in AgentKind.all {
+                let url = binDir.appendingPathComponent(agent.command)
+                guard wanted.contains(agent.command) else {
+                    try? FileManager.default.removeItem(at: url)
+                    continue
+                }
+                try wrapper(agent: agent.command, helper: helper).write(to: url, atomically: true, encoding: .utf8)
                 try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
             }
             for (name, body) in zshFiles() {
@@ -56,8 +81,8 @@ enum AgentIntegration {
     private static func wrapper(agent: String, helper: String) -> String {
         """
         #!/bin/sh
-        # Added by agterm: starts \(agent) with agmux project memory and consult (agterm Settings → Agents).
-        # AGTERM_MCP=0 \(agent) … skips it. If agterm is gone, this runs the real \(agent) unchanged.
+        # Added by agterm: starts \(agent) with the options in agterm Settings → Agents.
+        # AGTERM_MCP=0 \(agent) … skips the MCP servers. If agterm is gone, this runs the real \(agent) unchanged.
         helper='\(helper.replacingOccurrences(of: "'", with: "'\\''"))'
         if [ -x "$helper" ]; then exec "$helper" --agterm-exec \(agent) "$@"; fi
         here=$(cd "$(dirname "$0")" && pwd)
@@ -105,6 +130,10 @@ enum AgentIntegration {
             exit(127)
         }
         var argv = args
+        if let kind = AgentKind.all.first(where: { $0.commands.contains(agent) }), UserDefaults.standard.bool(forKey: bypassKey(kind)) {
+            argv = kind.bypassingPermissions(args) ?? args
+        }
+        let userArgs = argv
         // Marks Codex sessions as started in agterm (their header's originator), which is how
         // agmux Teams reporting tells them apart from sessions started elsewhere.
         if agent == "codex", env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == nil {
@@ -115,9 +144,9 @@ enum AgentIntegration {
             switch agent {
             case "claude":
                 let memory = servers.contains { $0.name == "agmux-memory" } ? memoryInstructions : ""
-                argv = AgentLaunch.claude(userArgs: args, servers: servers, instructions: memory) ?? args
+                argv = AgentLaunch.claude(userArgs: userArgs, servers: servers, instructions: memory) ?? userArgs
             case "codex":
-                argv = AgentLaunch.codex(userArgs: args, servers: servers) ?? args
+                argv = AgentLaunch.codex(userArgs: userArgs, servers: servers) ?? userArgs
             default:
                 break
             }

@@ -17,7 +17,7 @@ It is a real terminal (the [SwiftTerm](https://github.com/migueldeicaza/SwiftTer
 
 ## Install
 
-Download the latest `agterm.zip` from [Releases](https://github.com/neelsatyavolu/agterm/releases/latest) or [agterm.xanom.co](https://agterm.xanom.co), unzip it and move `agterm.app` to Applications. It is signed and notarized, and updates itself through [Sparkle](https://sparkle-project.org) (Settings → Updates).
+Download the latest `agterm.zip` from [Releases](https://github.com/neelsatyavolu/agterm/releases/latest) or [agterm.xanom.co](https://agterm.xanom.co), unzip it and move `agterm.app` to Applications. It is signed and notarized, and updates itself through [Sparkle](https://sparkle-project.org) (Settings → General).
 
 macOS 14 or later.
 
@@ -30,12 +30,19 @@ Claude Code and Codex started in an agterm tab get the two MCP servers [agmux](h
 - **agmux-memory**, for folders agmux knows, using agmux's project ids so both apps share one memory.
 - **consult**, for second opinions and diff reviews from other agents on your Mac.
 
-agterm puts small `claude` and `codex` wrappers first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add `--mcp-config` for Claude or `-c mcp_servers.…` for Codex, skip servers you already configured, and edit no config files. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs agmux installed (the servers ship inside agmux.app) and Node on PATH.
+agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add `--mcp-config` for Claude or `-c mcp_servers.…` for Codex, skip servers you already configured, and edit no config files. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs agmux installed (the servers ship inside agmux.app) and Node on PATH.
+
+## Starting agents and ⌘K
+
+- **About 20 agent CLIs.** Claude Code, Codex, Grok, Gemini CLI, Antigravity, Cursor Agent, OpenCode, Kimi Code, Aider, Amp, Qwen Code, Crush, GitHub Copilot CLI, Factory Droid, Kilo Code, Cline, Goose, Auggie, Qodo, Kiro CLI, Continue and Pi all get tab status, "needs you" and lines changed.
+- **New agent tab.** ⌥⌘T opens a tab in the current folder and starts your usual agent (Settings → Agents). ⌥⌘1, ⌥⌘2 and ⌥⌘3 start Claude Code, Codex and Grok; Shell → New Tab With Agent and right-clicking + list every agent you have installed. The agent is typed at the new shell's prompt, so the shell stays when the agent quits and the tab restores like any other.
+- **Skip permission prompts.** Settings → Permissions can start each installed agent with its own bypass flag, such as `--dangerously-skip-permissions` (Claude Code, Antigravity), `--dangerously-bypass-approvals-and-sandbox` (Codex, which also turns off its sandbox), `--permission-mode bypassPermissions` (Grok), `--yolo` (Gemini, Kimi, Qwen, Crush), `--force` (Cursor), `--auto` (OpenCode) or `--yes-always` (Aider). Off by default. Runs where you pass a permission flag yourself, and subcommands like `mcp` or `login`, are left alone.
+- **⌘K writes a command.** Describe what you want; ⏎ puts the command at your prompt to check, ⌘⏎ runs it. It goes through the CLI you're already signed in to, at its fastest setting: Claude Haiku (about 2.5 s), Codex's Luna model at its lowest effort (about 4 s) or Grok at low effort (about 5 s). Automatic uses the first one installed. The model gets your request, the tab's folder, your shell and the last 20 lines on screen. It has no tools, and the run isn't kept in the CLI's history.
 
 ## agmux Teams and the phone app
 
-- **Teams.** Settings → agmux Teams links agterm as its own device (a browser sign-in, like agmux) and reports hourly totals for Claude Code and Codex sessions started in agterm: tokens, estimated cost, active time, turns, tool calls by kind, and lines changed as counts. Never prompts, replies, code, diffs, paths or terminal output, and never sessions started elsewhere. Codex sessions are marked with `originator: agterm`; Claude sessions are the ones agterm saw in its tabs. The counting is a port of agmux's own, with its tests.
-- **Phone.** Settings → Phone pairs the agmux phone app with agterm (QR code or 8-letter code). Each tab shows up with its title, status and diff; open one to see its screen, type a reply, stop it, or allow and deny permission prompts. "Needs you" and "finished" send phone notifications. The phone app keeps one paired Mac, so pairing agterm replaces agmux on that phone. Traffic goes through the agmux relay over TLS.
+- **Teams.** Settings → Teams & Phone links agterm as its own device (a browser sign-in, like agmux) and reports hourly totals for Claude Code and Codex sessions started in agterm: tokens, estimated cost, active time, turns, tool calls by kind, and lines changed as counts. Never prompts, replies, code, diffs, paths or terminal output, and never sessions started elsewhere. Codex sessions are marked with `originator: agterm`; Claude sessions are the ones agterm saw in its tabs. The counting is a port of agmux's own, with its tests.
+- **Phone.** Settings → Teams & Phone pairs the agmux phone app with agterm (QR code or 8-letter code). Each tab shows up with its title, status and diff; open one to see its screen, type a reply, stop it, or allow and deny permission prompts. "Needs you" and "finished" send phone notifications. The phone app keeps one paired Mac, so pairing agterm replaces agmux on that phone. Traffic goes through the agmux relay over TLS.
 
 ## Tabs come back
 
@@ -48,7 +55,7 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | Signal | Source |
 |---|---|
 | Working / idle | Claude Code's title prefix: `◐`/`◑` while working, `✳` when idle (braille spinners also count). Programs without one count as working while they print output that isn't an echo of your typing. |
-| Needs you | The bell character, while the tab is in the background |
+| Needs you | An agent's permission prompt on screen (a numbered choice under a `❯` or `›` cursor, as Claude Code and Codex draw them), in any tab including the one you're looking at; or the bell, while the tab is in the background |
 | Folder | The foreground process's working directory (`proc_pidinfo`) |
 | Diff | `git status --porcelain -b` and `git diff HEAD --shortstat`, every 3 seconds, off the main thread |
 
@@ -57,10 +64,12 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | Keys | Action |
 |---|---|
 | ⌘T / ⌘W | New tab (in the current tab's folder) / close tab |
+| ⌥⌘T, ⌥⌘1–3 | New tab running your usual agent, or Claude Code, Codex, Grok |
+| ⌘K | Describe a command and have a fast model write it |
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |
 | ⌘= ⌘- ⌘0 | Font size |
-| ⌘, | Settings: theme, font, opacity and blur, notifications, agents, updates |
+| ⌘, | Settings: General, Appearance, Agents, Permissions, Command (⌘K), Teams & Phone |
 | Drag onto a tab | Files and folders type their escaped paths, as in Terminal.app. Images from a browser or screenshot tool are saved to a temp file first, so Claude Code can attach them. |
 
 Closing a tab or quitting asks first if a program is still running. When an agent finishes or needs you in a tab you aren't looking at, agterm can post a notification and play a sound; clicking it opens that tab.

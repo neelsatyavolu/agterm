@@ -49,7 +49,7 @@ public struct MCPServer: Equatable, Sendable {
 /// The extra arguments agterm adds when you start an agent, the same ones agmux passes.
 public enum AgentLaunch {
     /// Claude Code subcommands that don't start a session.
-    private static let claudeSubcommands: Set<String> = [
+    static let claudeSubcommands: Set<String> = [
         "mcp", "config", "update", "doctor", "install", "migrate-installer", "setup-token", "plugin", "plugins",
         "auth", "login", "logout", "agents", "help",
     ]

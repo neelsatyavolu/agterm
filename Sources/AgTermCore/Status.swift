@@ -39,6 +39,8 @@ public struct StatusSignals: Equatable, Sendable {
     public var lastSeen: Date?
     public var focused = false
     public var exited = false
+    /// An agent's permission prompt or other choice is on screen (see `PermissionPrompt`).
+    public var promptVisible = false
 
     public init() {}
 }
@@ -60,6 +62,8 @@ public enum StatusRules {
 
     public static func status(_ s: StatusSignals, now: Date) -> TabStatus {
         if s.exited { return .exited }
+        // Shown even on the tab you're looking at: the agent is stopped until you answer.
+        if s.promptVisible { return .waiting }
         if isWorking(s, now: now) { return .working }
         let workSinceBell = s.lastWorking.map { $0.addingTimeInterval(-bellGrace) }
         if !s.focused, isAfterSeen(s.lastBell, s), isAfter(s.lastBell, workSinceBell) { return .waiting }
@@ -70,6 +74,7 @@ public enum StatusRules {
     }
 
     public static func isWorking(_ s: StatusSignals, now: Date) -> Bool {
+        if s.promptVisible { return false }
         switch s.titleActivity {
         case .working:
             // An interrupt ends the turn until the spinner moves again.

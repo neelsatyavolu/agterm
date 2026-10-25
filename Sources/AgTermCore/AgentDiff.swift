@@ -2,14 +2,15 @@ import Foundation
 
 /// Recognises coding-agent CLIs from a process's argv.
 public enum AgentCatalog {
-    /// Command names, and the package folder names they install under when run by node/python.
-    private static let names: [String: String] = [
-        "claude": "claude", "claude-code": "claude",
-        "codex": "codex", "grok": "grok", "gemini": "gemini", "gemini-cli": "gemini",
-        "opencode": "opencode", "cursor-agent": "cursor-agent", "droid": "droid", "kimi": "kimi",
-        "aider": "aider", "amp": "amp", "qwen": "qwen", "qwen-code": "qwen", "goose": "goose",
-        "crush": "crush", "cline": "cline", "copilot": "copilot", "pi": "pi",
-    ]
+    /// Command names from `AgentKind.all`, plus the package folder names some install under
+    /// when run by node or python.
+    private static let names: [String: String] = {
+        var names = ["claude-code": "claude", "gemini-cli": "gemini", "qwen-code": "qwen", "kilocode": "kilo"]
+        for agent in AgentKind.all {
+            for command in agent.commands { names[command] = agent.id }
+        }
+        return names
+    }()
     private static let interpreters: Set<String> = ["node", "bun", "deno", "python", "python3", "uv", "uvx"]
 
     /// The agent's short name, or nil for anything else.

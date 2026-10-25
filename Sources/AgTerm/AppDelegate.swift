@@ -1,3 +1,4 @@
+import AgTermCore
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -7,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = buildMenu()
         AgentIntegration.installShellIntegration()
         AgentTerminalView.installScrollSmoothing()
+        QuickCommandRunner.shared.warmUp()
         Notifier.shared.start()
         let controller = MainWindowController()
         self.controller = controller
@@ -21,6 +23,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         askForDiskAccessIfNeeded()
         TeamsSync.shared.start()
         RemoteClient.shared.startIfEnabled()
+    }
+
+    /// Every other installed agent, listed when the menu opens (the PATH is found after launch).
+    private let moreAgents = MoreAgentsMenu()
+
+    private func moreAgentsItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "New Tab With Agent", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "New Tab With Agent")
+        menu.delegate = moreAgents
+        item.submenu = menu
+        return item
     }
 
     private func updatesItem() -> NSMenuItem {
@@ -82,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
+            item("New Agent Tab", #selector(MainWindowController.newDefaultAgentTab), "t", [.command, .option]),
+        ] + Self.agentItems([.claude, .codex, .grok]) + [
+            moreAgentsItem(),
+            .separator(),
+            item("Write a Command…", #selector(MainWindowController.toggleCommandBar), "k"),
+            .separator(),
             item("Close Tab", #selector(MainWindowController.closeTab), "w"),
         ]))
         main.addItem(submenu("Edit", [
@@ -116,6 +135,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return main
     }
 
+    /// "New <agent> Tab" items. Claude Code, Codex and Grok keep ⌥⌘1–3 wherever they appear.
+    static func agentItems(_ agents: [AgentKind], target: AnyObject? = nil, shortcuts: Bool = true) -> [NSMenuItem] {
+        agents.map { agent in
+            let item = NSMenuItem(title: "New \(agent.title) Tab", action: #selector(MainWindowController.newAgentTabFromMenu(_:)),
+                                  keyEquivalent: "")
+            if shortcuts, let index = [AgentKind.claude, .codex, .grok].firstIndex(of: agent) {
+                item.keyEquivalent = "\(index + 1)"
+                item.keyEquivalentModifierMask = [.command, .option]
+            }
+            item.representedObject = agent.id
+            item.target = target
+            return item
+        }
+    }
+
     private func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
         let menu = NSMenu(title: title)
         items.forEach(menu.addItem)
@@ -129,5 +163,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         return item
+    }
+}
+
+private final class MoreAgentsMenu: NSObject, NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let agents = AgentIntegration.installedAgents() else {
+            menu.addItem(NSMenuItem(title: "Looking for installed agents…", action: nil, keyEquivalent: ""))
+            return
+        }
+        AppDelegate.agentItems(agents, shortcuts: false).forEach(menu.addItem)
     }
 }

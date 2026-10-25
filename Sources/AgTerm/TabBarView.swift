@@ -21,6 +21,8 @@ protocol TabBarDelegate: AnyObject {
     func tabBar(_ bar: TabBarView, didSelect index: Int)
     func tabBar(_ bar: TabBarView, didClose index: Int)
     func tabBarDidRequestNewTab(_ bar: TabBarView)
+    /// Right-click on +: start an agent instead of a plain shell.
+    func tabBarAgentMenu(_ bar: TabBarView) -> NSMenu
     func tabBar(_ bar: TabBarView, didMove from: Int, to: Int)
 }
 
@@ -57,6 +59,11 @@ final class TabBarView: NSView {
             guard let self else { return }
             self.delegate?.tabBarDidRequestNewTab(self)
         }
+        plusButton.onRightClick = { [weak self] event in
+            guard let self, let menu = self.delegate?.tabBarAgentMenu(self) else { return }
+            NSMenu.popUpContextMenu(menu, with: event, for: self.plusButton)
+        }
+        plusButton.toolTip = "New tab. Right-click to start an agent."
         addSubview(plusButton)
         leftButton.onClick = { [weak self] in self?.scroll(by: -1) }
         rightButton.onClick = { [weak self] in self?.scroll(by: 1) }
@@ -254,6 +261,7 @@ private final class IconButton: NSView {
     enum Icon { case plus, left, right }
 
     var onClick: (() -> Void)?
+    var onRightClick: ((NSEvent) -> Void)?
     private let icon: Icon
     private var hovering = false { didSet { needsDisplay = true } }
 
@@ -271,7 +279,15 @@ private final class IconButton: NSView {
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control), let onRightClick { return onRightClick(event) }
+        onClick?()
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard let onRightClick else { return super.rightMouseDown(with: event) }
+        onRightClick(event)
+    }
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {

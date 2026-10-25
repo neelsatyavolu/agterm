@@ -42,6 +42,7 @@ enum SelfTest {
             print("selftest: teams preview buckets:", (payload["buckets"] as? [Any])?.count ?? 0)
             exit(0)
         }
+        if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true
@@ -184,6 +185,82 @@ enum SelfTest {
             let orphanSleep = out.split(separator: "\n").contains { $0.hasSuffix("sleep 777") }
             print("selftest: shells=\(shells) zombies=\(zombies) orphanedJob=\(orphanSleep)")
             exit(zombies == 0 && shells == 0 && !orphanSleep ? 0 : 2)
+        }
+    }
+
+    /// Settings panes, ⌘K against the real model, and a new agent tab from the menu.
+    private static func featureCheck(_ controller: MainWindowController, outDir: String) {
+        guard let window = controller.window else { exit(1) }
+        window.setContentSize(NSSize(width: 1000, height: 560))
+        window.contentView?.superview?.wantsLayer = true
+        let settings = SettingsWindowController.shared
+        // One pane after another; the Appearance pane's first font scan can hold the main thread.
+        func pane(_ i: Int) {
+            guard i < settings.paneCount else { return }
+            settings.selectPane(i)
+            after(0.6) {
+                let size = settings.window?.contentView?.bounds.size ?? .zero
+                print("selftest: settings pane \(i) \(settings.window?.title ?? "?") \(Int(size.width))x\(Int(size.height))")
+                snapshotSettings("\(outDir)/settings-\(i).png")
+                pane(i + 1)
+            }
+        }
+        after(0.5) { pane(0) }
+        let shell = controller.sessions[0]
+        UserDefaults.standard.set(ProcessInfo.processInfo.environment["AGTERM_QUICK_MODEL"] ?? "auto", forKey: QuickCommandRunner.modelKey)
+        after(3) { shell.view.send(txt: "cd /tmp && clear\r") }
+        // Closing the bar mid-request cancels it: nothing typed, no model process left.
+        after(3.2) {
+            controller.toggleCommandBar()
+            controller.commandBarForTest.selfTestSubmit("print the word CANCELLED-PROBE")
+            after(1.5) { controller.toggleCommandBar() }
+            after(4) {
+                let ps = Process()
+                ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+                ps.arguments = ["-o", "pid=,command=", "-g", String(getpgrp())]
+                let pipe = Pipe()
+                ps.standardOutput = pipe
+                try? ps.run()
+                let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let left = out.split(separator: "\n").filter { $0.contains("CANCELLED-PROBE") }.count
+                print("selftest: ⌘K cancel: model processes left:", left, "| typed:", screenLine(shell, containing: "CANCELLED") != nil)
+            }
+        }
+        after(8) {
+            controller.toggleCommandBar()
+            controller.commandBarForTest.selfTestSubmit("show the 3 biggest files in this folder")
+            let start = Date()
+            func wait() {
+                let text = controller.commandBarForTest.selfTestResult
+                if text.hasPrefix("Writing") { return after(0.2, wait) }
+                print("selftest: ⌘K reply in \(String(format: "%.1f", Date().timeIntervalSince(start))) s:", text)
+                snapshot(window, "\(outDir)/command-bar.png")
+                controller.commandBarForTest.selfTestSubmit(nil)
+                after(0.8) {
+                    print("selftest: ⌘K inserted at prompt:", screenLine(shell, containing: String(text.prefix(12))) ?? "not found",
+                          "| bar closed:", controller.commandBarForTest.superview == nil)
+                    controller.newAgentTab(.claude)
+                    let agentTab = controller.sessions[controller.sessions.count - 1]
+                    // A stand-in agent showing Claude Code's permission prompt, in the selected tab.
+                    let fakes = ProcessInfo.processInfo.environment["AGTERM_FAKE_AGENTS"] ?? outDir
+                    controller.select(0)
+                    shell.view.send(txt: "\u{15}clear; printf 'Do you want to proceed?\\n\\xe2\\x9d\\xaf 1. Yes\\n  2. No\\nEsc to cancel\\n'; \(fakes)/claude 600\r")
+                    after(5) {
+                        print("selftest: agent tab foreground:", agentTab.agentName ?? "none", "folder:", agentTab.folder)
+                        print("selftest: prompt on screen, selected tab:", shell.status.label, "agent:", shell.agentName ?? "none")
+                        shell.view.send(txt: "\u{3}")
+                        after(1.5) {
+                            shell.view.send(txt: "clear\r")
+                            after(1.5) {
+                                print("selftest: after answering:", shell.status.label)
+                                controller.sessions.forEach { $0.terminate() }
+                                after(1) { exit(0) }
+                            }
+                        }
+                    }
+                }
+            }
+            after(0.5, wait)
         }
     }
 

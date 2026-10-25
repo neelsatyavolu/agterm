@@ -16,6 +16,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var appearanceSubscription: AnyCancellable?
     private let git = GitPoller()
     private let transcripts = TranscriptDiff()
+    private let commandBar = CommandBar()
+    /// The tab the open command bar answers for; its command only ever goes there.
+    private weak var commandBarTarget: TerminalSession?
     private var timers: [Timer] = []
     /// Set once the tabs are saved for this quit, so a second save can't overwrite them.
     private var savedForQuit = false
@@ -34,6 +37,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             newTab()
         }
         startTimers()
+        configureCommandBar()
         RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
         Notifier.shared.onOpen = { [weak self] tabID in
             guard let self, let index = self.sessions.firstIndex(where: { $0.tabID == tabID }) else { return }
@@ -154,17 +158,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     // MARK: Tabs
 
-    @objc func newTab() {
-        let cwd = sessions.indices.contains(selected) ? sessions[selected].cwd : NSHomeDirectory()
-        addTab(cwd: cwd, restoring: nil)
+    /// New tabs open in the selected tab's folder, as in Terminal.app.
+    private var currentFolder: String { sessions.indices.contains(selected) ? sessions[selected].cwd : NSHomeDirectory() }
+
+    @objc func newTab() { addTab(cwd: currentFolder, restoring: nil) }
+
+    /// ⌥⌘T: a new tab running the agent chosen in Settings → Agents.
+    @objc func newDefaultAgentTab() { newAgentTab(AgentIntegration.launchAgent) }
+
+    @objc func newAgentTabFromMenu(_ sender: NSMenuItem) {
+        guard let agent = (sender.representedObject as? String).flatMap(AgentKind.named) else { return }
+        newAgentTab(agent)
     }
 
-    private func addTab(cwd: String, restoring saved: SavedTab?) {
+    /// Types the agent at the new shell's first prompt, so the shell is still there when it exits
+    /// and the tab saves and restores like any other.
+    func newAgentTab(_ agent: AgentKind) { addTab(cwd: currentFolder, restoring: nil, command: agent.command) }
+
+    private func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) {
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
-        let session = TerminalSession(cwd: dir, restoring: saved)
+        let session = TerminalSession(cwd: dir, restoring: saved, command: command)
         session.onChange = { [weak self] in self?.render() }
         session.onStatusChange = { [weak session] status in
-            guard let session else { return }
+            // No banner for the tab you're already looking at.
+            guard let session, !(session.signals.focused && NSApp.isActive) else { return }
             Notifier.shared.post(status: status, tabID: session.tabID, topic: session.topic, folder: session.folder)
         }
         session.onCleanExit = { [weak self, weak session] in
@@ -229,6 +246,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func select(_ index: Int) {
         guard sessions.indices.contains(index) else { return }
         selected = index
+        if commandBar.superview != nil, sessions[index] !== commandBarTarget { hideCommandBar(refocus: false) }
         let now = Date()
         for (i, session) in sessions.enumerated() {
             session.view.isHidden = i != index
@@ -258,6 +276,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     private func removeTab(at index: Int) {
         let session = sessions.remove(at: index)
+        if session === commandBarTarget { hideCommandBar(refocus: false) }
         session.onChange = nil
         session.terminate()
         session.view.removeFromSuperview()
@@ -297,8 +316,55 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         blur.isHidden = blurred || radius == 0
         backdrop.color = Theme.bg
         tabBar.refreshAppearance()
+        commandBar.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
         window.invalidateShadow()
+    }
+
+    // MARK: Command bar
+
+    private func configureCommandBar() {
+        commandBar.translatesAutoresizingMaskIntoConstraints = false
+        commandBar.context = { [weak self] in
+            guard let session = self?.commandBarTarget else { return (NSHomeDirectory(), "zsh", "") }
+            session.pollProcess()
+            return (session.cwd, session.shellName, session.screenText())
+        }
+        commandBar.onInsert = { [weak self] command, run in
+            guard let view = self?.commandBarTarget?.view else { return }
+            view.send(txt: DropText.wrap(command, bracketed: view.getTerminal().bracketedPasteMode))
+            if run { view.send(txt: "\r") }
+        }
+        commandBar.onClose = { [weak self] in self?.hideCommandBar() }
+    }
+
+    /// ⌘K opens the bar over the selected tab; pressing it again closes it.
+    @objc func toggleCommandBar() {
+        guard commandBar.superview == nil else { return hideCommandBar() }
+        guard sessions.indices.contains(selected) else { return }
+        commandBarTarget = sessions[selected]
+        // Added last so it sits above the terminals, including tabs opened since.
+        container.addSubview(commandBar)
+        let fill = commandBar.widthAnchor.constraint(equalTo: container.widthAnchor, constant: -28)
+        fill.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            fill,
+            commandBar.widthAnchor.constraint(lessThanOrEqualToConstant: CommandBar.width),
+            commandBar.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            commandBar.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14),
+        ])
+        commandBar.begin()
+    }
+
+    #if DEBUG
+    var commandBarForTest: CommandBar { commandBar }
+    #endif
+
+    private func hideCommandBar(refocus: Bool = true) {
+        commandBar.cancelRun()
+        commandBar.removeFromSuperview()
+        commandBarTarget = nil
+        if refocus, sessions.indices.contains(selected) { window?.makeFirstResponder(sessions[selected].view) }
     }
 
     // ⌘= / ⌘- / ⌘0 change the saved font size, so Settings stays in sync.
@@ -311,6 +377,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func tabBar(_ bar: TabBarView, didSelect index: Int) { select(index) }
     func tabBar(_ bar: TabBarView, didClose index: Int) { confirmClose(at: index) }
     func tabBarDidRequestNewTab(_ bar: TabBarView) { newTab() }
+    func tabBarAgentMenu(_ bar: TabBarView) -> NSMenu {
+        let menu = NSMenu()
+        let agents = AgentIntegration.installedAgents() ?? [.claude, .codex, .grok]
+        AppDelegate.agentItems(agents, target: self).forEach(menu.addItem)
+        return menu
+    }
     func tabBar(_ bar: TabBarView, didMove from: Int, to: Int) { moveTab(from: from, to: to) }
 
     // MARK: NSWindowDelegate

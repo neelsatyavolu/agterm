@@ -22,7 +22,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     private(set) var claudeSessionID: String?
     private(set) var signals = StatusSignals()
     private(set) var status: TabStatus = .idle
-    private let shellName: String
+    let shellName: String
 
     /// Called when anything shown on the tab may have changed.
     var onChange: (() -> Void)?
@@ -34,7 +34,8 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     private var pendingCommand: String?
 
     /// `restoring` brings back a tab saved at the last quit: its history, then its agent.
-    init(cwd: String, restoring saved: SavedTab? = nil) {
+    /// `command` is typed at the first prompt (starting an agent from the Shell menu).
+    init(cwd: String, restoring saved: SavedTab? = nil, command: String? = nil) {
         self.cwd = cwd
         let shell = ProcInfo.loginShell()
         shellName = (shell as NSString).lastPathComponent
@@ -51,6 +52,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
             }
             pendingCommand = saved.resume
         }
+        if let command { pendingCommand = command }
         view.startProcess(executable: shell, args: [], environment: environment(),
                           execName: "-" + shellName, currentDirectory: cwd)
     }
@@ -185,6 +187,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundPid = fg
         let name = ProcInfo.name(pid: fg)
         updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
+        updatePrompt()
         if agentName == "claude", let id = ProcInfo.claudeSessionID(pid: fg) {
             claudeSessionID = id
             TeamsClaims.shared.recordClaude(id)
@@ -200,6 +203,14 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundName = name
         cwd = dir
         onChange?()
+    }
+
+    /// An agent waiting on a permission prompt is "needs you", even in the tab you're looking at.
+    private func updatePrompt() {
+        let visible = agentName != nil && PermissionPrompt.isVisible(screenText().components(separatedBy: "\n"))
+        guard visible != signals.promptVisible else { return }
+        signals.promptVisible = visible
+        tick(now: Date())
     }
 
     private func updateAgent(_ agent: String?) {
