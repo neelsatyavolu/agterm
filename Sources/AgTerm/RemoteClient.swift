@@ -36,6 +36,13 @@ final class RemoteClient: ObservableObject {
     private var lastThreads = ""
     private var approvals: [String: String] = [:] // tab id → request id
     private var lastProcessing: [String: Bool] = [:]
+    /// Agent tabs render from the agent's transcript (like agmux), rebuilt off the main thread
+    /// only when the file changes.
+    private struct Transcript { var path: URL; var modified: Date; var entries: [MobileTimelineEntry]; var model: String? }
+    private var transcripts: [String: Transcript] = [:]
+    private var transcriptPaths: [String: URL] = [:]
+    private var refreshing = Set<String>()
+    private let reader = DispatchQueue(label: "agterm.remote-transcripts", qos: .utility)
 
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
@@ -240,6 +247,8 @@ final class RemoteClient: ObservableObject {
             "status": s.status == .working ? "Running" : (s.status == .done ? "Done" : "Idle"),
         ]
         if let diff = s.agentDiff { row["linesAdded"] = diff.added; row["linesRemoved"] = diff.removed }
+        // The raw model id, as agmux sends it; the phone shortens it ("Opus 5.5").
+        if let model = transcripts[s.tabID]?.model { row["model"] = model }
         return row
     }
 
@@ -258,6 +267,7 @@ final class RemoteClient: ObservableObject {
     private func pushUpdates() {
         guard connection == .online else { return }
         let sessions = tabs()
+        sessions.forEach(refreshTranscript)
         let rows = sessions.map(row)
         if let data = try? JSONSerialization.data(withJSONObject: rows, options: .sortedKeys),
            let key = String(data: data, encoding: .utf8), key != lastThreads {
@@ -280,8 +290,63 @@ final class RemoteClient: ObservableObject {
         subscribed.forEach(sendTimeline)
     }
 
+    /// Finds the tab's transcript and rebuilds its entries in the background when it changed.
+    private func refreshTranscript(_ s: TerminalSession) {
+        let id = s.tabID
+        guard s.agentName == "claude" || s.agentName == "codex", !refreshing.contains(id) else {
+            if s.agentName == nil { transcripts[id] = nil; transcriptPaths[id] = nil }
+            return
+        }
+        let agent = s.agentName, session = s.claudeSessionID, cwd = s.cwd, start = s.agentStartedAt
+        let known = transcriptPaths[id], cached = transcripts[id]
+        refreshing.insert(id)
+        reader.async { [weak self] in
+            let path: URL? = {
+                if agent == "claude", let session {
+                    if let known, known.lastPathComponent == session + ".jsonl" { return known }
+                    return TranscriptDiff.claudeTranscript(session)
+                }
+                if agent == "codex", let start { return known ?? TranscriptDiff.codexRollout(cwd: cwd, since: start) }
+                return nil
+            }()
+            var result: Transcript?
+            if let path, let modified = (try? path.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
+                if let cached, cached.path == path, cached.modified == modified {
+                    result = cached
+                } else if let text = try? String(contentsOf: path, encoding: .utf8) {
+                    let entries = agent == "claude" ? RemoteTimeline.claude(transcript: text) : RemoteTimeline.codex(rollout: text)
+                    let model = agent == "claude" ? RemoteTimeline.modelLabel(claude: text) : RemoteTimeline.modelLabel(codex: text)
+                    result = Transcript(path: path, modified: modified, entries: entries, model: model)
+                }
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshing.remove(id)
+                self.transcriptPaths[id] = path
+                let changed = result?.modified != self.transcripts[id]?.modified || result?.model != self.transcripts[id]?.model
+                self.transcripts[id] = result
+                if changed {
+                    self.lastThreads = ""
+                    if self.subscribed.contains(id) { self.sendTimeline(id) }
+                }
+            }
+        }
+    }
+
     private func sendTimeline(_ thread: String) {
         guard let s = tab(thread) else { return }
+        if let transcript = transcripts[thread], !transcript.entries.isEmpty {
+            let encoder = JSONEncoder()
+            var entries = transcript.entries.compactMap { try? JSONSerialization.jsonObject(with: encoder.encode($0)) }
+            // The relay drops frames over 1 MiB; keep the newest entries that fit.
+            while entries.count > 1, ((try? JSONSerialization.data(withJSONObject: entries))?.count ?? 0) > 900_000 {
+                entries.removeFirst(max(1, entries.count / 10))
+            }
+            let digest = "t:\(transcript.path.path):\(transcript.modified.timeIntervalSince1970)"
+            guard sentTimeline[thread] != digest else { return }
+            sentTimeline[thread] = digest
+            return send(["type": "timeline.snapshot", "threadId": thread, "entries": entries])
+        }
         let screen = s.screenText()
         let digest = SHA256.hash(data: Data(screen.utf8)).map { String(format: "%02x", $0) }.joined()
         guard sentTimeline[thread] != digest else { return }

@@ -54,14 +54,14 @@ final class TranscriptDiff {
         return (added, removed)
     }
 
-    private static func claudeTranscript(_ sessionID: String) -> URL? {
+    static func claudeTranscript(_ sessionID: String) -> URL? {
         let projects = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects")
         let dirs = (try? FileManager.default.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil)) ?? []
         return dirs.map { $0.appendingPathComponent(sessionID + ".jsonl") }
             .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    private static func codexRollout(cwd: String, since start: Date) -> URL? {
+    static func codexRollout(cwd: String, since start: Date) -> URL? {
         let home = ProcessInfo.processInfo.environment["CODEX_HOME"].map(URL.init(fileURLWithPath:))
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex")
         // Rollouts live in sessions/YYYY/MM/DD; only today's and yesterday's folders can be this run's.

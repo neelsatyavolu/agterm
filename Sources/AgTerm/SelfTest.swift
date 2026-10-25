@@ -1,4 +1,5 @@
 #if DEBUG
+import AgTermCore
 import AppKit
 
 /// Debug-only visual check: `AGTERM_SELFTEST=<dir> AGTERM_FIXTURE=<git repo> .build/debug/AgTerm`.
@@ -8,6 +9,17 @@ enum SelfTest {
         NSApp.setActivationPolicy(.accessory)
         guard let window = controller.window else { exit(1) }
         if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "1" { return measure(controller) }
+        if let id = ProcessInfo.processInfo.environment["AGTERM_TIMELINE_CHECK"] {
+            guard let file = TranscriptDiff.claudeTranscript(id), let text = try? String(contentsOf: file, encoding: .utf8) else {
+                print("selftest: timeline: no transcript"); exit(1)
+            }
+            let entries = RemoteTimeline.claude(transcript: text)
+            let data = (try? JSONEncoder().encode(entries)) ?? Data()
+            let kinds = Dictionary(grouping: entries, by: \.kind).mapValues(\.count)
+            print("selftest: timeline entries:", entries.count, "kinds:", kinds, "bytes:", data.count,
+                  "model:", RemoteTimeline.modelLabel(claude: text) ?? "nil", "renderable:", (try? RemoteTimeline.assertRenderable(entries)) != nil)
+            exit(0)
+        }
         if let ids = ProcessInfo.processInfo.environment["AGTERM_DIFF_CHECK"] {
             let reader = TranscriptDiff()
             let list = ids.split(separator: ",").map(String.init)
