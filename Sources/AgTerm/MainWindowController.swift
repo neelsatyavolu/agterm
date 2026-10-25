@@ -15,6 +15,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var selected = 0
     private var appearanceSubscription: AnyCancellable?
     private let git = GitPoller()
+    private let transcripts = TranscriptDiff()
     private var timers: [Timer] = []
     /// Set once the tabs are saved for this quit, so a second save can't overwrite them.
     private var savedForQuit = false
@@ -126,8 +127,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 self?.sessions.filter { $0.cwd == path }.forEach { $0.updateGit(summary) }
             }
         }
-        // Agent tabs: what changed since that agent started.
+        // Agent tabs: what changed since that agent started. Claude and Codex are counted from
+        // their own transcripts (works outside git repos); other agents from a git snapshot.
         for session in sessions where session.agentName != nil {
+            if session.agentName == "claude", let id = session.claudeSessionID {
+                transcripts.claude(sessionID: id) { [weak session] diff in session?.updateAgentDiff(diff ?? (0, 0)) }
+                continue
+            }
+            if session.agentName == "codex", let start = session.agentStartedAt {
+                transcripts.codex(cwd: session.cwd, since: start) { [weak session] diff in session?.updateAgentDiff(diff ?? (0, 0)) }
+                continue
+            }
             if let baseline = session.agentBaseline {
                 git.agentDiff(baseline) { [weak session] diff in session?.updateAgentDiff(diff) }
             } else if !session.agentBaselineRequested {

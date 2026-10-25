@@ -6,7 +6,8 @@ import SwiftTerm
 /// whether the program inside is working.
 final class AgentTerminalView: LocalProcessTerminalView {
     var onOutput: (() -> Void)?
-    var onInput: (() -> Void)?
+    /// Bytes sent to the program: your keystrokes, pastes, and replies from the phone.
+    var onInput: (([UInt8]) -> Void)?
     var onBell: (() -> Void)?
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
@@ -15,7 +16,7 @@ final class AgentTerminalView: LocalProcessTerminalView {
     }
 
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
-        onInput?()
+        onInput?(Array(data))
         super.send(source: source, data: data)
     }
 

@@ -17,6 +17,9 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     var agentBaseline: GitPoller.AgentBaseline?
     var agentBaselineRequested = false
     private(set) var agentDiff: (added: Int, removed: Int)?
+    /// When the current agent started, and (for Claude) the conversation it's in.
+    private(set) var agentStartedAt: Date?
+    private(set) var claudeSessionID: String?
     private(set) var signals = StatusSignals()
     private(set) var status: TabStatus = .idle
     private let shellName: String
@@ -99,7 +102,16 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
             self.signals.lastOutput = Date()
             self.runPendingCommand()
         }
-        view.onInput = { [weak self] in self?.signals.lastInput = Date() }
+        view.onInput = { [weak self] bytes in
+            guard let self else { return }
+            let now = Date()
+            self.signals.lastInput = now
+            // Esc or Ctrl-C to an agent ends its turn now, not when a spinner happens to go stale.
+            if StatusRules.isInterrupt(bytes), self.agentName != nil || self.status == .working {
+                self.signals.lastInterrupt = now
+                self.tick(now: now)
+            }
+        }
         view.onBell = { [weak self] in
             self?.signals.lastBell = Date()
             self?.tick(now: Date())
@@ -173,7 +185,10 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundPid = fg
         let name = ProcInfo.name(pid: fg)
         updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
-        if agentName == "claude", let id = ProcInfo.claudeSessionID(pid: fg) { TeamsClaims.shared.recordClaude(id) }
+        if agentName == "claude", let id = ProcInfo.claudeSessionID(pid: fg) {
+            claudeSessionID = id
+            TeamsClaims.shared.recordClaude(id)
+        }
         let dir = ProcInfo.cwd(pid: fg) ?? ProcInfo.cwd(pid: shellPid) ?? cwd
         guard name != foregroundName || dir != cwd else { return }
         // Back at the prompt: forget the agent's title so a stale spinner or topic doesn't stick.
@@ -190,6 +205,8 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     private func updateAgent(_ agent: String?) {
         guard agent != agentName else { return }
         agentName = agent
+        agentStartedAt = agent == nil ? nil : Date()
+        claudeSessionID = nil
         agentBaseline = nil
         agentBaselineRequested = false
         agentDiff = nil
@@ -240,6 +257,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
         guard title != rawTitle else { return }
         rawTitle = title
+        signals.lastTitleChange = Date()
         parsedTitle = TitleParser.parse(title)
         signals.titleActivity = parsedTitle.activity
         tick(now: Date())

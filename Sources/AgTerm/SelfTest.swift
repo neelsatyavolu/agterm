@@ -8,6 +8,19 @@ enum SelfTest {
         NSApp.setActivationPolicy(.accessory)
         guard let window = controller.window else { exit(1) }
         if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "1" { return measure(controller) }
+        if let ids = ProcessInfo.processInfo.environment["AGTERM_DIFF_CHECK"] {
+            let reader = TranscriptDiff()
+            let list = ids.split(separator: ",").map(String.init)
+            var left = list.count
+            for id in list {
+                reader.claude(sessionID: id) { diff in
+                    print("selftest: claude diff", id.prefix(8), diff.map { "+\($0.added) −\($0.removed)" } ?? "no transcript")
+                    left -= 1
+                    if left == 0 { exit(0) }
+                }
+            }
+            return
+        }
         if let out = ProcessInfo.processInfo.environment["AGTERM_TEAMS_PREVIEW"] {
             let ids = Set((ProcessInfo.processInfo.environment["AGTERM_TEAMS_CLAUDE"] ?? "").split(separator: ",").map(String.init))
             let payload = TeamsSync.previewPayload(claudeSessions: ids)
@@ -123,11 +136,28 @@ enum SelfTest {
             }
         }
 
+        // Interrupts, in two background tabs. A: a spinner that stops changing (agent killed or
+        // stuck). B: a spinner that gets Esc (as from the phone), then goes idle like Claude does.
+        after(22.6) {
+            controller.newTab()
+            controller.newTab()
+            controller.select(0)
+            let a = controller.sessions[controller.sessions.count - 2], b = controller.sessions[controller.sessions.count - 1]
+            a.view.send(txt: "printf '\\033]0;◐ Task A\\007'; sleep 600\r")
+            b.view.send(txt: "while true; do printf '\\033]0;◐ Task B\\007'; read -s -t 0.4 -k1 && break; printf '\\033]0;◑ Task B\\007'; read -s -t 0.4 -k1 && break; done; printf '\\033]0;✳ Task B\\007'; sleep 600\r")
+            after(2) {
+                print("selftest: interrupt A at 1.5s:", a.status.label, "| B while animating:", b.status.label)
+                b.view.send(txt: "\u{1b}")
+                after(0.3) { print("selftest: interrupt B right after Esc:", b.status.label) }
+            }
+            after(6) { print("selftest: interrupt A after 5s stale:", a.status.label, "| B later:", b.status.label) }
+        }
+
         // One tab runs a long job in the foreground, like an agent would.
-        after(23.6) { controller.sessions[0].view.send(txt: "sleep 777\r") }
-        after(24.3) { controller.sessions.forEach { $0.terminate() } }
+        after(29.6) { controller.sessions[0].view.send(txt: "sleep 777\r") }
+        after(30.3) { controller.sessions.forEach { $0.terminate() } }
         // Closed shells must be reaped, not left as zombies.
-        after(25.3) {
+        after(31.3) {
             let ps = Process()
             ps.executableURL = URL(fileURLWithPath: "/bin/ps")
             ps.arguments = ["-axo", "ppid=,stat=,pid=,command="]

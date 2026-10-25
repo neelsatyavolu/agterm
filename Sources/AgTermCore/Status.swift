@@ -28,6 +28,11 @@ public struct StatusSignals: Equatable, Sendable {
     /// Shells and TUIs redraw when the window resizes; that output isn't work.
     public var lastResize: Date?
     public var lastBell: Date?
+    /// When the title last changed. Spinners animate (Claude Code's ◐/◑ about once a second),
+    /// so a spinner glyph that stopped changing is stale, not work.
+    public var lastTitleChange: Date?
+    /// Last Esc or Ctrl-C sent to the tab (by you or from the phone).
+    public var lastInterrupt: Date?
     /// Last time the tab was judged to be working.
     public var lastWorking: Date?
     /// Last time the tab was on screen.
@@ -45,22 +50,36 @@ public enum StatusRules {
     public static let echoWindow: TimeInterval = 0.5
     /// A bell this close to the last working tick still counts as the latest event.
     public static let bellGrace: TimeInterval = 1.0
+    /// A spinner title that hasn't changed for this long no longer counts as working.
+    public static let spinnerWindow: TimeInterval = 3.0
+
+    /// A bare Esc or a Ctrl-C: what stops an agent's turn.
+    public static func isInterrupt(_ bytes: [UInt8]) -> Bool {
+        bytes == [0x1b] || bytes.contains(0x03)
+    }
 
     public static func status(_ s: StatusSignals, now: Date) -> TabStatus {
         if s.exited { return .exited }
         if isWorking(s, now: now) { return .working }
         let workSinceBell = s.lastWorking.map { $0.addingTimeInterval(-bellGrace) }
         if !s.focused, isAfterSeen(s.lastBell, s), isAfter(s.lastBell, workSinceBell) { return .waiting }
-        if !s.focused, isAfterSeen(s.lastWorking, s) { return .done }
+        // Work you stopped yourself isn't "finished while you were away".
+        let stoppedByYou = s.lastInterrupt.map { interrupt in s.lastWorking.map { interrupt >= $0.addingTimeInterval(-bellGrace) } ?? true } ?? false
+        if !s.focused, !stoppedByYou, isAfterSeen(s.lastWorking, s) { return .done }
         return .idle
     }
 
     public static func isWorking(_ s: StatusSignals, now: Date) -> Bool {
         switch s.titleActivity {
-        case .working: return true
+        case .working:
+            // An interrupt ends the turn until the spinner moves again.
+            if let interrupt = s.lastInterrupt, interrupt >= (s.lastTitleChange ?? .distantPast) { return false }
+            guard let changed = s.lastTitleChange else { return true }
+            return now.timeIntervalSince(changed) < spinnerWindow
         case .idle: return false
         case .unknown:
             guard let out = s.lastOutput, now.timeIntervalSince(out) < outputWindow else { return false }
+            if let interrupt = s.lastInterrupt, interrupt >= out.addingTimeInterval(-echoWindow) { return false }
             // No keystroke yet means this is shell startup noise, not work you asked for.
             guard let input = s.lastInput else { return false }
             if let resize = s.lastResize, (0...echoWindow).contains(out.timeIntervalSince(resize)) { return false }
