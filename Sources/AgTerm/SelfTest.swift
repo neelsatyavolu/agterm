@@ -7,6 +7,8 @@ enum SelfTest {
     static func run(_ controller: MainWindowController, outDir: String) {
         NSApp.setActivationPolicy(.accessory)
         guard let window = controller.window else { exit(1) }
+        if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "1" { return measure(controller) }
+        if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true
         let fixture = ProcessInfo.processInfo.environment["AGTERM_FIXTURE"] ?? NSHomeDirectory()
@@ -171,6 +173,87 @@ enum SelfTest {
         probe.orderBack(nil)
         print("selftest: blur api available:", BackgroundBlur.isAvailable, "applied:", BackgroundBlur.set(probe, radius: 20))
         probe.orderOut(nil)
+    }
+
+    /// The website screenshot: real tabs with stand-in agents (AGTERM_FAKE_AGENTS) in small git
+    /// repos under `dir`, and real file edits so agterm measures the diffs itself.
+    private static func showcase(_ controller: MainWindowController, dir: String, outDir: String) {
+        guard let window = controller.window else { return }
+        window.setContentSize(NSSize(width: 1240, height: 740))
+        window.contentView?.superview?.wantsLayer = true
+        let agent = (ProcessInfo.processInfo.environment["AGTERM_FAKE_AGENTS"] ?? dir) + "/claude"
+        let neutral = "PROMPT='%1~ %# '; clear"
+        let scripts = [
+            "cd \(dir)/web; \(neutral); printf '\\033]0;◐ Fix login redirect loop\\007'; cat \(dir)/demo.ans; \(agent) 600",
+            "cd \(dir)/api; \(neutral); printf '\\033]0;✳ Rename env vars in workers\\007'; sleep 3; printf '\\a'; \(agent) 600",
+            "cd \(dir)/design; \(neutral); printf '\\033]0;◐ Add dark mode tokens\\007'; \(agent) 7; printf '\\033]0;✳ Add dark mode tokens\\007'; \(agent) 600",
+            "cd \(dir)/docs; \(neutral)",
+        ]
+        for _ in 1..<scripts.count { controller.newTab() }
+        for (i, script) in scripts.enumerated() { send(controller, i, script) }
+        after(0.3) { controller.select(0) }
+        // Edits after the agents have started (baselines are taken within ~4 s of each start).
+        after(9) {
+            func edit(_ repo: String, keep: Int, add: Int) {
+                let lines = (0..<60).map { "export const line\($0) = \($0)" }
+                let kept = Array(lines.prefix(keep)) + (0..<add).map { "export const added\($0) = \"\($0)\"" }
+                try? (kept.joined(separator: "\n") + "\n").write(toFile: "\(dir)/\(repo)/src/base.ts", atomically: true, encoding: .utf8)
+            }
+            edit("web", keep: 59, add: 4)
+            edit("api", keep: 42, add: 18)
+            let tokens = (0..<142).map { "  --token-\($0): #\(String(format: "%06x", $0 * 9973 % 0xffffff));" }
+            try? (tokens.joined(separator: "\n") + "\n").write(toFile: "\(dir)/design/src/dark.css", atomically: true, encoding: .utf8)
+            edit("design", keep: 51, add: 0)
+        }
+        after(15) {
+            snapshot(window, "\(outDir)/showcase.png")
+            controller.sessions.forEach { $0.terminate() }
+            after(1) { exit(0) }
+        }
+    }
+
+    /// Numbers for the website: memory with 1 and 10 tabs, launch to first prompt, new-tab time.
+    private static func measure(_ controller: MainWindowController) {
+        let launched = processStart()
+        var firstPrompt: Double?
+        func poll() {
+            if firstPrompt == nil, screenLine(controller.sessions[0], containing: "%") != nil {
+                firstPrompt = Date().timeIntervalSince(launched)
+            }
+            if firstPrompt == nil { return after(0.01, poll) }
+            after(1.5) {
+                let oneTab = residentMB()
+                let start = Date()
+                for _ in 0..<9 { controller.newTab() }
+                let tabMs = Date().timeIntervalSince(start) / 9 * 1000
+                after(3) {
+                    print(String(format: "measure: first prompt %.0f ms | new tab %.1f ms | memory 1 tab %.0f MB | 10 tabs %.0f MB",
+                                 firstPrompt! * 1000, tabMs, oneTab, residentMB()))
+                    controller.sessions.forEach { $0.terminate() }
+                    after(1) { exit(0) }
+                }
+            }
+        }
+        poll()
+    }
+
+    private static func processStart() -> Date {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        sysctl(&mib, 4, &info, &size, nil, 0)
+        let t = info.kp_proc.p_starttime
+        return Date(timeIntervalSince1970: Double(t.tv_sec) + Double(t.tv_usec) / 1e6)
+    }
+
+    /// Physical footprint, what Activity Monitor shows as Memory.
+    private static func residentMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return result == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
     }
 
     private static func screenLine(_ session: TerminalSession, containing text: String) -> String? {

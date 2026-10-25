@@ -121,6 +121,22 @@ p, h1, h2, h3 { margin: 0; }
 .dim { color: var(--fg-3); }
 .mark-agent { color: var(--ok); }
 
+/* Screenshot */
+.shot { margin: 0 auto; padding-bottom: clamp(48px, 8vw, 96px); }
+.shot img {
+  display: block; width: 100%; height: auto; border-radius: 12px;
+  border: 1px solid var(--border-strong);
+}
+.shot figcaption { margin-top: 12px; font: 400 12px var(--mono); color: var(--fg-3); }
+
+/* Numbers */
+.stats { padding-bottom: clamp(48px, 7vw, 80px); }
+.stats dl { margin: 16px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.stats dl div { padding: 22px 24px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.stats dt { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-3); }
+.stats dd { margin: 8px 0 0; font: 500 clamp(28px, 4vw, 40px)/1 var(--mono); font-variant-numeric: tabular-nums; }
+.stats .note { margin-top: 12px; max-width: 80ch; font: 400 12px/1.6 var(--mono); color: var(--fg-3); }
+
 /* Points */
 .points { padding-bottom: clamp(48px, 7vw, 80px); }
 .grid { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
@@ -133,6 +149,7 @@ footer { padding-top: 24px; padding-bottom: 48px; border-top: 1px solid var(--bo
 
 @media (max-width: 860px) {
   .grid { grid-template-columns: minmax(0, 1fr); }
+  .stats dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tab:nth-child(n + 4) { display: none; }
 }
 @media (max-width: 560px) {
