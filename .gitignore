@@ -1,4 +1,4 @@
-.build/
+.build*/
 dist/
 .swiftpm/
 scripts/maintainer.local
