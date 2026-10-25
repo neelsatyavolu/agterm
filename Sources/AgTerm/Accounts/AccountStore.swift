@@ -34,6 +34,8 @@ final class AccountStore: ObservableObject {
     static let native = "native"
     /// A login folder you chose yourself (CLAUDE_CONFIG_DIR / CODEX_HOME): agterm leaves it alone.
     static let external = "external"
+    /// Routing for new sessions: borrow a team login (every login of yours is out).
+    static let teamRoute = "team"
 
     struct Settings: Codable {
         var autoSwitch = true
@@ -49,6 +51,7 @@ final class AccountStore: ObservableObject {
     private static var settingsURL: URL { dir.appendingPathComponent("accounts.json") }
     private static var routingURL: URL { dir.appendingPathComponent("routing.json") }
     private static var launchesDir: URL { dir.appendingPathComponent("launches", isDirectory: true) }
+    static var requestsDir: URL { dir.appendingPathComponent("requests", isDirectory: true) }
 
     static func home(_ id: String) -> URL { dir.appendingPathComponent(id, isDirectory: true) }
 
@@ -130,6 +133,29 @@ final class AccountStore: ObservableObject {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode(TabLaunch.self, from: data)
+    }
+
+    /// Wrapper side: asks the app for a team login for this tab and waits for the answer.
+    /// The app holds the loan; the wrapper only learns which folder to use.
+    static func requestTeamAccount(tabID: String, provider: AccountProvider, timeout: TimeInterval = 45) -> String? {
+        let key = "\(tabID)~\(provider.rawValue)~\(UUID().uuidString)"
+        let request = requestsDir.appendingPathComponent(key + ".request"), reply = requestsDir.appendingPathComponent(key + ".reply")
+        try? FileManager.default.removeItem(at: reply)
+        write(["provider": provider.rawValue], to: request)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let data = try? Data(contentsOf: reply) {
+                try? FileManager.default.removeItem(at: reply)
+                return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["account"] as? String
+            }
+            usleep(200_000)
+        }
+        try? FileManager.default.removeItem(at: request)
+        return nil
+    }
+
+    static func answerTeamRequest(_ key: String, account: String?) {
+        write(["account": account], to: requestsDir.appendingPathComponent(key + ".reply"))
     }
 
     private static func write<T: Encodable>(_ value: T, to url: URL) {

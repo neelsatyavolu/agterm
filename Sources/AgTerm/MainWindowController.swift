@@ -68,6 +68,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         window.toolbar = NSToolbar(identifier: "agterm")
         window.toolbarStyle = .unified
         window.isMovableByWindowBackground = false
+        // The tab bar moves the window itself; left to the system, dragging a tab moved the window.
+        window.isMovable = false
         window.minSize = NSSize(width: 480, height: 240)
         if !window.setFrameUsingName("agterm.main") { window.center() }
         window.setFrameAutosaveName("agterm.main")
@@ -116,6 +118,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             guard let self else { return }
             self.sessions.forEach { $0.pollProcess() }
             AccountSwitcher.shared.poll(self.sessions)
+            TeamAccounts.shared.poll(self.sessions)
         }
         let slow = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in self?.pollGit() }
         // Also save now and then, so a crash or forced restart loses at most a minute.
@@ -171,6 +174,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var currentFolder: String { sessions.indices.contains(selected) ? sessions[selected].cwd : NSHomeDirectory() }
 
     @objc func newTab() { addTab(cwd: currentFolder, restoring: nil) }
+
+    #if DEBUG
+    func restoreTabForTest(_ saved: SavedTab) { addTab(cwd: saved.cwd, restoring: saved) }
+    var selectedTabCardForTest: NSView { tabBar.selectedCardForTest }
+    var selectedTabIDForTest: String { sessions[selected].tabID }
+    #endif
 
     /// ⌥⌘T: a new tab running the agent chosen in Settings → Agents.
     @objc func newDefaultAgentTab() { newAgentTab(AgentIntegration.launchAgent) }

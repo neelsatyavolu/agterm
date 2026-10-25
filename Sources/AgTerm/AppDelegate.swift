@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         askForDiskAccessIfNeeded()
         TeamsSync.shared.start()
+        TeamAccounts.shared.start()
         UsageMonitor.shared.start()
         RemoteClient.shared.startIfEnabled()
     }
@@ -69,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         controller?.saveWorkspaceForQuit()
+        TeamAccounts.shared.giveBackAll()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -6,6 +6,8 @@ struct AccountsPane: View {
     @ObservedObject var store: AccountStore
     @ObservedObject var monitor: UsageMonitor
     @ObservedObject var login: AccountLogin
+    @ObservedObject var team: TeamAccounts
+    @ObservedObject var teams: TeamsAccount
     @State private var installed: Set<AccountProvider>?
 
     var body: some View {
@@ -20,14 +22,20 @@ struct AccountsPane: View {
                 Footnote("When Claude Code or Codex stops at its usage limit, agterm sees it in the conversation within "
                          + "a second, checks your other accounts, and resumes the same conversation in the same tab on the "
                          + "one with the most left. New sessions start on your own login while it has usage. "
-                         + "Every account shares your conversations, settings and MCP servers.")
+                         + "Every account shares your conversations, settings and MCP servers. Codex can also "
+                         + "borrow a login your team shares in agmux Teams once all of yours are out.")
             }
 
             ForEach(providers, id: \.self) { provider in
                 ProviderSection(provider: provider, store: store, monitor: monitor, login: login)
             }
+
+            if teams.isSignedIn || team.isConnected, providers.contains(.codex), !team.accounts.isEmpty || team.error != nil {
+                TeamSection(team: team)
+            }
         }
         .task {
+            team.refresh()
             installed = await Task.detached {
                 Set(AccountProvider.allCases.filter { QuickCommandRunner.shared.executable($0.rawValue) != nil })
             }.value
@@ -104,6 +112,56 @@ private struct ProviderSection: View {
     }
 }
 
+/// Codex logins shared through agmux Teams. Your team adds and manages them in agmux.
+private struct TeamSection: View {
+    @ObservedObject var team: TeamAccounts
+
+    var body: some View {
+        Section {
+            ForEach(team.accounts) { account in
+                AccountRow(title: account.label, subtitle: [account.teamName, account.plan].compactMap { $0 }.joined(separator: " · "),
+                           reading: reading(account), error: nil, checking: team.checking.contains(account.id), note: note(account)) {
+                    Menu {
+                        Button("Check Usage") { team.check(account) }
+                            .disabled(account.leased(Date()) || !account.enabled)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+            }
+        } header: {
+            Text("Codex · Shared by your team")
+        } footer: {
+            Footnote(team.error ?? "From agmux Teams. agterm borrows one of these only when every Codex login of yours is out, "
+                     + "keeps it for that tab, and gives it back when Codex exits.")
+        }
+    }
+
+    /// Usage measured here if it's the newest, else what the team last reported.
+    private func reading(_ account: TeamPool.Account) -> UsageReading? {
+        if let mine = team.readings[account.id], mine.checkedAt >= (account.checkedAt ?? .distantPast) { return mine }
+        guard let remaining = account.shownRemaining(Date()) else { return nil }
+        return UsageReading(windows: [UsageWindow(name: "Usage", usedPercent: 100 - remaining, resetsAt: account.blockedUntil)],
+                            checkedAt: account.checkedAt ?? Date())
+    }
+
+    private func note(_ account: TeamPool.Account) -> String? {
+        let now = Date()
+        if let problem = team.checkErrors[account.id] { return problem }
+        if !account.enabled { return "Paused by your team" }
+        if account.leased(now) { return account.inUseMine ? "In use by you" : "In use by \(account.inUseBy ?? "a teammate")" }
+        if let until = account.blockedUntil, until > now { return "Out of usage until \(until.formatted(date: .omitted, time: .shortened))" }
+        if account.remainingPercent == 0 { return "Out of usage" }
+        if account.remainingPercent == nil, let checked = account.checkedAt {
+            return "Checked \(checked.formatted(.relative(presentation: .named)))"
+        }
+        return nil
+    }
+}
+
 /// One login: name, email and plan, and a bar per usage window.
 private struct AccountRow<Accessory: View>: View {
     let title: String
@@ -112,16 +170,18 @@ private struct AccountRow<Accessory: View>: View {
     let error: String?
     let checking: Bool
     var enabled = true
+    var note: String?
     @ViewBuilder var accessory: () -> Accessory
 
     init(title: String, subtitle: String, reading: UsageReading?, error: String?, checking: Bool, enabled: Bool = true,
-         @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }) {
+         note: String? = nil, @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }) {
         self.title = title
         self.subtitle = subtitle
         self.reading = reading
         self.error = error
         self.checking = checking
         self.enabled = enabled
+        self.note = note
         self.accessory = accessory
     }
 
@@ -132,8 +192,8 @@ private struct AccountRow<Accessory: View>: View {
                 if !subtitle.isEmpty {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
-                if !enabled {
-                    Text("Not used for switching").font(.caption).foregroundStyle(.secondary)
+                if let note = enabled ? note : "Not used for switching" {
+                    Text(note).font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)

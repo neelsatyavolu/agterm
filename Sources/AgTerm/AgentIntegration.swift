@@ -169,13 +169,28 @@ enum AgentIntegration {
         if let chosen = env["AGTERM_ACCOUNT"] {
             id = chosen
         } else if let home = env[provider.homeVariable] {
-            id = settings.accounts.first { $0.provider == provider && AccountStore.home($0.id).path == home }?.id ?? AccountStore.external
+            let folder = URL(fileURLWithPath: home).lastPathComponent
+            id = settings.accounts.first { $0.provider == provider && AccountStore.home($0.id).path == home }?.id
+                ?? (TeamPool.isLocalID(folder) && AccountStore.home(folder).path == home ? folder : AccountStore.external)
         } else {
             id = settings.autoSwitch ? AccountStore.loadRouting().active[provider.rawValue] ?? AccountStore.native : AccountStore.native
         }
+        if id == AccountStore.teamRoute {
+            fputs("agterm: your \(provider.title) logins are out of usage, so borrowing one from your team…\n", stderr)
+            id = env["AGTERM_TAB_ID"].flatMap { AccountStore.requestTeamAccount(tabID: $0, provider: provider) } ?? AccountStore.native
+            if id == AccountStore.native { fputs("agterm: no team login is free; starting on your own.\n", stderr) }
+        }
         if id != AccountStore.native, id != AccountStore.external {
-            if settings.accounts.contains(where: { $0.id == id && $0.provider == provider }),
+            let borrowed = TeamPool.isLocalID(id) && FileManager.default.fileExists(atPath: AccountStore.home(id).appendingPathComponent("auth.json").path)
+            if borrowed || settings.accounts.contains(where: { $0.id == id && $0.provider == provider }),
                let home = try? AccountStore.prepareHome(id, provider: provider) {
+                // The app keeps a team login lent exactly as long as this process (it becomes the
+                // agent). A Codex started from inside that one inherits the folder but not the loan.
+                let owner = home.appendingPathComponent("owner.pid")
+                let current = (try? String(contentsOf: owner, encoding: .utf8)).flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                if borrowed, current.map({ $0 <= 1 || (kill($0, 0) != 0 && errno != EPERM) }) ?? true {
+                    try? String(getpid()).write(to: owner, atomically: true, encoding: .utf8)
+                }
                 setenv(provider.homeVariable, home.path, 1)
                 for key in provider == .claude ? ClaudeAuthEnv.keys : ClaudeAuthEnv.codexKeys { unsetenv(key) }
             } else {

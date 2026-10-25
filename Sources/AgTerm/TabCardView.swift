@@ -29,6 +29,9 @@ final class TabCardView: NSView {
 
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
+    /// A tab works on the first click, even in a window in the background, like Safari's:
+    /// otherwise that click only brings the window forward and a drag moves the window.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)

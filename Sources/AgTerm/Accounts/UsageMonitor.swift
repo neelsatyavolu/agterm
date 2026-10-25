@@ -19,14 +19,18 @@ final class UsageMonitor: ObservableObject {
 
     func start() {
         let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in
-            guard !AccountStore.shared.settings.accounts.isEmpty else { return }
+            guard Self.switching else { return }
             self?.refreshAll()
+            TeamAccounts.shared.refresh()
         }
         timer.tolerance = 30
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        if !AccountStore.shared.settings.accounts.isEmpty { refreshAll() }
+        if Self.switching { refreshAll() }
     }
+
+    /// There's somewhere to switch to: an added login, or your team's.
+    private static var switching: Bool { !AccountStore.shared.settings.accounts.isEmpty || TeamAccounts.shared.isConnected }
 
     /// Your login first, then added ones, in the order they were added.
     func ids(_ provider: AccountProvider, enabledOnly: Bool = false) -> [String] {
@@ -100,13 +104,16 @@ final class UsageMonitor: ObservableObject {
         }
     }
 
-    /// New sessions start on your own login while it has usage, else on the login with the most left.
+    /// New sessions start on your own login while it has usage, else on the login with the most
+    /// left, else on one borrowed from your team.
     func updateRouting(_ provider: AccountProvider) {
         let now = Date()
         let all = candidates(provider)
         var routing = AccountStore.loadRouting()
         let nativeUsable = all.first.map { AccountPicker.next([$0], excluding: [], now: now) != nil } ?? true
-        let next = nativeUsable || !AccountStore.shared.settings.autoSwitch ? nil : AccountPicker.next(all, excluding: [AccountStore.native], now: now)
+        let team = provider == .codex && TeamAccounts.shared.hasBorrowable ? AccountStore.teamRoute : nil
+        let next = nativeUsable || !AccountStore.shared.settings.autoSwitch ? nil
+            : AccountPicker.next(all, excluding: [AccountStore.native], now: now) ?? team
         guard routing.active[provider.rawValue] != next else { return }
         routing.active[provider.rawValue] = next
         AccountStore.saveRouting(routing)

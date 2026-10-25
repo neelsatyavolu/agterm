@@ -78,9 +78,32 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         pollProcess()
         var resume: String?
         if let fg = foregroundPid, fg != view.process.shellPid, !signals.exited {
-            resume = AgentResume.commandLine(argv: ProcInfo.arguments(pid: fg), claudeSessionID: ProcInfo.claudeSessionID(pid: fg))
+            let argv = ProcInfo.arguments(pid: fg)
+            resume = AgentResume.commandLine(argv: argv, claudeSessionID: ProcInfo.claudeSessionID(pid: fg))
+                ?? codexResume(argv: argv)
+                ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: argv) }
         }
         return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand)
+    }
+
+    /// `codex resume <id>` for the conversation this tab's Codex has open (it keeps its rollout
+    /// file open), with the options it was started with.
+    private func codexResume(argv: [String]) -> String? {
+        guard agentName == "codex", let group = foregroundGroup,
+              let rollout = ProcInfo.openFiles(group: group, matching: { $0.contains("/sessions/") && $0.hasSuffix(".jsonl") && $0.contains("rollout-") }).first,
+              let header = Self.firstLine(rollout), let id = AgentResume.codexSessionID(rolloutHeader: header) else { return nil }
+        // The wrapper recorded your arguments for this very run; else read them off the process.
+        let launch = AccountStore.launch(tabID: tabID, provider: .codex)
+        let args = launch.flatMap { launch in agentStartedAt.map { abs(launch.startedAt.timeIntervalSince($0)) < 20 } == true ? launch.args : nil }
+            ?? argv.firstIndex { ($0 as NSString).lastPathComponent.hasPrefix("codex") }.map { Array(argv[($0 + 1)...]) } ?? []
+        return AgentResume.codexCommandLine(userArgs: args, sessionID: id)
+    }
+
+    private static func firstLine(_ path: String) -> String? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        let data = (try? handle.read(upToCount: 256 * 1024)) ?? Data()
+        return String(decoding: data, as: UTF8.self).split(separator: "\n", maxSplits: 1).first.map(String.init)
     }
 
     /// Re-reads font and colors from `Theme`; called when Settings change.

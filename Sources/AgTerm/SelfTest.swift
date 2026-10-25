@@ -43,6 +43,8 @@ enum SelfTest {
             exit(0)
         }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_SWITCH_CHECK"] { return switchCheck(controller, fakes: fakes) }
+        if ProcessInfo.processInfo.environment["AGTERM_DRAG_CHECK"] == "1" { return dragCheck(controller) }
+        if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
@@ -196,9 +198,20 @@ enum SelfTest {
         let provider = AccountProvider(rawValue: ProcessInfo.processInfo.environment["AGTERM_SWITCH_PROVIDER"] ?? "claude") ?? .claude
         let test = StoredAccount(id: "switch-test", provider: provider, label: "test@example.com", email: "test@example.com",
                                  plan: nil, enabled: true)
+        // "switch": your login runs out and a team login takes over; "route": your login is
+        // already out, so the session starts on a team login and moves to another when it runs out.
+        let teamMode = ProcessInfo.processInfo.environment["AGTERM_SWITCH_TEAM"]
         store.update { $0.autoSwitch = true; $0.continueAfterSwitch = true }
-        store.add(test)
+        if teamMode == nil { store.add(test) }
         AccountStore.saveRouting(AccountRouting())
+        if teamMode != nil {
+            TeamAccounts.shared.start()
+            if teamMode == "route" {
+                UsageMonitor.shared.stubs[UsageMonitor.key(provider, AccountStore.native)] = UsageReading(
+                    windows: [UsageWindow(name: "5-hour", usedPercent: 100, resetsAt: Date().addingTimeInterval(10_800))], checkedAt: Date())
+                UsageMonitor.shared.refresh(provider, AccountStore.native)
+            }
+        }
         // The stand-in account isn't really signed in; a signed-out login is never switched to.
         UsageMonitor.shared.stubs[UsageMonitor.key(provider, test.id)] = UsageReading(
             windows: [UsageWindow(name: "Weekly", usedPercent: 50, resetsAt: Date().addingTimeInterval(86_400))],
@@ -214,12 +227,31 @@ enum SelfTest {
         after(2) {
             tab.view.send(txt: "export PATH=\"$AGTERM_BIN:\(fakes):$PATH\"; clear; FAKE_HIT_AFTER=3 \(provider.rawValue)\r")
         }
-        after(6) { print("selftest: switch: before:", screenLine(tab, containing: "start resume=0") ?? "agent didn't start") }
+        if teamMode == "switch" {
+            // A suspended agent still holds its login: the loan must stay out until it exits.
+            after(20) { tab.view.send(txt: "\u{1A}") }
+            after(25) {
+                print("selftest: switch: team homes while suspended:", ((try? FileManager.default.contentsOfDirectory(atPath: AccountStore.dir.path)) ?? []).filter(TeamPool.isLocalID))
+                tab.view.send(txt: "fg\r")
+            }
+        }
+        after(6) {
+            print("selftest: switch: routing at start:", AccountStore.loadRouting().active)
+            print("selftest: switch: before:", screenLine(tab, containing: "start resume=0") ?? "agent didn't start")
+        }
         after(32) {
             let home = AccountStore.home(test.id).path
             print("selftest: switch: limit seen:", screenLine(tab, containing: "hit limit") != nil)
             print("selftest: switch: resumed:", screenLine(tab, containing: "resume=1") ?? "no")
-            print("selftest: switch: on test account:", screenLine(tab, containing: "accounts/switch") != nil, home.suffix(30))
+            print("selftest: switch: on test account:", screenLine(tab, containing: teamMode == nil ? "accounts/switch" : "accounts/team-") != nil, home.suffix(30))
+            if teamMode != nil {
+                print("selftest: switch: team homes:", ((try? FileManager.default.contentsOfDirectory(atPath: AccountStore.dir.path)) ?? []).filter(TeamPool.isLocalID))
+                print("selftest: switch: wrapper said:", screenLine(tab, containing: "borrowing") ?? "nothing")
+                // Check Usage on the login nobody holds, and on the one this tab holds (refused).
+                let team = TeamAccounts.shared
+                for account in team.accounts { team.check(account) }
+                after(15) { print("selftest: switch: team check:", team.readings.keys.sorted(), "errors:", team.checkErrors) }
+            }
             let args = tab.screenText().split(separator: "\n").filter { $0.contains("FAKE-ARGS") }.last.map(String.init) ?? "no"
             print("selftest: switch: resumed with:", args.replacingOccurrences(of: "FAKE-ARGS:", with: "").prefix(160))
             print("selftest: switch: told to continue:", args.contains("Continue where you left off."))
@@ -237,8 +269,15 @@ enum SelfTest {
                let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
                 print("selftest: switch: claude state keys:", state.keys.sorted().prefix(12).joined(separator: ","), "oauthAccount copied:", state["oauthAccount"] != nil)
             }
+            if teamMode == "switch" {
+                // Quitting with Codex still running on a team login: it's stopped, then the loan goes back.
+                let started = Date()
+                TeamAccounts.shared.giveBackAll()
+                print("selftest: switch: quit returned loans in", String(format: "%.1fs", Date().timeIntervalSince(started)),
+                      "| codex still running:", tab.isRunningProgram)
+            }
             controller.sessions.forEach { $0.terminate() }
-            store.remove(test.id)
+            if teamMode == nil { store.remove(test.id) }
             AccountStore.saveRouting(AccountRouting())
             try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.claude/projects/-agterm-switch-test")
             let sessions = URL(fileURLWithPath: NSHomeDirectory() + "/.codex/sessions")
@@ -247,7 +286,86 @@ enum SelfTest {
                     try? FileManager.default.removeItem(at: file)
                 }
             }
-            after(3) { exit(0) }
+            // Loans go back once their agent has exited.
+            after(teamMode == nil ? 3 : 25) {
+                if teamMode != nil {
+                    print("selftest: switch: team homes after exit:", ((try? FileManager.default.contentsOfDirectory(atPath: AccountStore.dir.path)) ?? []).filter(TeamPool.isLocalID))
+                }
+                exit(0)
+            }
+        }
+    }
+
+    /// Quits with Codex and another agent running, then reopens their tabs: each agent should
+    /// come back on its own conversation.
+    private static func restoreCheck(_ controller: MainWindowController, fakes: String) {
+        controller.newTab()
+        let tabs = Array(controller.sessions.suffix(2))
+        after(2) {
+            tabs[0].view.send(txt: "export PATH=\"$AGTERM_BIN:\(fakes):$PATH\"; cd /tmp; clear; codex -m gpt-test 'first prompt'\r")
+            tabs[1].view.send(txt: "export PATH=\"$AGTERM_BIN:\(fakes):$PATH\"; cd /tmp; clear; grok --model fast\r")
+        }
+        after(6) {
+            let saved = tabs.map { $0.snapshot() }
+            for (tab, snapshot) in zip(tabs, saved) {
+                print("selftest: restore: \(tab.agentName ?? "none") saves:", snapshot.resume ?? "nothing")
+            }
+            let before = screenLine(tabs[0], containing: "start resume=0") ?? ""
+            tabs.forEach { $0.terminate() }
+            // The reopened shells must find the stand-ins, not the real agents.
+            for var tab in saved {
+                tab.resume = tab.resume.map { "export PATH=\"$AGTERM_BIN:\(fakes):$PATH\"; clear; " + $0 }
+                controller.restoreTabForTest(tab)
+            }
+            let restored = Array(controller.sessions.suffix(2))
+            after(8) {
+                let session = before.components(separatedBy: "session=").last?.components(separatedBy: " ").first ?? "?"
+                print("selftest: restore: codex back:", screenLine(restored[0], containing: "resume=1") ?? "no", "| same session:",
+                      screenLine(restored[0], containing: "session=\(session)") != nil)
+                print("selftest: restore: grok back with:", restored[1].screenText().split(separator: "\n").last { $0.contains("FAKE-ARGS") } ?? "no")
+                controller.sessions.forEach { $0.terminate() }
+                let sessions = URL(fileURLWithPath: NSHomeDirectory() + "/.codex/sessions")
+                for case let file as URL in FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: nil) ?? FileManager.default.enumerator(atPath: "/")!
+                where file.lastPathComponent.hasPrefix("rollout-agtermtest-") { try? FileManager.default.removeItem(at: file) }
+                after(1) { exit(0) }
+            }
+        }
+    }
+
+    /// Drags the first tab to the right with real mouse events: the tabs should reorder and
+    /// the window stay put.
+    private static func dragCheck(_ controller: MainWindowController) {
+        guard let window = controller.window else { exit(1) }
+        controller.newTab()
+        controller.newTab()
+        controller.showWindow(nil)
+        after(1.5) {
+            let first = controller.selectedTabIDForTest
+            let before = controller.sessions.firstIndex { $0.tabID == first } ?? -1
+            let card = controller.selectedTabCardForTest
+            window.layoutIfNeeded()
+            let center = card.convert(NSPoint(x: card.bounds.midX, y: card.bounds.midY), to: nil)
+            print("selftest: drag: card", card.frame, "in", card.superview?.frame ?? .zero, "window?", card.window != nil)
+            let frame = window.contentView?.superview
+            let hit = frame?.hitTest(center)
+            var chain: [String] = []
+            var view = hit
+            while let v = view { chain.append(String(describing: type(of: v))); view = v.superview }
+            print("selftest: drag: click lands on:", chain.joined(separator: " < "), "at", center, "window", window.frame)
+            let origin = window.frame.origin
+            func event(_ type: NSEvent.EventType, _ dx: CGFloat) -> NSEvent {
+                NSEvent.mouseEvent(with: type, location: NSPoint(x: center.x + dx, y: center.y), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                   windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            }
+            // Queued first: a window drag would run its own loop and eat them.
+            for dx in stride(from: -10, through: -400, by: -30) { NSApp.postEvent(event(.leftMouseDragged, CGFloat(dx)), atStart: false) }
+            NSApp.postEvent(event(.leftMouseUp, -400), atStart: false)
+            print("selftest: drag: key window:", window.isKeyWindow, "card takes first click:", card.acceptsFirstMouse(for: event(.leftMouseDown, 0)))
+            window.sendEvent(event(.leftMouseDown, 0))
+            after(1.5) {
+                print("selftest: drag: window moved:", window.frame.origin != origin, "| dragged tab moved from", before, "to", controller.sessions.firstIndex { $0.tabID == first } ?? -1)
+                exit(0)
+            }
         }
     }
 

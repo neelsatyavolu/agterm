@@ -13,7 +13,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.add("Appearance", symbol: "paintpalette", AppearancePane(prefs: .shared))
         tabs.add("Agents", symbol: "terminal", AgentsPane())
         tabs.add("Permissions", symbol: "checkmark.shield", PermissionsPane())
-        tabs.add("Accounts", symbol: "person.crop.circle", AccountsPane(store: .shared, monitor: .shared, login: .shared))
+        tabs.add("Accounts", symbol: "person.crop.circle", AccountsPane(store: .shared, monitor: .shared, login: .shared, team: .shared, teams: .shared))
         tabs.add("Command", symbol: "command", CommandPane())
         tabs.add("Teams & Phone", symbol: "person.2", ConnectionsPane())
         let window = NSWindow(contentViewController: tabs)

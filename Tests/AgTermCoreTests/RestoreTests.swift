@@ -84,6 +84,22 @@ final class SavedWorkspaceTests: XCTestCase {
         XCTAssertNil(try? SavedWorkspace.decode(data))
     }
 
+    func testOtherAgentsContinueTheirLatestConversation() {
+        XCTAssertEqual(AgentResume.continueCommandLine(agent: "grok", argv: ["grok", "--model", "x"]), "command grok --continue")
+        XCTAssertEqual(AgentResume.continueCommandLine(agent: "gemini", argv: ["node", "/x/gemini"]), "command gemini --resume latest")
+        XCTAssertEqual(AgentResume.continueCommandLine(agent: "goose", argv: ["goose", "session"]), "command goose session --resume")
+        // One-shot runs and agents with no way back aren't rerun; Claude and Codex resume exactly instead.
+        XCTAssertNil(AgentResume.continueCommandLine(agent: "grok", argv: ["grok", "-p", "hi"]))
+        XCTAssertNil(AgentResume.continueCommandLine(agent: "qodo", argv: ["qodo"]))
+        XCTAssertNil(AgentResume.continueCommandLine(agent: "claude", argv: ["claude"]))
+        XCTAssertNil(AgentResume.continueCommandLine(agent: "codex", argv: ["codex"]))
+    }
+
+    func testCodexResumesItsExactSessionWithOriginalFlags() {
+        XCTAssertEqual(AgentResume.codexCommandLine(userArgs: ["-m", "gpt-x", "fix the bug", "--yolo"], sessionID: "0199-abc"),
+                       "command codex resume 0199-abc -m gpt-x --yolo")
+    }
+
     func testSelectionIsClampedToTabs() throws {
         let data = Data(#"{"version": 1, "selected": 7, "savedAt": 0, "tabs": [{"cwd": "/a", "scrollback": ""}]}"#.utf8)
         XCTAssertEqual(try SavedWorkspace.decode(data).selected, 0)

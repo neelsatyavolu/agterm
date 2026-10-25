@@ -8,7 +8,7 @@ import Security
 @MainActor
 final class TeamsAccount: ObservableObject {
     static let shared = TeamsAccount()
-    static let baseURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_TEAMS_URL"] ?? "https://teams.agmux.dev")!
+    nonisolated static let baseURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_TEAMS_URL"] ?? "https://teams.agmux.dev")!
 
     enum State: Equatable {
         case signedOut
@@ -119,6 +119,8 @@ final class TeamsAccount: ObservableObject {
 
     func signOut() {
         pollTask?.cancel()
+        // Team logins go back while the token can still return them.
+        TeamAccounts.shared.giveBackAll()
         storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "teamsUserName")
         UserDefaults.standard.removeObject(forKey: "teamsUserEmail")

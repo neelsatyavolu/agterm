@@ -73,7 +73,30 @@ final class TabBarView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    override var mouseDownCanMoveWindow: Bool { true }
+    /// The window isn't movable by the system (so dragging a tab can never move it); the empty
+    /// part of the bar moves it here instead, and a double-click there zooms or minimizes it
+    /// as set in System Settings, like a title bar.
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        if event.clickCount == 2 {
+            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+            case "Minimize": window.miniaturize(nil)
+            case "None": break
+            default: window.zoom(nil)
+            }
+            return
+        }
+        window.isMovable = true
+        window.performDrag(with: event)
+        window.isMovable = false
+    }
+
+    #if DEBUG
+    var selectedCardForTest: NSView { cards[selectedIndex ?? 0] }
+    #endif
 
     /// Redraws everything after a theme change.
     func refreshAppearance() {

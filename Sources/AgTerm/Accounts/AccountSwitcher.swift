@@ -22,6 +22,10 @@ final class AccountSwitcher {
     private var history: [String: [Date]] = [:]
     /// Newest limit already handled per tab, so a rewritten transcript can't replay it.
     private var handled: [String: Date] = [:]
+    /// Team logins that ran out in each tab, so it isn't lent the same one again.
+    private var usedUpTeam: [String: Set<String>] = [:]
+
+    func teamExcluded(_ tabID: String) -> Set<String> { usedUpTeam[tabID] ?? [] }
 
     /// The agent a switch is acting on, captured when the limit was seen.
     private struct Target {
@@ -34,8 +38,8 @@ final class AccountSwitcher {
     /// Called every second with the open tabs.
     func poll(_ sessions: [TerminalSession]) {
         let open = Set(sessions.map(\.tabID))
-        for key in Set(tails.keys).union(history.keys).union(handled.keys).union(busy) where !open.contains(key) {
-            tails[key] = nil; lookedUp[key] = nil; history[key] = nil; handled[key] = nil; busy.remove(key)
+        for key in Set(tails.keys).union(history.keys).union(handled.keys).union(busy).union(usedUpTeam.keys) where !open.contains(key) {
+            tails[key] = nil; lookedUp[key] = nil; history[key] = nil; handled[key] = nil; usedUpTeam[key] = nil; busy.remove(key)
         }
         for session in sessions {
             guard let provider = session.agentName.flatMap(AccountProvider.init(rawValue:)), !busy.contains(session.tabID),
@@ -93,8 +97,14 @@ final class AccountSwitcher {
               let started = session.agentStartedAt, abs(launch.startedAt.timeIntervalSince(started)) < 20,
               let group = session.foregroundGroup else { return }
         let monitor = UsageMonitor.shared
+        let team = TeamAccounts.shared
         monitor.markExhausted(provider, launch.account)
-        guard store.settings.autoSwitch, !store.accounts(provider).isEmpty else { return }
+        if TeamPool.isLocalID(launch.account) {
+            team.reportExhausted(launch.account)
+            if let id = team.accountID(launch.account) { usedUpTeam[session.tabID, default: []].insert(id) }
+        }
+        let canBorrow = provider == .codex && team.isConnected
+        guard store.settings.autoSwitch, !store.accounts(provider).isEmpty || canBorrow else { return }
         let sessionID: String?
         switch provider {
         case .claude: sessionID = transcript.deletingPathExtension().lastPathComponent
@@ -114,12 +124,19 @@ final class AccountSwitcher {
         monitor.refresh(provider, monitor.ids(provider, enabledOnly: true)) { [weak self, weak session] in
             guard let self, let session else { return }
             monitor.markExhausted(provider, launch.account)
-            guard let next = AccountPicker.next(monitor.candidates(provider), excluding: [launch.account], now: Date()) else {
-                self.busy.remove(session.tabID)
-                return self.notify(session, "Every \(provider.title) account is out of usage", hit.message)
+            let switchTo = { [weak self, weak session] (next: String?) in
+                guard let self, let session else { return }
+                guard let next else {
+                    self.busy.remove(session.tabID)
+                    return self.notify(session, "Every \(provider.title) account is out of usage", hit.message)
+                }
+                self.history[session.tabID] = recent + [Date()]
+                self.switchTab(session, target, to: next)
             }
-            self.history[session.tabID] = recent + [Date()]
-            self.switchTab(session, target, to: next)
+            // Your own logins first; a team's only when they're all out.
+            if let next = AccountPicker.next(monitor.candidates(provider), excluding: [launch.account], now: Date()) { return switchTo(next) }
+            guard canBorrow else { return switchTo(nil) }
+            team.borrow(provider, tabID: session.tabID, excluding: self.teamExcluded(session.tabID), completion: switchTo)
         }
     }
 
@@ -137,7 +154,7 @@ final class AccountSwitcher {
         }
         // Naming the login on the command itself means nothing can change it before it starts.
         let command = "AGTERM_ACCOUNT=\(ShellEscape.path(next)) " + resume
-        let label = AccountStore.shared.label(next, provider: provider)
+        let label = TeamAccounts.shared.label(next) ?? AccountStore.shared.label(next, provider: provider)
         let stillThere = { session.foregroundGroup == target.group }
         let cancel: () -> Void = { [weak self] in _ = self?.busy.remove(session.tabID) }
 

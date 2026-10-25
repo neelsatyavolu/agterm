@@ -137,6 +137,25 @@ public enum AgentResume {
             .joined(separator: " ")
     }
 
+    /// Agents whose conversation id agterm can't read: each one's own way to continue its
+    /// latest conversation (most are per folder, and the tab reopens in the same folder).
+    /// Flags come from each CLI's --help. Claude Code and Codex resume the exact conversation
+    /// instead (`commandLine`, `codexCommandLine`).
+    static let continueLatest: [String: [String]] = [
+        "grok": ["--continue"], "gemini": ["--resume", "latest"], "agy": ["--continue"],
+        "cursor-agent": ["--continue"], "opencode": ["--continue"], "kimi": ["--continue"],
+        "aider": ["--restore-chat-history"], "droid": ["--resume"], "kilo": ["--continue"],
+        "auggie": ["--continue"], "pi": ["--continue"], "copilot": ["--continue"], "goose": ["session", "--resume"],
+    ]
+
+    /// Brings back another agent's latest conversation, or nil for agents without a way to, and
+    /// for one-shot runs (`-p`), which have nothing to come back to.
+    public static func continueCommandLine(agent: String, argv: [String]) -> String? {
+        guard let kind = AgentKind.named(agent), let flags = continueLatest[kind.id],
+              !argv.dropFirst().contains(where: { ["-p", "--print", "--prompt"].contains($0) }) else { return nil }
+        return (["command", kind.command] + flags.map(ShellEscape.path)).joined(separator: " ")
+    }
+
     /// A Codex rollout's session id, from its first line (`session_meta.payload.id`).
     public static func codexSessionID(rolloutHeader: String) -> String? {
         guard let record = (try? JSONSerialization.jsonObject(with: Data(rolloutHeader.utf8))) as? [String: Any],
