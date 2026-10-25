@@ -1,0 +1,10 @@
+# Copy to scripts/maintainer.local (git ignores it). Only signed builds and releases need this;
+# everyone else builds with ./install.sh --adhoc.
+# The 1Password account that holds the Developer ID certificate (its user ID when several accounts share a host).
+export OP_ACCOUNT=""
+export AGMUX_APPLE_SIGNING_VAULT=""
+export AGMUX_APPLE_NOTARY_VAULT=""
+# e.g. "Developer ID Application: Your Name (TEAMID)"
+export AGTERM_SIGNING_IDENTITY=""
+# 1Password reference to the Sparkle EdDSA private key, e.g. "op://Vault/Item/password"
+export AGTERM_SPARKLE_KEY_REF=""

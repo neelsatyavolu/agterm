@@ -1,0 +1,6 @@
+.build/
+dist/
+.swiftpm/
+scripts/maintainer.local
+site/.vercel/
+.DS_Store

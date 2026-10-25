@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>agterm: a Mac terminal that shows what your agents are doing</title>
+  <meta name="description" content="A fast native terminal for Claude Code and other coding agents. Every tab shows the task, whether it's working or waiting for you, the folder and the uncommitted diff.">
+  <meta property="og:title" content="agterm: a Mac terminal that shows what your agents are doing">
+  <meta property="og:description" content="Every tab shows the task, whether it's working or waiting for you, the folder and the diff.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agterm.xanom.co/">
+  <meta property="og:image" content="https://agterm.xanom.co/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="agterm tab bar: three agent tabs marked working, needs you and done, each with folder, branch and diff.">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="https://analytics.n3el.dev/p.js"></script>
+</head>
+<body>
+  <header class="bar wrap">
+    <a class="mark" href="/" aria-label="agterm home"><span class="prompt" aria-hidden="true">&gt;</span>agterm<span class="caret" aria-hidden="true"></span></a>
+    <nav>
+      <span class="meta-label">v0.1.0</span>
+      <a href="https://github.com/neelsatyavolu/agterm">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero wrap">
+      <p class="eyebrow">Terminal for coding agents · macOS</p>
+      <h1>Know which agent<br>needs you.</h1>
+      <p class="lede">agterm is a native Mac terminal. Each tab shows the task its agent is on, whether it is working, done or waiting on a permission prompt, and how much it has changed.</p>
+      <div class="cta">
+        <a class="dl" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
+        <p class="meta">macOS 14+ · Apple silicon and Intel · signed and notarized · updates itself</p>
+      </div>
+    </section>
+
+    <section class="demo wrap" aria-label="Example agterm window">
+      <div class="window">
+        <div class="tabs">
+          <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <div class="tab selected">
+            <p class="topic"><span class="dot working"></span>Fix login redirect loop</p>
+            <p class="info"><b class="s-working">WORKING</b><span class="where">web <span class="branch">main</span></span><span class="diff"><span class="add">+75</span> <span class="del">−12</span></span></p>
+          </div>
+          <div class="tab">
+            <p class="topic"><span class="dot waiting"></span>Rename env vars in workers</p>
+            <p class="info"><b class="s-waiting">NEEDS YOU</b><span class="where">api <span class="branch">env-rename</span></span><span class="diff"><span class="add">+18</span> <span class="del">−18</span></span></p>
+          </div>
+          <div class="tab">
+            <p class="topic"><span class="dot done"></span>Add dark mode tokens</p>
+            <p class="info"><b class="s-done">DONE</b><span class="where">design <span class="branch">tokens</span></span><span class="diff"><span class="add">+142</span> <span class="del">−9</span></span></p>
+          </div>
+          <div class="tab quiet">
+            <p class="topic"><span class="dot idle"></span>zsh</p>
+            <p class="info">~</p>
+          </div>
+        </div>
+        <pre class="screen"><code><span class="dim">&gt;</span> the login page bounces back to /login after sign-in
+
+<span class="mark-agent">●</span> Reading <b>src/auth/session.ts</b>
+<span class="mark-agent">●</span> Update(<b>src/auth/redirect.ts</b>)
+  <span class="add">+  if (url.pathname === "/login") return next("/")</span>
+  <span class="del">-  return next(url.searchParams.get("to"))</span>
+<span class="mark-agent">●</span> Running <b>npm test</b>
+<span class="accent">◐</span> <span class="dim">Testing… (14s)</span></code></pre>
+      </div>
+    </section>
+
+    <section class="points wrap" aria-labelledby="what">
+      <h2 id="what" class="label">What a tab tells you</h2>
+      <ul class="grid">
+        <li><h3>The task</h3><p>Claude Code names what it's working on in the terminal title. agterm puts that name on the tab, so you don't have to remember which tab was which.</p></li>
+        <li><h3>Working or waiting</h3><p><b class="s-working">WORKING</b> while it runs. <b class="s-done">DONE</b> when it finished while you were elsewhere. <b class="s-waiting">NEEDS YOU</b> when it rang the bell for a permission prompt.</p></li>
+        <li><h3>Folder and diff</h3><p>The folder, the git branch and the uncommitted lines (<span class="add">+75</span> <span class="del">−12</span>), refreshed every few seconds.</p></li>
+      </ul>
+    </section>
+
+    <section class="points wrap" aria-labelledby="how">
+      <h2 id="how" class="label">How it stays light</h2>
+      <ul class="grid">
+        <li><h3>A real terminal</h3><p>Native AppKit with the SwiftTerm emulator. It runs your login shell, so every CLI works as it does in Terminal.app.</p></li>
+        <li><h3>Nothing to install into agents</h3><p>Status comes from what a terminal already sees: the title, the bell, output timing and <code>git</code>. No hooks, plugins or API keys.</p></li>
+        <li><h3>Yours to tune</h3><p>Five themes, any monospaced font, background opacity and blur. Closing a busy tab asks first, and no process is left behind.</p></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p class="meta">MIT licensed · <a href="https://github.com/neelsatyavolu/agterm">Source</a> · <a href="https://xanom.co">Xanom</a></p>
+  </footer>
+</body>
+</html>
