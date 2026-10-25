@@ -14,7 +14,6 @@ VERSION="$(tr -d '[:space:]' < VERSION)"
 TAG="v$VERSION"
 OUT="dist/release"
 SPARKLE_BIN=".build/artifacts/sparkle/Sparkle/bin"
-SPARKLE_KEY_ITEM="${AGTERM_SPARKLE_KEY_REF:-}"
 
 if [ -n "$(git status --porcelain)" ]; then
     echo "error: commit your changes first (the release is built from the working tree)" >&2
@@ -37,6 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT
 agterm_require_developer_id
+SPARKLE_KEY_ITEM="${AGTERM_SPARKLE_KEY_REF:-}"
 : "${SPARKLE_KEY_ITEM:?set AGTERM_SPARKLE_KEY_REF (1Password reference to the Sparkle EdDSA key) in scripts/maintainer.local}"
 : "${APPLE_API_KEY:?notarization key missing}" "${APPLE_API_ISSUER:?}" "${APPLE_API_KEY_PATH:?}"
 
