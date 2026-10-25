@@ -40,7 +40,7 @@ SPARKLE_KEY_ITEM="${AGTERM_SPARKLE_KEY_REF:-}"
 : "${SPARKLE_KEY_ITEM:?set AGTERM_SPARKLE_KEY_REF (1Password reference to the Sparkle EdDSA key) in scripts/maintainer.local}"
 : "${APPLE_API_KEY:?notarization key missing}" "${APPLE_API_ISSUER:?}" "${APPLE_API_KEY_PATH:?}"
 
-echo "Building $VERSION…"
+echo "Building ${VERSION}…"
 swift test >/dev/null
 scripts/bundle.sh >/dev/null
 rm -rf "$OUT" && mkdir -p "$OUT"
@@ -63,7 +63,7 @@ op read "$SPARKLE_KEY_ITEM" > "$SECRETS/sparkle.key"
     --link "https://agterm.xanom.co" "$OUT"
 cp "$ARCHIVE" "$OUT/agterm.zip"
 
-echo "Publishing $TAG…"
+echo "Publishing ${TAG}…"
 git tag "$TAG"
 git push origin "$TAG"
 gh release create "$TAG" --repo "$REPO" --title "agterm $VERSION" --generate-notes \
