@@ -55,7 +55,7 @@ a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--fg-
 a:hover { text-decoration-color: currentColor; }
 :focus-visible { outline: 2px solid var(--accent-muted); outline-offset: 2px; }
 code, pre { font-family: var(--mono); }
-:not(pre) > code { font-size: 0.88em; background: var(--surface); border: 1px solid var(--border); padding: 0 0.3em; }
+:not(pre) > code { font-size: 0.88em; background: var(--surface); border: 1px solid var(--border); padding: 0 0.3em; white-space: nowrap; }
 p, h1, h2, h3 { margin: 0; }
 
 .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }

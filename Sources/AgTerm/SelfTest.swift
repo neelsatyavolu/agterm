@@ -8,6 +8,15 @@ enum SelfTest {
         NSApp.setActivationPolicy(.accessory)
         guard let window = controller.window else { exit(1) }
         if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "1" { return measure(controller) }
+        if let out = ProcessInfo.processInfo.environment["AGTERM_TEAMS_PREVIEW"] {
+            let ids = Set((ProcessInfo.processInfo.environment["AGTERM_TEAMS_CLAUDE"] ?? "").split(separator: ",").map(String.init))
+            let payload = TeamsSync.previewPayload(claudeSessions: ids)
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]) {
+                try? data.write(to: URL(fileURLWithPath: out))
+            }
+            print("selftest: teams preview buckets:", (payload["buckets"] as? [Any])?.count ?? 0)
+            exit(0)
+        }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true

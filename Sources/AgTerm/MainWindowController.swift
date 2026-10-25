@@ -33,6 +33,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             newTab()
         }
         startTimers()
+        RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
         Notifier.shared.onOpen = { [weak self] tabID in
             guard let self, let index = self.sessions.firstIndex(where: { $0.tabID == tabID }) else { return }
             self.window?.makeKeyAndOrderFront(nil)

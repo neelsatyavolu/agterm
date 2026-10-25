@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
         askForDiskAccessIfNeeded()
+        TeamsSync.shared.start()
+        RemoteClient.shared.startIfEnabled()
     }
 
     private func updatesItem() -> NSMenuItem {

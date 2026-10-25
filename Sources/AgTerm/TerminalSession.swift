@@ -59,6 +59,14 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         return formatter.string(from: Date())
     }
 
+    /// The visible screen as plain text, trailing blank rows dropped (for the phone remote).
+    func screenText() -> String {
+        let terminal = view.getTerminal()
+        var rows = (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.translateToString(trimRight: true) }
+        while rows.last?.isEmpty == true { rows.removeLast() }
+        return rows.joined(separator: "\n")
+    }
+
     /// What to save so this tab can be reopened: folder, history and, for agents that can
     /// resume a conversation, the command that brings them back.
     func snapshot() -> SavedTab {
@@ -165,6 +173,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundPid = fg
         let name = ProcInfo.name(pid: fg)
         updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
+        if agentName == "claude", let id = ProcInfo.claudeSessionID(pid: fg) { TeamsClaims.shared.recordClaude(id) }
         let dir = ProcInfo.cwd(pid: fg) ?? ProcInfo.cwd(pid: shellPid) ?? cwd
         guard name != foregroundName || dir != cwd else { return }
         // Back at the prompt: forget the agent's title so a stale spinner or topic doesn't stick.

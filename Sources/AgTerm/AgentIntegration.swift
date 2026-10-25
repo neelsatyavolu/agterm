@@ -105,6 +105,11 @@ enum AgentIntegration {
             exit(127)
         }
         var argv = args
+        // Marks Codex sessions as started in agterm (their header's originator), which is how
+        // agmux Teams reporting tells them apart from sessions started elsewhere.
+        if agent == "codex", env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == nil {
+            setenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "agterm", 1)
+        }
         if env["AGTERM_MCP"] != "0" {
             let servers = mcpServers(for: agent, cwd: FileManager.default.currentDirectoryPath, env: env)
             switch agent {

@@ -32,6 +32,11 @@ Claude Code and Codex started in an agterm tab get the two MCP servers [agmux](h
 
 agterm puts small `claude` and `codex` wrappers first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add `--mcp-config` for Claude or `-c mcp_servers.…` for Codex, skip servers you already configured, and edit no config files. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs agmux installed (the servers ship inside agmux.app) and Node on PATH.
 
+## agmux Teams and the phone app
+
+- **Teams.** Settings → agmux Teams links agterm as its own device (a browser sign-in, like agmux) and reports hourly totals for Claude Code and Codex sessions started in agterm: tokens, estimated cost, active time, turns, tool calls by kind, and lines changed as counts. Never prompts, replies, code, diffs, paths or terminal output, and never sessions started elsewhere. Codex sessions are marked with `originator: agterm`; Claude sessions are the ones agterm saw in its tabs. The counting is a port of agmux's own, with its tests.
+- **Phone.** Settings → Phone pairs the agmux phone app with agterm (QR code or 8-letter code). Each tab shows up with its title, status and diff; open one to see its screen, type a reply, stop it, or allow and deny permission prompts. "Needs you" and "finished" send phone notifications. The phone app keeps one paired Mac, so pairing agterm replaces agmux on that phone. Traffic goes through the agmux relay over TLS.
+
 ## Tabs come back
 
 Quit with tabs open and the next launch reopens them: folder, history with colors, and the selected tab. A tab that was running Claude Code types `claude --resume <its session>` with the original flags, so you're back in the same conversation. Other programs aren't rerun. Saved state lives in `~/Library/Application Support/co.xanom.agterm/workspace.json`, readable only by you.

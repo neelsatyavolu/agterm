@@ -18,14 +18,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=0.2.1">
+  <link rel="stylesheet" href="/styles.css?v=0.3.0">
   <script defer src="https://analytics.n3el.dev/p.js"></script>
 </head>
 <body>
   <header class="bar wrap">
     <a class="mark" href="/" aria-label="agterm home"><span class="prompt" aria-hidden="true">&gt;</span>agterm<span class="caret" aria-hidden="true"></span></a>
     <nav>
-      <span class="meta-label">v0.2.0</span>
+      <span class="meta-label">v0.3.0</span>
       <a href="https://github.com/neelsatyavolu/agterm">GitHub</a>
     </nav>
   </header>
@@ -64,6 +64,15 @@
         <li><h3>Project memory</h3><p>Agents in agterm get the same <code>agmux-memory</code> server agmux gives its own, for every folder agmux knows. Claude Code here and Codex in agmux read and add to one set of notes about the repo.</p></li>
         <li><h3>consult</h3><p>An agent can ask Claude, Codex or Grok on your Mac for a second opinion, or have them review its diff before calling the work done.</p></li>
         <li><h3>No setup</h3><p>agterm adds both servers when you type <code>claude</code> or <code>codex</code> in its tabs, skips any you already configured, and edits no config files. <code>AGTERM_MCP=0</code> turns it off for one run. Needs agmux installed.</p></li>
+      </ul>
+    </section>
+
+    <section class="points wrap" aria-labelledby="team">
+      <h2 id="team" class="label">Teams and your phone</h2>
+      <ul class="grid">
+        <li><h3>agmux Teams</h3><p>Sign in once and your agterm sessions count toward your team's usage, the same hourly totals agmux reports.</p></li>
+        <li><h3>Never shared</h3><p>Prompts, replies, code, diffs, file paths and terminal output stay on your Mac. So do sessions started outside agterm and agmux.</p></li>
+        <li><h3>agmux phone app</h3><p>Pair your phone to see every tab, read its screen, reply, stop an agent or answer a permission prompt, with a notification when one needs you.</p></li>
       </ul>
     </section>
 
