@@ -31,6 +31,25 @@ struct SettingsView: View {
 
     private var settings: AppearanceSettings { prefs.appearance }
     @State private var autoUpdate = Updater.shared.automaticallyChecks
+    @AppStorage(AgentIntegration.memoryKey) private var memory = true
+    @AppStorage(Notifier.attentionKey) private var notifyAttention = true
+    @AppStorage(Notifier.completeKey) private var notifyComplete = true
+    @AppStorage(Notifier.soundKey) private var notifySound = true
+    @AppStorage(AgentIntegration.consultKey) private var consult = true
+
+    /// Checked once when Settings opens.
+    private static let agentStatus: String = {
+        let base = "claude and codex started in agterm get these MCP servers, the same ones agmux gives its agents. "
+            + "Memory is shared with agmux for folders it knows; servers you already configured aren't added twice. "
+            + "Start an agent with AGTERM_MCP=0 to skip them once."
+        guard AgentIntegration.agmuxBundles() != nil else {
+            return "agmux isn't installed, so there are no servers to add. " + base
+        }
+        guard AgentIntegration.findOnPath("node", excluding: nil) != nil else {
+            return "Node.js wasn't found on agterm's PATH; agents' own shells may still find it. " + base
+        }
+        return base
+    }()
     private static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
 
     var body: some View {
@@ -76,6 +95,24 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(settings.opacity >= 1)
+            }
+
+            Section("Notifications") {
+                Toggle("When an agent needs you", isOn: $notifyAttention)
+                Toggle("When an agent finishes", isOn: $notifyComplete)
+                Toggle("Play a sound", isOn: $notifySound)
+            }
+
+            Section {
+                Toggle("agmux project memory", isOn: $memory)
+                Toggle("consult", isOn: $consult)
+            } header: {
+                Text("Agents")
+            } footer: {
+                Text(Self.agentStatus)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if Updater.shared.isAvailable {
@@ -134,8 +171,8 @@ private struct ThemeSwatch: View {
                 .font(.system(size: 10, design: .monospaced))
                 .padding(8)
                 .frame(maxWidth: .infinity, minHeight: 46, alignment: .topLeading)
-                .background(color(theme.bg))
-                .overlay(Rectangle().strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.15),
+                .background(color(theme.bg), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.15),
                                                   lineWidth: selected ? 2 : 1))
                 Text(theme.name)
                     .font(.system(size: 11, weight: selected ? .semibold : .regular))
@@ -162,7 +199,8 @@ private struct FontPreview: View {
             .lineLimit(2)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: Theme.color(theme.bg, alpha: CGFloat(settings.opacity))))
+            .background(Color(nsColor: Theme.color(theme.bg, alpha: CGFloat(settings.opacity))),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

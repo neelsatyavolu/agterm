@@ -5,6 +5,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
+        AgentIntegration.installShellIntegration()
+        AgentTerminalView.installScrollSmoothing()
+        Notifier.shared.start()
         let controller = MainWindowController()
         self.controller = controller
         #if DEBUG
@@ -46,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.beginSheetModal(for: window) { response in
             if response == .alertFirstButtonReturn { DiskAccessMonitor.openSystemSettings() }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        controller?.saveWorkspaceForQuit()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -90,6 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Show Next Tab", #selector(MainWindowController.nextTab), "]", [.command, .shift]),
             item("Show Previous Tab", #selector(MainWindowController.previousTab), "[", [.command, .shift]),
+            item("Move Tab Left", #selector(MainWindowController.moveTabLeft), String(UnicodeScalar(NSLeftArrowFunctionKey)!), [.command, .shift]),
+            item("Move Tab Right", #selector(MainWindowController.moveTabRight), String(UnicodeScalar(NSRightArrowFunctionKey)!), [.command, .shift]),
             item("Next Tab", #selector(MainWindowController.nextTab), "\t", [.control]),
             item("Previous Tab", #selector(MainWindowController.previousTab), "\t", [.control, .shift]),
             .separator(),

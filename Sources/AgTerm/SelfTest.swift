@@ -59,11 +59,64 @@ enum SelfTest {
         after(11.25) { checkDrops(into: controller.sessions[0], outDir: outDir) }
         after(11.28) { checkBlur() }
 
+        // Shell integration: agterm's claude wrapper comes first, and history stays in $HOME.
+        after(11.35) {
+            controller.sessions[0].view.send(txt: #"print -r -- "PATHCHECK ${$(whence -p claude):-none} HIST=$HISTFILE ZD=${ZDOTDIR:-unset}""# + "\r")
+        }
+        after(12.5) { print("selftest: shell:", screenLine(controller.sessions[0], containing: "PATHCHECK /") ?? "no PATHCHECK line") }
+
+        // Agent diff: a fake `codex` in the fixture repo; a file it "writes" must show as +3.
+        // AGTERM_FAKE_AGENTS holds small compiled stand-ins named codex and claude (copies of
+        // Apple's own binaries get killed by macOS).
+        let fakes = ProcessInfo.processInfo.environment["AGTERM_FAKE_AGENTS"] ?? outDir
+        let fakeAgent = fakes + "/codex"
+        let fakeClaude = fakes + "/claude"
+        after(12.6) {
+            controller.sessions[4].view.send(txt: "cd \(fixture) && \(fakeAgent) 600\r")
+            controller.sessions[3].view.send(txt: "\(fakeClaude) 600\r")
+        }
+        after(18) {
+            let s = controller.sessions[4]
+            print("selftest: agent", s.agentName ?? "none", "baseline:", s.agentBaseline != nil)
+            try? "one\ntwo\nthree\n".write(toFile: fixture + "/agent-made.txt", atomically: true, encoding: .utf8)
+        }
+        after(22) {
+            let d = controller.sessions[4].agentDiff
+            print("selftest: agent diff:", d.map { "+\($0.added) −\($0.removed)" } ?? "nil")
+            try? FileManager.default.removeItem(atPath: fixture + "/agent-made.txt")
+        }
+
+        // Reorder: move the selected tab and the one next to it; the selection follows its tab.
+        after(22.2) {
+            controller.select(0)
+            let before = controller.sessions.map(\.tabID)
+            controller.moveTab(from: 0, to: 2)
+            let after = controller.sessions.map(\.tabID)
+            print("selftest: reorder ok:", after[2] == before[0] && after[0] == before[1], "selected moved tab:",
+                  controller.sessions.firstIndex { $0.tabID == before[0] } == 2)
+            controller.moveTab(from: 2, to: 0)
+        }
+
+        // Restore: save, read back, and reopen one tab from the file.
+        after(22.4) {
+            controller.saveWorkspace()
+            guard let saved = WorkspaceStore.load() else { return print("selftest: restore: nothing saved") }
+            let first = saved.tabs[0]
+            print("selftest: saved tabs:", saved.tabs.count, "history kept:", first.scrollback.contains("printed-while-hidden"),
+                  "resume:", saved.tabs.compactMap(\.resume))
+            let reopened = TerminalSession(cwd: first.cwd, restoring: first)
+            after(1.2) {
+                print("selftest: reopened shows history:", screenLine(reopened, containing: "printed-while-hidden") != nil,
+                      "banner:", screenLine(reopened, containing: "restored") != nil)
+                reopened.terminate()
+            }
+        }
+
         // One tab runs a long job in the foreground, like an agent would.
-        after(11.3) { controller.sessions[0].view.send(txt: "sleep 777\r") }
-        after(12) { controller.sessions.forEach { $0.terminate() } }
+        after(23.6) { controller.sessions[0].view.send(txt: "sleep 777\r") }
+        after(24.3) { controller.sessions.forEach { $0.terminate() } }
         // Closed shells must be reaped, not left as zombies.
-        after(13) {
+        after(25.3) {
             let ps = Process()
             ps.executableURL = URL(fileURLWithPath: "/bin/ps")
             ps.arguments = ["-axo", "ppid=,stat=,pid=,command="]
@@ -118,6 +171,12 @@ enum SelfTest {
         probe.orderBack(nil)
         print("selftest: blur api available:", BackgroundBlur.isAvailable, "applied:", BackgroundBlur.set(probe, radius: 20))
         probe.orderOut(nil)
+    }
+
+    private static func screenLine(_ session: TerminalSession, containing text: String) -> String? {
+        let terminal = session.view.getTerminal()
+        return (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.translateToString(trimRight: true) }
+            .first { $0.contains(text) }
     }
 
     private static func send(_ controller: MainWindowController, _ index: Int, _ line: String) {

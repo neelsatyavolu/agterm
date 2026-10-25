@@ -16,6 +16,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var appearanceSubscription: AnyCancellable?
     private let git = GitPoller()
     private var timers: [Timer] = []
+    /// Set once the tabs are saved for this quit, so a second save can't overwrite them.
+    private var savedForQuit = false
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
@@ -24,14 +26,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         super.init(window: window)
         configure(window)
         applyAppearance()
-        newTab()
+        if let saved = WorkspaceStore.load(), !saved.tabs.isEmpty {
+            saved.tabs.forEach { addTab(cwd: $0.cwd, restoring: $0) }
+            select(saved.selected)
+        } else {
+            newTab()
+        }
         startTimers()
+        Notifier.shared.onOpen = { [weak self] tabID in
+            guard let self, let index = self.sessions.firstIndex(where: { $0.tabID == tabID }) else { return }
+            self.window?.makeKeyAndOrderFront(nil)
+            self.select(index)
+        }
         appearanceSubscription = Preferences.shared.$appearance.dropFirst().sink { [weak self] settings in
             self?.applyAppearance()
         }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// macOS 26 made window corners larger; match whichever system is running.
+    private static var windowCornerRadius: CGFloat {
+        ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) ? 16 : 10
+    }
 
     private func configure(_ window: NSWindow) {
         window.titleVisibility = .hidden
@@ -46,6 +63,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         window.delegate = self
 
         let content = NSView()
+        // A see-through window draws no frame of its own, so round the content to match
+        // macOS's window corners; an opaque window keeps the system rounding.
+        content.wantsLayer = true
+        content.layer?.cornerRadius = Self.windowCornerRadius
+        content.layer?.cornerCurve = .continuous
+        content.layer?.masksToBounds = true
         window.contentView = content
         tabBar.delegate = self
         blur.blendingMode = .behindWindow
@@ -80,11 +103,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let fast = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.tickStatus() }
         let medium = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.sessions.forEach { $0.pollProcess() } }
         let slow = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in self?.pollGit() }
-        for timer in [fast, medium, slow] {
+        // Also save now and then, so a crash or forced restart loses at most a minute.
+        let autosave = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.saveWorkspace() }
+        for timer in [fast, medium, slow, autosave] {
             timer.tolerance = timer.timeInterval * 0.2
             RunLoop.main.add(timer, forMode: .common)
         }
-        timers = [fast, medium, slow]
+        timers = [fast, medium, slow, autosave]
     }
 
     private func tickStatus() {
@@ -100,14 +125,37 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 self?.sessions.filter { $0.cwd == path }.forEach { $0.updateGit(summary) }
             }
         }
+        // Agent tabs: what changed since that agent started.
+        for session in sessions where session.agentName != nil {
+            if let baseline = session.agentBaseline {
+                git.agentDiff(baseline) { [weak session] diff in session?.updateAgentDiff(diff) }
+            } else if !session.agentBaselineRequested {
+                session.agentBaselineRequested = true
+                let agent = session.agentName
+                git.baseline(path: session.cwd) { [weak session] baseline in
+                    guard let session, session.agentName == agent else { return }
+                    session.agentBaseline = baseline
+                    if baseline != nil { session.updateAgentDiff((0, 0)) }
+                }
+            }
+        }
     }
 
     // MARK: Tabs
 
     @objc func newTab() {
         let cwd = sessions.indices.contains(selected) ? sessions[selected].cwd : NSHomeDirectory()
-        let session = TerminalSession(cwd: cwd)
+        addTab(cwd: cwd, restoring: nil)
+    }
+
+    private func addTab(cwd: String, restoring saved: SavedTab?) {
+        let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
+        let session = TerminalSession(cwd: dir, restoring: saved)
         session.onChange = { [weak self] in self?.render() }
+        session.onStatusChange = { [weak session] status in
+            guard let session else { return }
+            Notifier.shared.post(status: status, tabID: session.tabID, topic: session.topic, folder: session.folder)
+        }
         session.onCleanExit = { [weak self, weak session] in
             guard let self, let session, let index = self.sessions.firstIndex(of: session) else { return }
             self.removeTab(at: index)
@@ -129,6 +177,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     @objc func closeTab() { confirmClose(at: selected) }
+
+    // MARK: Saving tabs
+
+    /// Writes the open tabs (folder, history, resumable agent) for the next launch.
+    func saveWorkspace() {
+        guard !savedForQuit else { return }
+        WorkspaceStore.save(SavedWorkspace(selected: selected, tabs: sessions.map { $0.snapshot() }, savedAt: Date()))
+    }
+
+    /// Saves one last time before quitting; later saves are ignored.
+    func saveWorkspaceForQuit() {
+        saveWorkspace()
+        savedForQuit = true
+    }
+
+    // MARK: Reordering
+
+    /// Moves a tab, keeping the same tab selected.
+    func moveTab(from: Int, to: Int) {
+        guard sessions.indices.contains(from), sessions.indices.contains(to), from != to else { return }
+        let next = TabOrder.selection(afterMoving: from, to: to, selected: selected)
+        sessions = TabOrder.moved(sessions, from: from, to: to)
+        select(next)
+    }
+
+    @objc func moveTabLeft() { moveTab(from: selected, to: selected - 1) }
+    @objc func moveTabRight() { moveTab(from: selected, to: selected + 1) }
 
     @objc func nextTab() { select((selected + 1) % max(sessions.count, 1)) }
 
@@ -188,7 +263,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     private func render() {
         tabBar.update(sessions.enumerated().map { i, s in
-            TabModel(topic: s.topic, folder: s.folder, git: s.git, status: s.status, selected: i == selected)
+            TabModel(topic: s.topic, folder: s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
+                     status: s.status, selected: i == selected)
         })
         if sessions.indices.contains(selected) { window?.title = sessions[selected].topic }
     }
@@ -224,6 +300,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func tabBar(_ bar: TabBarView, didSelect index: Int) { select(index) }
     func tabBar(_ bar: TabBarView, didClose index: Int) { confirmClose(at: index) }
     func tabBarDidRequestNewTab(_ bar: TabBarView) { newTab() }
+    func tabBar(_ bar: TabBarView, didMove from: Int, to: Int) { moveTab(from: from, to: to) }
 
     // MARK: NSWindowDelegate
 
@@ -259,6 +336,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func windowWillClose(_ notification: Notification) {
         timers.forEach { $0.invalidate() }
         // Empty the list first so the quit check below doesn't ask a second time.
+        saveWorkspaceForQuit()
         let closing = sessions
         sessions = []
         closing.forEach { $0.terminate() }

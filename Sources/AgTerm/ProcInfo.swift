@@ -26,6 +26,37 @@ enum ProcInfo {
         return String(cString: buffer)
     }
 
+    /// The process's argv, read from the kernel (KERN_PROCARGS2: argc, exec path, then argv).
+    static func arguments(pid: pid_t) -> [String] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return [] }
+        let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
+        var index = MemoryLayout<Int32>.size
+        while index < size, buffer[index] != 0 { index += 1 } // exec path
+        while index < size, buffer[index] == 0 { index += 1 } // padding
+        var args: [String] = []
+        while args.count < argc, index < size {
+            let start = index
+            while index < size, buffer[index] != 0 { index += 1 }
+            args.append(String(decoding: buffer[start..<index], as: UTF8.self))
+            index += 1
+        }
+        return args
+    }
+
+    /// The conversation a running Claude Code process is in, from its record in ~/.claude/sessions.
+    static func claudeSessionID(pid: pid_t) -> String? {
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/sessions/\(pid).json")
+        guard let data = try? Data(contentsOf: url),
+              let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = record["sessionId"] as? String,
+              id.range(of: #"^[0-9A-Za-z-]{8,64}$"#, options: .regularExpression) != nil else { return nil }
+        return id
+    }
+
     static func loginShell() -> String {
         if let pw = getpwuid(getuid()), let shell = pw.pointee.pw_shell {
             let path = String(cString: shell)

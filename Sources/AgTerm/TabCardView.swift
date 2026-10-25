@@ -7,6 +7,12 @@ import AppKit
 final class TabCardView: NSView {
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
+    /// Dragging sideways reorders tabs; the bar moves the card while the mouse is down.
+    var onDragBegan: (() -> Void)?
+    var onDragMoved: ((CGFloat) -> Void)?
+    var onDragEnded: (() -> Void)?
+    private var mouseDownX: CGFloat?
+    private var dragging = false
     var model: TabModel? {
         didSet { if model != oldValue { needsDisplay = true } }
     }
@@ -34,7 +40,31 @@ final class TabCardView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if hovering, closeRect.insetBy(dx: -4, dy: -4).contains(point) { onClose?() } else { onSelect?() }
+        if hovering, closeRect.insetBy(dx: -4, dy: -4).contains(point) {
+            mouseDownX = nil
+            onClose?()
+        } else {
+            mouseDownX = event.locationInWindow.x
+            onSelect?()
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = mouseDownX else { return }
+        let dx = event.locationInWindow.x - start
+        if !dragging, abs(dx) > 4 {
+            dragging = true
+            onDragBegan?()
+        }
+        if dragging { onDragMoved?(dx) }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        mouseDownX = nil
+        if dragging {
+            dragging = false
+            onDragEnded?()
+        }
     }
 
     override func otherMouseDown(with event: NSEvent) {
@@ -55,35 +85,63 @@ final class TabCardView: NSView {
         let topicColor = model.selected ? Theme.fg : Theme.fg2
         draw(text(model.topic, Theme.topicFont, topicColor), x: Self.textX, y: Self.line1Y, maxX: topicRight)
 
-        // Line 2: status word, folder, branch; diff pinned right so it never truncates.
+        // Line 2: status, folder, the diff right after the folder, then the branch if it fits.
+        // The diff never truncates; the folder gives way first.
         var x = Self.textX
         if let label = statusLabel(model.status) {
             label.draw(at: NSPoint(x: x, y: Self.line2Y + 1.5))
             x += ceil(label.size().width) + 8
         }
-        var metaRight = rightEdge
-        if let diff = diffText(model.git) {
-            let width = ceil(diff.size().width)
-            diff.draw(at: NSPoint(x: rightEdge - width, y: Self.line2Y))
-            metaRight = rightEdge - width - Self.gap
+        let diff = diffText(model)
+        let diffWidth = diff.map { ceil($0.size().width) + 8 } ?? 0
+        let folder = text(model.folder, Theme.metaFont, Theme.fg3)
+        let folderWidth = min(ceil(folder.size().width), max(0, rightEdge - x - diffWidth))
+        draw(folder, x: x, y: Self.line2Y, maxX: x + folderWidth)
+        x += folderWidth
+        if let diff {
+            diff.draw(at: NSPoint(x: x + 8, y: Self.line2Y))
+            x += diffWidth
         }
-        draw(location(model, width: metaRight - x), x: x, y: Self.line2Y, maxX: metaRight)
+        if let branch = model.git?.branch {
+            let label = text(branch, Theme.metaFont, Theme.fg4)
+            if x + 10 + ceil(label.size().width) <= rightEdge { label.draw(at: NSPoint(x: x + 10, y: Self.line2Y)) }
+        }
     }
 
     private func drawBackground(_ model: TabModel) {
         if model.selected {
+            // Rounded on top, square at the bottom where it joins the terminal.
+            let shape = Self.topRoundedRect(bounds.insetBy(dx: 2, dy: 0).offsetBy(dx: 0, dy: 5), radius: Self.radius)
+            NSGraphicsContext.saveGraphicsState()
+            shape.addClip()
             Theme.bg.setFill()
             bounds.fill()
             Theme.accent.setFill()
-            NSRect(x: 0, y: 0, width: bounds.width, height: 2).fill()
+            NSRect(x: 0, y: 5, width: bounds.width, height: 2).fill()
+            NSGraphicsContext.restoreGraphicsState()
             return
         }
         if hovering {
             Theme.surfaceHover.setFill()
-            bounds.fill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 3, dy: 6), xRadius: Self.radius, yRadius: Self.radius).fill()
         }
         Theme.border.setFill()
         NSRect(x: bounds.maxX - 1, y: 12, width: 1, height: bounds.height - 24).fill()
+    }
+
+    static let radius: CGFloat = 8
+
+    /// A rect with rounded top corners in this flipped view (y grows downward).
+    private static func topRoundedRect(_ r: NSRect, radius: CGFloat) -> NSBezierPath {
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: r.minX, y: r.maxY))
+        path.line(to: NSPoint(x: r.minX, y: r.minY + radius))
+        path.appendArc(withCenter: NSPoint(x: r.minX + radius, y: r.minY + radius), radius: radius, startAngle: 180, endAngle: 270)
+        path.line(to: NSPoint(x: r.maxX - radius, y: r.minY))
+        path.appendArc(withCenter: NSPoint(x: r.maxX - radius, y: r.minY + radius), radius: radius, startAngle: 270, endAngle: 360)
+        path.line(to: NSPoint(x: r.maxX, y: r.maxY))
+        path.close()
+        return path
     }
 
     private func drawDot(_ status: TabStatus, center: NSPoint) {
@@ -132,22 +190,19 @@ final class TabCardView: NSView {
     }
 
     /// Folder, plus the branch when both fit; the branch is dropped rather than cut to "m…".
-    private func location(_ model: TabModel, width: CGFloat) -> NSAttributedString {
-        let folder = text(model.folder, Theme.metaFont, Theme.fg3)
-        guard let branch = model.git?.branch else { return folder }
-        let full = NSMutableAttributedString(attributedString: folder)
-        full.append(text("  \(branch)", Theme.metaFont, Theme.fg4))
-        return full.size().width <= width ? full : folder
+    /// Agent tabs: lines changed since the agent started (shown even at +0 −0).
+    /// Other tabs: the folder's uncommitted changes.
+    private func diffText(_ model: TabModel) -> NSAttributedString? {
+        if let agent = model.agentDiff { return lines(agent.added, agent.removed) }
+        guard let git = model.git else { return nil }
+        if git.added > 0 || git.removed > 0 { return lines(git.added, git.removed) }
+        return git.files > 0 ? text("\(git.files) new", Theme.metaFont, Theme.fg3) : nil
     }
 
-    private func diffText(_ git: GitSummary?) -> NSAttributedString? {
-        guard let git else { return nil }
-        if git.added > 0 || git.removed > 0 {
-            let diff = text("+\(git.added)", Theme.metaFont, Theme.ok)
-            diff.append(text(" −\(git.removed)", Theme.metaFont, Theme.danger))
-            return diff
-        }
-        return git.files > 0 ? text("\(git.files) new", Theme.metaFont, Theme.fg3) : nil
+    private func lines(_ added: Int, _ removed: Int) -> NSAttributedString {
+        let diff = text("+\(added)", Theme.metaFont, Theme.ok)
+        diff.append(text(" −\(removed)", Theme.metaFont, Theme.danger))
+        return diff
     }
 
     private func text(_ string: String, _ font: NSFont, _ color: NSColor) -> NSMutableAttributedString {

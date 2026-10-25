@@ -11,26 +11,63 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     private(set) var foregroundName: String?
     private var foregroundPid: pid_t?
     private(set) var git: GitSummary?
+    /// The coding agent in the foreground (claude, codex, grok…), if any.
+    private(set) var agentName: String?
+    /// Working tree when that agent started; its changes are measured from here.
+    var agentBaseline: GitPoller.AgentBaseline?
+    var agentBaselineRequested = false
+    private(set) var agentDiff: (added: Int, removed: Int)?
     private(set) var signals = StatusSignals()
     private(set) var status: TabStatus = .idle
     private let shellName: String
 
     /// Called when anything shown on the tab may have changed.
     var onChange: (() -> Void)?
+    /// Called when the status changes (for notifications).
+    var onStatusChange: ((TabStatus) -> Void)?
     /// Called when the shell exits on its own with status 0.
     var onCleanExit: (() -> Void)?
+    /// Typed into the shell once its first prompt appears (resuming a restored agent).
+    private var pendingCommand: String?
 
-    init(cwd: String) {
+    /// `restoring` brings back a tab saved at the last quit: its history, then its agent.
+    init(cwd: String, restoring saved: SavedTab? = nil) {
         self.cwd = cwd
         let shell = ProcInfo.loginShell()
         shellName = (shell as NSString).lastPathComponent
-        view = AgentTerminalView(frame: .zero)
+        var options = TerminalOptions.default
+        options.scrollback = Scrollback.maxLines
+        view = AgentTerminalView(frame: .zero, font: nil, options: options)
         super.init()
         configure()
         applyAppearance()
         view.processDelegate = self
-        view.startProcess(executable: shell, args: [], environment: Self.environment(),
+        if let saved {
+            if !saved.scrollback.isEmpty {
+                view.feed(text: saved.scrollback + "\r\n\u{1b}[0;2m— restored \(Self.restoredStamp()) —\u{1b}[0m\r\n")
+            }
+            pendingCommand = saved.resume
+        }
+        view.startProcess(executable: shell, args: [], environment: environment(),
                           execName: "-" + shellName, currentDirectory: cwd)
+    }
+
+    private static func restoredStamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: Date())
+    }
+
+    /// What to save so this tab can be reopened: folder, history and, for agents that can
+    /// resume a conversation, the command that brings them back.
+    func snapshot() -> SavedTab {
+        pollProcess()
+        var resume: String?
+        if let fg = foregroundPid, fg != view.process.shellPid, !signals.exited {
+            resume = AgentResume.commandLine(argv: ProcInfo.arguments(pid: fg), claudeSessionID: ProcInfo.claudeSessionID(pid: fg))
+        }
+        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand)
     }
 
     /// Re-reads font and colors from `Theme`; called when Settings change.
@@ -49,7 +86,11 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
 
     private func configure() {
         view.enableDrops()
-        view.onOutput = { [weak self] in self?.signals.lastOutput = Date() }
+        view.onOutput = { [weak self] in
+            guard let self else { return }
+            self.signals.lastOutput = Date()
+            self.runPendingCommand()
+        }
         view.onInput = { [weak self] in self?.signals.lastInput = Date() }
         view.onBell = { [weak self] in
             self?.signals.lastBell = Date()
@@ -57,8 +98,21 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         }
     }
 
-    private static func environment() -> [String] {
+    /// Runs the restored command shortly after the shell's first output (its prompt).
+    private func runPendingCommand() {
+        guard let command = pendingCommand else { return }
+        pendingCommand = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.view.send(txt: command + "\r")
+        }
+    }
+
+    /// Stable for the tab's life; agmux memory uses it to tell this tab's sessions apart.
+    let tabID = UUID().uuidString
+
+    private func environment() -> [String] {
         var env = ProcessInfo.processInfo.environment
+        AgentIntegration.shellEnvironment(&env, tabID: tabID)
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         env["TERM_PROGRAM"] = "agterm"
@@ -99,6 +153,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         if next != status {
             status = next
             onChange?()
+            onStatusChange?(next)
         }
     }
 
@@ -109,6 +164,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         let fg = ProcInfo.foregroundPid(ptyFd: view.process.childfd) ?? shellPid
         foregroundPid = fg
         let name = ProcInfo.name(pid: fg)
+        updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
         let dir = ProcInfo.cwd(pid: fg) ?? ProcInfo.cwd(pid: shellPid) ?? cwd
         guard name != foregroundName || dir != cwd else { return }
         // Back at the prompt: forget the agent's title so a stale spinner or topic doesn't stick.
@@ -119,6 +175,21 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         }
         foregroundName = name
         cwd = dir
+        onChange?()
+    }
+
+    private func updateAgent(_ agent: String?) {
+        guard agent != agentName else { return }
+        agentName = agent
+        agentBaseline = nil
+        agentBaselineRequested = false
+        agentDiff = nil
+        onChange?()
+    }
+
+    func updateAgentDiff(_ diff: (added: Int, removed: Int)?) {
+        guard diff?.added != agentDiff?.added || diff?.removed != agentDiff?.removed else { return }
+        agentDiff = diff
         onChange?()
     }
 

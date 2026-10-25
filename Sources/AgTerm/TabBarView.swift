@@ -1,11 +1,18 @@
 import AgTermCore
 import AppKit
 
+struct DiffCount: Equatable {
+    var added: Int
+    var removed: Int
+}
+
 /// Everything a tab card draws. Built fresh from a session on each change.
 struct TabModel: Equatable {
     var topic: String
     var folder: String
     var git: GitSummary?
+    /// Lines changed since the tab's agent started; nil when no agent is running.
+    var agentDiff: DiffCount?
     var status: TabStatus
     var selected: Bool
 }
@@ -14,6 +21,7 @@ protocol TabBarDelegate: AnyObject {
     func tabBar(_ bar: TabBarView, didSelect index: Int)
     func tabBar(_ bar: TabBarView, didClose index: Int)
     func tabBarDidRequestNewTab(_ bar: TabBarView)
+    func tabBar(_ bar: TabBarView, didMove from: Int, to: Int)
 }
 
 /// Horizontal strip of two-line tab cards plus a new-tab button. Sits in the title bar.
@@ -71,6 +79,9 @@ final class TabBarView: NSView {
             let card = TabCardView()
             card.onSelect = { [weak self, weak card] in self?.cardAction(card, close: false) }
             card.onClose = { [weak self, weak card] in self?.cardAction(card, close: true) }
+            card.onDragBegan = { [weak self, weak card] in self?.beginDrag(card) }
+            card.onDragMoved = { [weak self] dx in self?.moveDrag(dx) }
+            card.onDragEnded = { [weak self] in self?.endDrag() }
             cards.append(card)
             strip.addSubview(card)
         }
@@ -93,6 +104,72 @@ final class TabBarView: NSView {
     private func cardAction(_ card: TabCardView?, close: Bool) {
         guard let card, let index = cards.firstIndex(where: { $0 === card }) else { return }
         if close { delegate?.tabBar(self, didClose: index) } else { delegate?.tabBar(self, didSelect: index) }
+    }
+
+    // MARK: Drag to reorder
+
+    private struct Drag {
+        let from: Int
+        let startX: CGFloat
+        var dx: CGFloat = 0
+        var to: Int
+    }
+    private var drag: Drag?
+
+    private func beginDrag(_ card: TabCardView?) {
+        guard let card, let index = cards.firstIndex(where: { $0 === card }) else { return }
+        drag = Drag(from: index, startX: card.frame.minX, to: index)
+        strip.addSubview(card, positioned: .above, relativeTo: nil) // draw on top while moving
+    }
+
+    private func moveDrag(_ dx: CGFloat) {
+        guard var d = drag else { return }
+        d.dx = dx
+        let width = tabWidth
+        let center = d.startX + dx + scrollX + width / 2
+        d.to = min(max(Int(center / width), 0), cards.count - 1)
+        let slotChanged = d.to != drag?.to
+        drag = d
+        if slotChanged {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                context.allowsImplicitAnimation = true
+                layoutCards(animated: true)
+            }
+        } else {
+            layoutCards(animated: false)
+        }
+    }
+
+    private func endDrag() {
+        guard let d = drag else { return }
+        drag = nil
+        if d.from != d.to {
+            delegate?.tabBar(self, didMove: d.from, to: d.to)
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            layoutCards(animated: true)
+        }
+    }
+
+    /// Normal positions, or during a drag: the dragged card under the mouse and the others
+    /// closed up around the slot it would drop into.
+    private func layoutCards(animated: Bool) {
+        let width = tabWidth
+        var slot = 0
+        for (i, card) in cards.enumerated() {
+            var frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+            if let d = drag, i == d.from {
+                frame.origin.x = min(max(d.startX + d.dx, -scrollX), CGFloat(cards.count - 1) * width - scrollX)
+                card.frame = frame
+                continue
+            }
+            if let d = drag, slot == d.to { slot += 1 }
+            frame.origin.x = CGFloat(slot) * width - scrollX
+            slot += 1
+            if animated { card.animator().frame = frame } else { card.frame = frame }
+        }
     }
 
     // MARK: Layout
@@ -118,9 +195,7 @@ final class TabBarView: NSView {
         scrollX = min(max(0, scrollX), maxScroll)
         strip.frame = NSRect(x: stripX, y: 0, width: stripWidth, height: bounds.height)
         let width = tabWidth
-        for (i, card) in cards.enumerated() {
-            card.frame = NSRect(x: CGFloat(i) * width - scrollX, y: 0, width: width, height: bounds.height)
-        }
+        layoutCards(animated: false)
         let contentEnd = overflows ? strip.frame.maxX + Self.arrowWidth : stripX + CGFloat(cards.count) * width
         plusButton.frame = NSRect(x: contentEnd, y: 0, width: Self.plusWidth, height: bounds.height)
 
@@ -206,7 +281,7 @@ private final class IconButton: NSView {
         case .plus:
             if hovering {
                 Theme.surfaceHover.setFill()
-                NSRect(x: c.x - 13, y: c.y - 13, width: 26, height: 26).fill()
+                NSBezierPath(roundedRect: NSRect(x: c.x - 13, y: c.y - 13, width: 26, height: 26), xRadius: 7, yRadius: 7).fill()
             }
             ink.setFill()
             NSRect(x: c.x - 6, y: c.y - 0.5, width: 12, height: 1).fill()
