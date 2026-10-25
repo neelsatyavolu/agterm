@@ -23,7 +23,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 cp "$BIN/AgTerm" "$APP/Contents/MacOS/agterm"
 cp -R "$BIN"/*.bundle "$APP/Contents/Resources/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
-cp Resources/agterm-notify.wav "$APP/Contents/Resources/"
+cp -X Resources/agterm-notify.wav "$APP/Contents/Resources/"
 ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
