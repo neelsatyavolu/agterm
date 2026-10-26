@@ -34,12 +34,25 @@ public struct SessionInfo: Codable, Equatable {
     public var pid: Int32
     public var cwd: String
     public var startedAt: Date
+    /// A client is showing it (another agterm, say). Helpers from before this field send none,
+    /// which reads as false; older apps ignore it.
+    public var attached: Bool
 
-    public init(id: String, pid: Int32, cwd: String, startedAt: Date) {
+    public init(id: String, pid: Int32, cwd: String, startedAt: Date, attached: Bool = false) {
         self.id = id
         self.pid = pid
         self.cwd = cwd
         self.startedAt = startedAt
+        self.attached = attached
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        pid = try c.decode(Int32.self, forKey: .pid)
+        cwd = try c.decode(String.self, forKey: .cwd)
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        attached = try c.decodeIfPresent(Bool.self, forKey: .attached) ?? false
     }
 }
 

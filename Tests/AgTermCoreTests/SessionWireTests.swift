@@ -8,7 +8,7 @@ final class SessionWireTests: XCTestCase {
         [
             .hello(version: SessionWire.protocolVersion, build: "1.2.3"),
             .list,
-            .sessions([info, SessionInfo(id: "s2", pid: 7, cwd: "/", startedAt: Date(timeIntervalSince1970: 1_700_000_100))]),
+            .sessions([info, SessionInfo(id: "s2", pid: 7, cwd: "/", startedAt: Date(timeIntervalSince1970: 1_700_000_100), attached: true)]),
             .spawn(SpawnRequest(executable: "/bin/zsh", argv: ["-zsh"], env: ["A=1", "B=2"], cwd: "/tmp", cols: 80, rows: 24)),
             .attach(id: "s1"),
             .attached(info),
@@ -82,6 +82,17 @@ final class SessionWireTests: XCTestCase {
         let json = #"{"build":"b","version":1}"#
         XCTAssertEqual(Array(WireFrame.encode(.hello(version: 1, build: "b"))),
                        [0, 0, 0, UInt8(1 + json.utf8.count), 1] + Array(json.utf8))
+    }
+
+    func testSessionInfoAttachedIsEncodedAndOptional() throws {
+        let attached = SessionInfo(id: "s", pid: 1, cwd: "/", startedAt: Date(timeIntervalSince1970: 0), attached: true)
+        let json = #"[{"attached":true,"cwd":"\/","id":"s","pid":1,"startedAt":"1970-01-01T00:00:00Z"}]"#
+        XCTAssertEqual(Array(WireFrame.encode(.sessions([attached]))), [0, 0, 0, UInt8(1 + json.utf8.count), 3] + Array(json.utf8))
+        // A helper from before the flag sends none: not attached.
+        let old = #"[{"cwd":"/","id":"s","pid":1,"startedAt":"1970-01-01T00:00:00Z"}]"#
+        var buffer = Data([0, 0, 0, UInt8(1 + old.utf8.count), 3] + Array(old.utf8))
+        guard case .sessions(let infos)? = try WireFrame.decode(&buffer) else { return XCTFail("expected sessions") }
+        XCTAssertEqual(infos.map(\.attached), [false])
     }
 
     func testEveryTagIsPinned() {

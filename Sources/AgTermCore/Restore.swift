@@ -67,9 +67,24 @@ public enum LaunchTab: Equatable {
 
     /// The saved tabs in their order, each reattached if the helper still lists its session, then
     /// the helper's other sessions (a crash before the last save), oldest first.
-    public static func plan(saved: [SavedTab], live: [SessionInfo]) -> [LaunchTab] {
-        var unclaimed = live
-        let tabs: [LaunchTab] = saved.map { tab in
+    ///
+    /// Sessions another client is showing (another agterm) are left to it, and so is a saved tab
+    /// whose session that is: neither reattached nor reopened. `live` is nil when the helper can't
+    /// be asked: a tab that was in it reopens from its history without its resume command, since
+    /// its agent may well still be running there.
+    public static func plan(saved: [SavedTab], live: [SessionInfo]?) -> [LaunchTab] {
+        guard let live else {
+            return saved.map { tab in
+                guard tab.sessionID != nil else { return .restore(tab) }
+                var history = tab
+                history.resume = nil
+                return .restore(history)
+            }
+        }
+        let elsewhere = Set(live.filter(\.attached).map(\.id))
+        var unclaimed = live.filter { !$0.attached }
+        let tabs: [LaunchTab] = saved.compactMap { tab in
+            if let id = tab.sessionID, elsewhere.contains(id) { return nil }
             guard let index = unclaimed.firstIndex(where: { $0.id == tab.sessionID }) else { return .restore(tab) }
             return .reattach(unclaimed.remove(at: index), saved: tab)
         }

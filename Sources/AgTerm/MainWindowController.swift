@@ -177,10 +177,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     /// Brings back the last session's tabs, in order: shells the helper kept are shown again live,
     /// the rest reopen from their saved history. Shells the helper has that weren't saved (agterm
-    /// crashed before saving them) are added at the end.
+    /// crashed before saving them) are added at the end. Shells another agterm shows are left to it.
     private func restoreTabs() {
         let saved = WorkspaceStore.load()
-        let live = SessionHelper.shared()?.list() ?? []
+        // Nil when the helper can't be asked: tabs that were in it come back without their agent.
+        let live = SessionHelper.shared()?.list()
         let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live)
         guard !plan.isEmpty else { return newTab() }
         for tab in plan {
@@ -364,6 +365,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     var runningPrograms: [String] {
         sessions.filter(\.isRunningProgram).map { "\($0.foregroundName ?? "?") in \($0.folder)" }
+    }
+
+    /// Tabs whose shells a quit leaves running in the helper.
+    var keptTabIDs: Set<String> {
+        Set(sessions.filter(\.isKeptByHelper).map(\.tabID))
     }
 
     /// The running programs quitting would stop: all of them when ending sessions, else only

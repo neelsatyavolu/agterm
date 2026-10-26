@@ -6,9 +6,11 @@ import Foundation
 /// login's current tokens (Codex refreshes them in auth.json), and once that process has exited
 /// it sends the tokens back, returns the loan and deletes its copy. Main queue only.
 ///
-/// A borrowed login's folder holds `lease.json` (which loan, never tokens), so a loan left by a
-/// crash can still be returned, and `owner.pid`, written by the wrapper as the agent starts: the
-/// loan lasts exactly as long as that process, in the foreground or not.
+/// A borrowed login's folder holds `lease.json` (which loan and tab, never tokens), so a loan left
+/// by a crash can still be returned, and `owner.pid`, written by the wrapper as the agent starts:
+/// the loan lasts exactly as long as that process, in the foreground or not. That includes an
+/// agent in a tab the sessions helper kept running across a quit: the next launch takes its loan
+/// back up.
 final class TeamAccounts: ObservableObject {
     static let shared = TeamAccounts()
     static let renewEvery: TimeInterval = {
@@ -71,18 +73,28 @@ final class TeamAccounts: ObservableObject {
     /// The pooled login behind a loan, so a tab that ran it out doesn't get it again.
     func accountID(_ id: String) -> String? { held[id]?.lease.accountID }
 
-    /// Returns loans a crash left behind, with whatever tokens Codex last wrote.
+    /// Takes back up the loans of agents still running from the last run (their tab outlived the
+    /// quit or a crash) and returns the rest, with whatever tokens Codex last wrote.
     func start() {
         let fm = FileManager.default
         try? fm.removeItem(at: AccountStore.requestsDir)
         let token = token
-        for name in (try? fm.contentsOfDirectory(atPath: AccountStore.dir.path)) ?? [] where TeamPool.isLocalID(name) {
-            let home = AccountStore.home(name)
+        let leftovers = ((try? fm.contentsOfDirectory(atPath: AccountStore.dir.path)) ?? []).filter(TeamPool.isLocalID).map { id in
+            TeamPool.HeldLoan(id: id, owner: Self.owner(AccountStore.home(id)), tabID: Self.savedTabID(AccountStore.home(id)))
+        }
+        let running = TeamPool.leftoverLoansToKeep(leftovers, alive: Self.alive)
+        for loan in leftovers {
+            let home = AccountStore.home(loan.id)
             guard let token, let lease = Self.savedLease(home) else {
                 try? fm.removeItem(at: home)
                 continue
             }
-            enqueue(name) { await Self.returnLease(token, lease, home: home) }
+            if running.contains(loan.id) {
+                // Renewed on the next poll, which also returns it once the agent exits.
+                held[loan.id] = Held(lease: lease, tabID: loan.tabID ?? "", since: Date(), renewedAt: .distantPast, started: true)
+                continue
+            }
+            enqueue(loan.id) { await Self.returnLease(token, lease, home: home) }
         }
         refresh()
     }
@@ -136,7 +148,7 @@ final class TeamAccounts: ObservableObject {
                     await Self.release(token, lease)
                     break
                 }
-                guard let home = try? Self.install(lease, id: id) else {
+                guard let home = try? Self.install(lease, id: id, tabID: tabID) else {
                     await self.finish(id) { await Self.returnLease(token, lease, home: AccountStore.home(id)) }
                     break
                 }
@@ -291,12 +303,17 @@ final class TeamAccounts: ObservableObject {
     }
 
     /// Quitting or signing out: stop every agent on a team login, then return all loans now,
-    /// so teammates don't wait 5 minutes for them.
-    func giveBackAll() {
+    /// so teammates don't wait 5 minutes for them. A quit that leaves tabs running passes those
+    /// tabs as `keptTabs`: an agent still running in one keeps its loan (and its login folder)
+    /// for the next launch to take back up.
+    func giveBackAll(keepingAgentsIn keptTabs: Set<String>? = nil) {
         generation += 1
-        let loans = held.mapValues(\.lease).merging(inFlight.filter { !settingUp.contains($0.key) }) { current, _ in current }
-        guard !loans.isEmpty else { return }
+        let kept = TeamPool.loansToKeep(held.map { TeamPool.HeldLoan(id: $0.key, owner: Self.owner(AccountStore.home($0.key)), tabID: $0.value.tabID) },
+                                        keptTabs: keptTabs ?? [], detaching: keptTabs != nil, alive: Self.alive)
+        let loans = held.filter { !kept.contains($0.key) }.mapValues(\.lease)
+            .merging(inFlight.filter { !settingUp.contains($0.key) }) { current, _ in current }
         held = [:]
+        guard !loans.isEmpty else { return }
         inFlight = inFlight.filter { settingUp.contains($0.key) }
         let owners = loans.keys.compactMap { Self.owner(AccountStore.home($0)) }
         let pending = Array(queues.values)
@@ -460,10 +477,11 @@ final class TeamAccounts: ObservableObject {
     }
 
     /// Creates the login's folder (shared conversations and settings, like your own accounts)
-    /// with the borrowed auth.json and which loan it is, readable by you only.
-    private static func install(_ lease: TeamPool.Lease, id: String) throws -> URL {
+    /// with the borrowed auth.json and which loan (and tab) it is, readable by you only.
+    private static func install(_ lease: TeamPool.Lease, id: String, tabID: String? = nil) throws -> URL {
         let home = try AccountStore.prepareHome(id, provider: lease.provider)
-        let saved: [String: Any] = ["teamID": lease.teamID, "leaseID": lease.leaseID, "accountID": lease.accountID, "label": lease.label]
+        var saved: [String: Any] = ["teamID": lease.teamID, "leaseID": lease.leaseID, "accountID": lease.accountID, "label": lease.label]
+        if let tabID { saved["tabID"] = tabID }
         guard let record = try? JSONSerialization.data(withJSONObject: saved),
               FileManager.default.createFile(atPath: home.appendingPathComponent("lease.json").path, contents: record, attributes: [.posixPermissions: 0o600]),
               FileManager.default.createFile(atPath: home.appendingPathComponent("auth.json").path, contents: lease.credentials, attributes: [.posixPermissions: 0o600]) else {
@@ -479,6 +497,13 @@ final class TeamAccounts: ObservableObject {
               let team = saved["teamID"], let leaseID = saved["leaseID"], let account = saved["accountID"] else { return nil }
         return TeamPool.Lease(teamID: team, leaseID: leaseID, accountID: account, provider: .codex, label: saved["label"] ?? "Team account",
                               credentials: Data(), expiresAt: .distantFuture, remainingPercent: nil)
+    }
+
+    /// The tab that borrowed a folder's loan, from its lease.json.
+    private static func savedTabID(_ home: URL) -> String? {
+        guard let data = FileManager.default.contents(atPath: home.appendingPathComponent("lease.json").path),
+              let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: String] else { return nil }
+        return saved["tabID"]
     }
 
     private static func renew(_ token: String, _ lease: TeamPool.Lease, home: URL, health: TeamPool.Health?) async throws -> Date {

@@ -58,7 +58,7 @@ enum SessionHelper {
                                                                          timeout: max(0.1, deadline.timeIntervalSinceNow))
                 let client = Client(control: control, socket: socket, build: build)
                 // A helper from another build with no shells to keep makes way for ours, once.
-                if serverBuild != build, !replaced, client.list().isEmpty {
+                if serverBuild != build, !replaced, client.list()?.isEmpty == true {
                     replaced = true
                     client.shutDown()
                     waitForRemoval(socket, until: Date().addingTimeInterval(startTimeout))
@@ -146,12 +146,13 @@ enum SessionHelper {
             self.build = build
         }
 
-        /// The helper's shells, oldest first; empty if it doesn't answer.
-        func list() -> [SessionInfo] {
+        /// The helper's shells, oldest first; nil if it doesn't answer (unlike an empty list,
+        /// that says nothing about which shells it has).
+        func list() -> [SessionInfo]? {
             lock.lock()
             defer { lock.unlock() }
             guard (try? control.send(.list)) != nil,
-                  case .sessions(let infos)? = try? control.receive(timeout: Self.replyTimeout) else { return [] }
+                  case .sessions(let infos)? = try? control.receive(timeout: Self.replyTimeout) else { return nil }
             return infos
         }
 

@@ -6,14 +6,24 @@ import Foundation
 enum WorkspaceStore {
     /// ~/Library/Application Support/<bundle id>/workspace.json. Unbundled debug builds use
     /// "agterm-dev" so they never touch the installed app's tabs; AGTERM_STATE_DIR overrides.
+    /// A self-test without AGTERM_STATE_DIR gets a folder of its own, so it never shares a
+    /// sessions helper (or tabs) with a running debug build.
     static var fileURL: URL {
         if let dir = ProcessInfo.processInfo.environment["AGTERM_STATE_DIR"] {
             return URL(fileURLWithPath: dir).appendingPathComponent("workspace.json")
         }
+        #if DEBUG
+        if let dir = selfTestDir { return dir.appendingPathComponent("workspace.json") }
+        #endif
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support.appendingPathComponent(Bundle.main.bundleIdentifier ?? "agterm-dev", isDirectory: true)
             .appendingPathComponent("workspace.json")
     }
+
+    #if DEBUG
+    private static let selfTestDir: URL? = ProcessInfo.processInfo.environment["AGTERM_SELFTEST"] == nil ? nil
+        : URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("agterm-selftest-\(getpid())", isDirectory: true)
+    #endif
 
     static func load() -> SavedWorkspace? {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }

@@ -74,8 +74,9 @@ extension SelfTest {
                         after(3) {
                             let left = helper.list()
                             let alive = pids.filter { kill($0, 0) == 0 }
-                            if !left.isEmpty || !alive.isEmpty { print("persist: left behind:", left.map(\.id), "pids:", alive) }
-                            report("quit-and-end leaves no shells", left.isEmpty && alive.isEmpty)
+                            let none = left?.isEmpty == true && alive.isEmpty
+                            if !none { print("persist: left behind:", left.map { $0.map(\.id) } ?? ["helper didn't answer"], "pids:", alive) }
+                            report("quit-and-end leaves no shells", none)
                             exit(passed ? 0 : 2)
                         }
                     }

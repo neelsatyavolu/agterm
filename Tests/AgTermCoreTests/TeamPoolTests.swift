@@ -113,4 +113,26 @@ final class TeamPoolTests: XCTestCase {
         XCTAssertFalse(TeamPool.isLocalID("team-"))
         XCTAssertFalse(TeamPool.isLocalID("native"))
     }
+
+    func testDetachingKeepsLoansWhoseAgentRunsInAKeptTab() {
+        let loans = [
+            TeamPool.HeldLoan(id: "kept", owner: 10, tabID: "A"),
+            TeamPool.HeldLoan(id: "exited", owner: 11, tabID: "A"),
+            TeamPool.HeldLoan(id: "fallback", owner: 12, tabID: "B"),
+            TeamPool.HeldLoan(id: "not-started", owner: nil, tabID: "A"),
+        ]
+        let alive: (Int32) -> Bool = { $0 != 11 }
+        XCTAssertEqual(TeamPool.loansToKeep(loans, keptTabs: ["A"], detaching: true, alive: alive), ["kept"])
+        XCTAssertEqual(TeamPool.loansToKeep(loans, keptTabs: ["A"], detaching: false, alive: alive), [],
+                       "ending every session returns every loan")
+    }
+
+    func testLaunchKeepsLeftoverLoansWhoseAgentStillRuns() {
+        let loans = [
+            TeamPool.HeldLoan(id: "running", owner: 10, tabID: nil),
+            TeamPool.HeldLoan(id: "gone", owner: 11, tabID: nil),
+            TeamPool.HeldLoan(id: "never-started", owner: nil, tabID: nil),
+        ]
+        XCTAssertEqual(TeamPool.leftoverLoansToKeep(loans, alive: { $0 == 10 }), ["running"])
+    }
 }

@@ -98,6 +98,38 @@ public enum TeamPool {
 
     public static func isLocalID(_ id: String) -> Bool { id.hasPrefix(localPrefix) && id.count > localPrefix.count }
 
+    /// A loan this Mac holds: its folder id, the agent process running on it (from owner.pid)
+    /// and the tab that borrowed it, if known.
+    public struct HeldLoan: Equatable, Sendable {
+        public let id: String
+        public let owner: Int32?
+        public let tabID: String?
+
+        public init(id: String, owner: Int32?, tabID: String?) {
+            self.id = id
+            self.owner = owner
+            self.tabID = tabID
+        }
+    }
+
+    /// At quit: the loans to keep out. A quit that leaves tabs running (`detaching`) keeps a loan
+    /// whose agent is alive in a tab the sessions helper keeps; it would die with any other tab.
+    /// Ending every session keeps none.
+    public static func loansToKeep(_ loans: [HeldLoan], keptTabs: Set<String>, detaching: Bool,
+                                   alive: (Int32) -> Bool) -> Set<String> {
+        guard detaching else { return [] }
+        return Set(loans.filter { loan in
+            guard let owner = loan.owner, let tab = loan.tabID else { return false }
+            return keptTabs.contains(tab) && alive(owner)
+        }.map(\.id))
+    }
+
+    /// At launch: loans the last run left out whose agent is still running (in a tab that
+    /// outlived the quit or a crash); the rest go back.
+    public static func leftoverLoansToKeep(_ loans: [HeldLoan], alive: (Int32) -> Bool) -> Set<String> {
+        Set(loans.filter { $0.owner.map(alive) ?? false }.map(\.id))
+    }
+
     public static func failure(status: Int) -> Failure {
         switch status {
         case 401: Failure(message: "agmux Teams no longer accepts this Mac's sign-in.", retryable: false)

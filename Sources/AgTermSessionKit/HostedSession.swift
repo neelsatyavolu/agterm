@@ -36,7 +36,7 @@ final class HostedSession {
     private var exited = false
     private let readBuffer = UnsafeMutableRawPointer.allocate(byteCount: readSize, alignment: 8)
 
-    var info: SessionInfo { SessionInfo(id: id, pid: pid, cwd: cwd, startedAt: startedAt) }
+    var info: SessionInfo { SessionInfo(id: id, pid: pid, cwd: cwd, startedAt: startedAt, attached: client != nil) }
 
     init(request: SpawnRequest, queue: DispatchQueue) throws {
         (pid, masterFd) = try PtySpawn.fork(request)

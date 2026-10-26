@@ -33,8 +33,9 @@ fi
 echo "Building…"
 scripts/bundle.sh >/dev/null
 
-if pgrep -f "$DEST/Contents/MacOS/agterm" >/dev/null; then
-    echo "error: agterm is running from $DEST. Quit it (its tabs will close) and run this again." >&2
+# The app itself, not the agterm-sessions helper beside it, which keeps tabs running after a quit.
+if pgrep -f "$DEST/Contents/MacOS/agterm( |$)" >/dev/null; then
+    echo "error: agterm is running from $DEST. Quit it (⌘Q) and run this again. Its tabs keep running in agterm-sessions and come back when agterm starts; agterm → Quit and End Sessions (⌥⌘Q) ends them instead." >&2
     exit 1
 fi
 

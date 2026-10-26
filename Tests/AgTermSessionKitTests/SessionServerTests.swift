@@ -58,6 +58,28 @@ final class SessionServerTests: XCTestCase {
         XCTAssertTrue(String(decoding: screen, as: UTF8.self).contains("MARK"))
     }
 
+    func testListReportsWhichSessionsAreAttached() throws {
+        let holder = try connect()
+        defer { holder.close() }
+        let shown = try spawn(holder, "sleep 5")
+        let left = try connect()
+        let detached = try spawn(left, "sleep 5")
+        left.close()
+
+        let asker = try connect()
+        defer { asker.close() }
+        var attached: [String: Bool] = [:]
+        // The helper notices the closed client on its own queue.
+        for _ in 0..<50 {
+            try asker.send(.list)
+            guard case .sessions(let infos) = try asker.receive(timeout: 5) else { return XCTFail("expected sessions") }
+            attached = Dictionary(uniqueKeysWithValues: infos.map { ($0.id, $0.attached) })
+            if attached[detached.id] == false { break }
+            usleep(20_000)
+        }
+        XCTAssertEqual(attached, [shown.id: true, detached.id: false])
+    }
+
     func testReadsWhileNoClientAttached() throws {
         let first = try connect()
         let info = try spawn(first, "yes | head -c 2000000; echo DONE; sleep 5")

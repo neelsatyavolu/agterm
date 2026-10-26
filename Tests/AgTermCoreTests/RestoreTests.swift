@@ -136,6 +136,26 @@ final class SavedWorkspaceTests: XCTestCase {
         XCTAssertEqual(LaunchTab.plan(saved: [tab, tab], live: [a]), [.reattach(a, saved: tab), .restore(tab)])
     }
 
+    func testLaunchLeavesOutSessionsAttachedElsewhere() {
+        let date = Date(timeIntervalSince1970: 0)
+        let other = SessionInfo(id: "A", pid: 10, cwd: "/a", startedAt: date, attached: true)
+        let stray = SessionInfo(id: "S", pid: 20, cwd: "/s", startedAt: date, attached: true)
+        let free = SessionInfo(id: "F", pid: 30, cwd: "/f", startedAt: date)
+        let shown = SavedTab(cwd: "/a", scrollback: "", resume: "command claude --continue", sessionID: "A")
+        let plain = SavedTab(cwd: "/b", scrollback: "", resume: nil)
+        // Another agterm shows A and S: neither is taken, and A's saved tab isn't restored or resumed either.
+        XCTAssertEqual(LaunchTab.plan(saved: [shown, plain], live: [other, stray, free]),
+                       [.restore(plain), .reattach(free, saved: nil)])
+    }
+
+    func testLaunchWithoutTheHelperRestoresHistoryButDoesNotResume() {
+        let kept = SavedTab(cwd: "/a", scrollback: "old", resume: "command claude --continue", sessionID: "A")
+        let plain = SavedTab(cwd: "/b", scrollback: "", resume: "command codex resume x")
+        // The agent may still be running in the helper, so it isn't started a second time.
+        XCTAssertEqual(LaunchTab.plan(saved: [kept, plain], live: nil),
+                       [.restore(SavedTab(cwd: "/a", scrollback: "old", resume: nil, sessionID: "A")), .restore(plain)])
+    }
+
     func testSelectionIsClampedToTabs() throws {
         let data = Data(#"{"version": 1, "selected": 7, "savedAt": 0, "tabs": [{"cwd": "/a", "scrollback": ""}]}"#.utf8)
         XCTAssertEqual(try SavedWorkspace.decode(data).selected, 0)

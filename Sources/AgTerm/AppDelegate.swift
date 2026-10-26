@@ -85,8 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Quitting (⌘Q, an update's relaunch) leaves the tabs' shells running in the helper for the
     /// next launch; Quit and End Sessions ends them.
     func applicationWillTerminate(_ notification: Notification) {
+        // Agents left running keep their team logins; read the tabs before the quit lets go of them.
+        let keptTabs = endSessionsOnQuit ? nil : controller?.keptTabIDs
         controller?.quit(endingSessions: endSessionsOnQuit)
-        TeamAccounts.shared.giveBackAll()
+        TeamAccounts.shared.giveBackAll(keepingAgentsIn: keptTabs)
     }
 
     @objc func quitAndEndSessions() {

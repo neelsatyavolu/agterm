@@ -21,7 +21,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Build | `swift build` |
 | One test class | `swift test --filter ChangelogTests` |
 | All tests | `swift test` |
-| Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` |
+| Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |
 | Publish a release | `scripts/release.sh` (maintainer only) |
