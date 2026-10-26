@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.3
+## 1.0.3 — 2026-10-26
 - Changed: ⌘K sends the model the tab's last 150 lines, scrollback included, so requests like "fix that error" or "run that again" work on commands that have scrolled off the screen.
 - Fixed: The cd folder list also shows up for names of several words, like `cd show resources` for a folder named Show Resources.
 
