@@ -38,6 +38,9 @@ public struct StatusSignals: Equatable, Sendable {
     /// Last time the tab was on screen.
     public var lastSeen: Date?
     public var focused = false
+    /// A plain command (not an agent) still holds the terminal. Its quiet spells, like `brew
+    /// upgrade` between casks, aren't it finishing; that's when the shell gets the prompt back.
+    public var commandRunning = false
     public var exited = false
     /// An agent's permission prompt or other choice is on screen (see `PermissionPrompt`).
     public var promptVisible = false
@@ -72,7 +75,7 @@ public enum StatusRules {
         if !s.focused, isAfterSeen(s.lastBell, s), isAfter(s.lastBell, workSinceBell) { return .waiting }
         // Work you stopped yourself isn't "finished while you were away".
         let stoppedByYou = s.lastInterrupt.map { interrupt in s.lastWorking.map { interrupt >= $0.addingTimeInterval(-bellGrace) } ?? true } ?? false
-        if !s.focused, !stoppedByYou, isAfterSeen(s.lastWorking, s) { return .done }
+        if !s.focused, !stoppedByYou, !s.commandRunning, isAfterSeen(s.lastWorking, s) { return .done }
         return .idle
     }
 

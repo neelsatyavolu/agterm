@@ -127,6 +127,19 @@ final class StatusTests: XCTestCase {
         XCTAssertEqual(StatusRules.status(s, now: now), .done)
     }
 
+    func testPauseInARunningCommandIsNotDone() {
+        // `brew upgrade` goes quiet between casks; that isn't the command finishing.
+        let s = signals {
+            $0.lastWorking = now.addingTimeInterval(-5)
+            $0.lastSeen = now.addingTimeInterval(-60)
+            $0.commandRunning = true
+        }
+        XCTAssertEqual(StatusRules.status(s, now: now), .idle)
+        var finished = s
+        finished.commandRunning = false
+        XCTAssertEqual(StatusRules.status(finished, now: now), .done)
+    }
+
     func testFocusedTabNeverDone() {
         let s = signals { $0.lastWorking = now.addingTimeInterval(-5); $0.lastSeen = now.addingTimeInterval(-60); $0.focused = true }
         XCTAssertEqual(StatusRules.status(s, now: now), .idle)

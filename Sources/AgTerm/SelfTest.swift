@@ -9,6 +9,9 @@ enum SelfTest {
         NSApp.setActivationPolicy(.accessory)
         guard let window = controller.window else { exit(1) }
         if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "1" { return measure(controller) }
+        if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "output" {
+            return after(2) { measureThroughput(controller, lines: 2_000_000) { exit(0) } }
+        }
         if let id = ProcessInfo.processInfo.environment["AGTERM_TIMELINE_CHECK"] {
             guard let file = TranscriptDiff.claudeTranscript(id), let text = try? String(contentsOf: file, encoding: .utf8) else {
                 print("selftest: timeline: no transcript"); exit(1)
@@ -45,6 +48,7 @@ enum SelfTest {
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_SWITCH_CHECK"] { return switchCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_DRAG_CHECK"] == "1" { return dragCheck(controller) }
         if ProcessInfo.processInfo.environment["AGTERM_CD_CHECK"] == "1" { return cdCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
@@ -539,12 +543,94 @@ enum SelfTest {
                 after(3) {
                     print(String(format: "measure: first prompt %.0f ms | new tab %.1f ms | memory 1 tab %.0f MB | 10 tabs %.0f MB",
                                  firstPrompt! * 1000, tabMs, oneTab, residentMB()))
-                    controller.sessions.forEach { $0.terminate() }
-                    after(1) { exit(0) }
+                    measureSwitch(controller)
+                    measurePolling(controller)
+                    measureIdleCPU(controller) { measureEcho(controller) { measureThroughput(controller) {
+                        controller.sessions.forEach { $0.terminate() }
+                        after(1) { exit(0) }
+                    } } }
                 }
             }
         }
         poll()
+    }
+
+    private static func ms(_ work: () -> Void) -> Double {
+        let start = DispatchTime.now().uptimeNanoseconds
+        work()
+        return Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+    }
+
+    private static func median(_ values: [Double]) -> Double { values.sorted()[values.count / 2] }
+
+    private static func measureSwitch(_ controller: MainWindowController) {
+        let times = (0..<40).map { i in ms { controller.select(i % controller.sessions.count); controller.window?.displayIfNeeded() } }
+        controller.select(0)
+        print(String(format: "measure: tab switch median %.2f ms max %.2f ms", median(times), times.max()!))
+    }
+
+    /// Main-thread cost of the background timers with 10 tabs open.
+    private static func measurePolling(_ controller: MainWindowController) {
+        let now = Date()
+        let process = (0..<20).map { _ in ms { controller.sessions.forEach { $0.pollProcess() } } }
+        let tick = (0..<20).map { _ in ms { controller.sessions.forEach { $0.tick(now: now) } } }
+        let render = (0..<20).map { _ in ms { controller.renderForTest(); controller.window?.displayIfNeeded() } }
+        print(String(format: "measure: pollProcess×10 %.2f ms | tick×10 %.3f ms | render %.2f ms", median(process), median(tick), median(render)))
+    }
+
+    private static func cpuSeconds() -> Double {
+        var usage = rusage()
+        getrusage(RUSAGE_SELF, &usage)
+        return Double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) + Double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1e6
+    }
+
+    private static func measureIdleCPU(_ controller: MainWindowController, then next: @escaping () -> Void) {
+        let cpu = cpuSeconds(), wall = Date()
+        after(10) {
+            print(String(format: "measure: idle CPU with 10 tabs %.2f%%", (cpuSeconds() - cpu) / Date().timeIntervalSince(wall) * 100))
+            next()
+        }
+    }
+
+    /// Keystroke sent to the shell until its echo is on screen.
+    private static func measureEcho(_ controller: MainWindowController, then next: @escaping () -> Void) {
+        let session = controller.sessions[0]
+        var times: [Double] = []
+        func one(_ n: Int) {
+            guard n < 20 else {
+                session.view.send(txt: "\u{15}")
+                print(String(format: "measure: keystroke echo median %.2f ms max %.2f ms", median(times), times.max()!))
+                return after(0.3, next)
+            }
+            let terminal = session.view.getTerminal()
+            let before = terminal.getCursorLocation().x
+            let start = DispatchTime.now().uptimeNanoseconds
+            session.view.send(txt: "x")
+            func wait() {
+                if terminal.getCursorLocation().x != before {
+                    times.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
+                    return after(0.05) { one(n + 1) }
+                }
+                DispatchQueue.main.async(execute: wait)
+            }
+            wait()
+        }
+        one(0)
+    }
+
+    /// A command printing lots of lines, until the shell is back.
+    private static func measureThroughput(_ controller: MainWindowController, lines: Int = 200_000, then next: @escaping () -> Void) {
+        let session = controller.sessions[0]
+        let start = Date()
+        session.view.send(txt: "seq 1 \(lines); echo THRU-$((6*7))\r")
+        func wait() {
+            if screenLine(session, containing: "THRU-42") != nil {
+                print(String(format: "measure: %dk lines of output %.0f ms", lines / 1000, Date().timeIntervalSince(start) * 1000))
+                return next()
+            }
+            after(0.005, wait)
+        }
+        wait()
     }
 
     private static func processStart() -> Date {
@@ -564,6 +650,24 @@ enum SelfTest {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
         }
         return result == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
+
+    /// A background command with quiet spells (like `brew upgrade` between casks) finishes once.
+    private static func pauseCheck(_ controller: MainWindowController) {
+        controller.newTab()
+        let session = controller.sessions[1]
+        var done = 0
+        let notify = session.onStatusChange
+        session.onStatusChange = { status in
+            if status == .done { done += 1 }
+            notify?(status)
+        }
+        send(controller, 1, "for i in 1 2 3; do echo upgrading cask $i; sleep 3; done")
+        after(0.5) { controller.select(0) }
+        after(14) {
+            print("selftest: pause done count:", done, "final:", session.status.label)
+            exit(0)
+        }
     }
 
     /// `cd agter` lists ~/…/agterm under the cursor, and ⇥ (a real key event) puts its path on the line.

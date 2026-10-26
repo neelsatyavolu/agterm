@@ -23,15 +23,17 @@ final class CdSuggestions {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
     }
 
-    /// A tab's screen changed right after you typed; look again once the echo settles.
+    /// A tab's screen changed right after you typed; look again once the echo settles. A burst of
+    /// output (a command you just ran) schedules one look, not one per chunk.
     func typed(in session: TerminalSession) {
-        pending?.cancel()
+        if let pending, !pending.isCancelled { return }
         let work = DispatchWorkItem { [weak self, weak session] in
+            self?.pending = nil
             guard let self, let session else { return }
             self.update(session)
         }
         pending = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01, execute: work)
     }
 
     #if DEBUG

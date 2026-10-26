@@ -219,6 +219,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundPid = fg
         let name = ProcInfo.name(pid: fg)
         updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
+        updateCommandRunning(fg != shellPid && agentName == nil)
         updatePrompt()
         let claude = agentName == "claude" ? ProcInfo.claudeSession(pid: fg) : nil
         if let claude {
@@ -237,6 +238,12 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         foregroundName = name
         cwd = dir
         onChange?()
+    }
+
+    private func updateCommandRunning(_ running: Bool) {
+        guard running != signals.commandRunning else { return }
+        signals.commandRunning = running
+        tick(now: Date())
     }
 
     /// Claude Code's own busy/idle flag. It stays busy while subagents run, when the title

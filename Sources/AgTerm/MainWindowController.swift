@@ -388,6 +388,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     #if DEBUG
     var commandBarForTest: CommandBar { commandBar }
     var cdSuggestionsForTest: CdSuggestions { cdSuggestions }
+    func renderForTest() { render() }
     #endif
 
     private func hideCommandBar(refocus: Bool = true) {

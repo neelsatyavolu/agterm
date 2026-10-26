@@ -5,7 +5,7 @@ let package = Package(
     name: "agterm",
     platforms: [.macOS(.v14)],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.20.0"),
+        .package(path: "Vendor/SwiftTerm"),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
     ],
     targets: [
