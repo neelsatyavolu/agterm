@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+        WhatsNew.showIfUpdated(in: controller)
         askForDiskAccessIfNeeded()
         TeamsSync.shared.start()
         TeamAccounts.shared.start()
@@ -48,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showSettings() {
         SettingsWindowController.shared.show()
+    }
+
+    @objc func showWhatsNew() {
+        guard let controller else { return }
+        controller.window?.makeKeyAndOrderFront(nil)
+        WhatsNew.showAll(in: controller)
     }
 
     /// Asked on every launch until granted; "Later" keeps the app usable for this session.
@@ -90,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         main.addItem(submenu("agterm", [
             item("About agterm", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            item("What's New…", #selector(AppDelegate.showWhatsNew)),
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings), ","),
             updatesItem(),

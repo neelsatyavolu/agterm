@@ -203,6 +203,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// and the tab saves and restores like any other.
     func newAgentTab(_ agent: AgentKind) { addTab(cwd: currentFolder, restoring: nil, command: agent.command) }
 
+    /// Opens a tab at home that plays the What's New lines (built for its width) above the prompt.
+    func showWhatsNew(_ lines: (_ columns: Int) -> [String]) {
+        addTab(cwd: NSHomeDirectory(), restoring: nil)
+        guard let session = sessions.last else { return }
+        window?.layoutIfNeeded()
+        WhatsNewReveal.play(lines(session.view.getTerminal().cols), in: session.view)
+    }
+
     private func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) {
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
         let session = TerminalSession(cwd: dir, restoring: saved, command: command)

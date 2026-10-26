@@ -10,9 +10,27 @@ final class AgentTerminalView: LocalProcessTerminalView {
     var onInput: (([UInt8]) -> Void)?
     var onBell: (() -> Void)?
 
+    /// While set, the program's output waits here instead of reaching the screen.
+    private var heldOutput: [UInt8]?
+
     override func dataReceived(slice: ArraySlice<UInt8>) {
+        if heldOutput != nil {
+            heldOutput?.append(contentsOf: slice)
+            return
+        }
         super.dataReceived(slice: slice)
         onOutput?()
+    }
+
+    /// Keeps the program's output off the screen until `releaseOutput()` (What's New plays first).
+    func holdOutput() {
+        if heldOutput == nil { heldOutput = [] }
+    }
+
+    func releaseOutput() {
+        guard let held = heldOutput else { return }
+        heldOutput = nil
+        if !held.isEmpty { dataReceived(slice: held[...]) }
     }
 
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {

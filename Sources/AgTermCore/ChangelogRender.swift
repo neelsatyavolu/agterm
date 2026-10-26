@@ -8,9 +8,10 @@ public enum ChangelogRender {
     private static let esc = "\u{1B}["
     private static let reset = "\u{1B}[0m"
 
-    public static func lines(_ releases: [Release], columns: Int) -> [String] {
+    /// `note` is a dim row inside the header box; nil leaves the box without one.
+    public static func lines(_ releases: [Release], columns: Int, note: String? = nil) -> [String] {
         let width = max(1, min(columns, maxWidth))
-        var out = header(width: width)
+        var out = header(width: width, note: note)
         for release in releases {
             out.append("")
             out.append(versionLine(release, width: width))
@@ -30,20 +31,22 @@ public enum ChangelogRender {
 
     private static func sgr(_ code: String, _ text: String) -> String { esc + code + "m" + text + reset }
 
-    private static func header(width: Int) -> [String] {
-        let title = "╭─ agterm · what's new ─"
+    private static func header(width: Int, note: String?) -> [String] {
+        let name = "agterm · what's new"
         let top: String
-        if width >= title.count + 1 {
-            top = title + String(repeating: "─", count: width - title.count - 1) + "╮"
+        if width >= name.count + 6 {
+            // ╭─ name ─…╮ with the name in bold and the frame dim.
+            let rule = String(repeating: "─", count: width - name.count - 6)
+            top = sgr("2", "╭─ ") + sgr("1", name) + sgr("2", " ─" + rule + "╮")
         } else {
-            top = "╭" + String(repeating: "─", count: max(0, width - 2)) + "╮"
+            top = sgr("2", "╭" + String(repeating: "─", count: max(0, width - 2)) + "╮")
         }
-        let inner = max(0, width - 4)
-        let note = String("what changed since your last version".prefix(inner))
-        let pad = String(repeating: " ", count: inner - note.count)
-        let middle = "│ " + sgr("2", note) + pad + " │"
-        let bottom = "╰" + String(repeating: "─", count: max(0, width - 2)) + "╯"
-        return [sgr("2", top), width >= 4 ? middle : "", sgr("2", bottom)].filter { !$0.isEmpty }
+        let bottom = sgr("2", "╰" + String(repeating: "─", count: max(0, width - 2)) + "╯")
+        guard let note, width >= 4 else { return [top, bottom] }
+        let inner = width - 4
+        let text = String(note.prefix(inner))
+        let pad = String(repeating: " ", count: inner - text.count)
+        return [top, sgr("2", "│ " + text + pad + " │"), bottom]
     }
 
     private static func versionLine(_ release: Release, width: Int) -> String {

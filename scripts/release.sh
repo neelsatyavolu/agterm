@@ -23,6 +23,12 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     echo "error: $TAG already exists; bump VERSION" >&2
     exit 1
 fi
+# The release notes are this version's section of CHANGELOG.md (the app shows the same text).
+NOTES="$(awk -v v="$VERSION" '/^## /{p=($2==v)} p' CHANGELOG.md | tail -n +2)"
+if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
+    echo "error: CHANGELOG.md has no entries under \"## $VERSION\"; add them first" >&2
+    exit 1
+fi
 
 echo "Loading signing and notarization credentials from 1Password…"
 # shellcheck disable=SC1091
@@ -66,6 +72,6 @@ cp "$ARCHIVE" "$OUT/agterm.zip"
 echo "Publishing ${TAG}…"
 git tag "$TAG"
 git push origin "$TAG"
-gh release create "$TAG" --repo "$REPO" --title "agterm $VERSION" --generate-notes \
+gh release create "$TAG" --repo "$REPO" --title "agterm $VERSION" --notes "$NOTES" \
     "$ARCHIVE" "$OUT/agterm.zip" "$OUT/appcast.xml"
 echo "Released https://github.com/$REPO/releases/tag/$TAG"

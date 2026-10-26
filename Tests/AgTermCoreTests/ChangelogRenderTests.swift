@@ -14,7 +14,7 @@ final class ChangelogRenderTests: XCTestCase {
 
     func testHeaderFitsWidth() {
         for columns in [20, 40, 78, 120] {
-            let lines = ChangelogRender.lines(releases, columns: columns)
+            let lines = ChangelogRender.lines(releases, columns: columns, note: "what changed since your last version")
             XCTAssertFalse(lines.isEmpty)
             for line in lines {
                 XCTAssertLessThanOrEqual(ChangelogRender.visibleWidth(line), columns, line)
@@ -25,6 +25,16 @@ final class ChangelogRenderTests: XCTestCase {
         XCTAssertTrue(ChangelogRender.stripSGR(wide[0]).hasPrefix("╭─ agterm · what's new ─"))
         XCTAssertTrue(ChangelogRender.stripSGR(wide[0]).hasSuffix("╮"))
         XCTAssertTrue(wide.contains { ChangelogRender.stripSGR($0).hasPrefix("╰") })
+    }
+
+    func testNoteRowOnlyWhenGiven() {
+        let plain = ChangelogRender.lines(releases, columns: 78).map(ChangelogRender.stripSGR)
+        XCTAssertTrue(plain[1].hasPrefix("╰"))
+        XCTAssertFalse(plain.contains { $0.contains("what changed") })
+        let noted = ChangelogRender.lines(releases, columns: 78, note: "what changed since your last version")
+            .map(ChangelogRender.stripSGR)
+        XCTAssertEqual(noted[1], "│ what changed since your last version" + String(repeating: " ", count: 38) + " │")
+        XCTAssertTrue(noted[2].hasPrefix("╰"))
     }
 
     func testWrapsWithHangingIndent() {

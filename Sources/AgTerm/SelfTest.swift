@@ -48,6 +48,7 @@ enum SelfTest {
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_SWITCH_CHECK"] { return switchCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_DRAG_CHECK"] == "1" { return dragCheck(controller) }
         if ProcessInfo.processInfo.environment["AGTERM_CD_CHECK"] == "1" { return cdCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_WHATSNEW_CHECK"] == "1" { return whatsNewCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
@@ -702,6 +703,37 @@ enum SelfTest {
             session.view.send(txt: "\u{15}")
         }
         after(5) { exit(0) }
+    }
+
+    /// What's New with every release plays into a new tab, prompt below, in Ink and then Paper.
+    private static func whatsNewCheck(_ controller: MainWindowController, outDir: String) {
+        guard let window = controller.window else { exit(1) }
+        window.setContentSize(NSSize(width: 900, height: 820))
+        window.contentView?.superview?.wantsLayer = true
+        let render = WhatsNew.allLines()
+        var shown = 0
+        controller.showWhatsNew { columns in
+            let lines = render(columns)
+            shown = lines.count
+            return lines
+        }
+        after(4) {
+            let session = controller.sessions[controller.sessions.count - 1]
+            let terminal = session.view.getTerminal()
+            let rows = (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.translateToString(trimRight: true) }
+            let history = rows.lastIndex { $0.contains("full history:") }
+            let prompt = rows.lastIndex { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            print("selftest: whatsnew: lines shown: \(shown)")
+            print("selftest: whatsnew: prompt below:", history.map { h in prompt.map { $0 > h } ?? false } ?? false)
+            snapshot(window, "\(outDir)/whats-new.png")
+            let theme = Preferences.shared.appearance.themeID
+            Preferences.shared.update { $0.themeID = "paper" }
+            after(1) {
+                snapshot(window, "\(outDir)/whats-new-paper.png")
+                Preferences.shared.update { $0.themeID = theme }
+                after(0.5) { exit(0) }
+            }
+        }
     }
 
     private static func screenLine(_ session: TerminalSession, containing text: String) -> String? {
