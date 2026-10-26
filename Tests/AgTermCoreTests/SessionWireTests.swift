@@ -54,16 +54,97 @@ final class SessionWireTests: XCTestCase {
     func testOversizedLengthThrows() {
         let length = UInt32(16 * 1024 * 1024 + 1)
         var buffer = Data([UInt8(length >> 24), UInt8((length >> 16) & 0xff), UInt8((length >> 8) & 0xff), UInt8(length & 0xff), 0x01])
-        XCTAssertThrowsError(try WireFrame.decode(&buffer))
+        XCTAssertThrowsError(try WireFrame.decode(&buffer)) {
+            XCTAssertEqual($0 as? WireFrameError, .frameTooLarge(SessionWire.maxFrameLength + 1))
+        }
     }
 
     func testUnknownTagThrows() {
         var buffer = Data([0, 0, 0, 1, 0xEE])
-        XCTAssertThrowsError(try WireFrame.decode(&buffer))
+        XCTAssertThrowsError(try WireFrame.decode(&buffer)) {
+            XCTAssertEqual($0 as? WireFrameError, .unknownTag(0xEE))
+        }
     }
 
     func testBadJSONThrows() {
         var buffer = Data([0, 0, 0, 3, 0x05, 0x7b, 0x7b])
-        XCTAssertThrowsError(try WireFrame.decode(&buffer))
+        XCTAssertThrowsError(try WireFrame.decode(&buffer)) {
+            XCTAssertEqual($0 as? WireFrameError, .badPayload)
+        }
+    }
+
+    // MARK: Compatibility contract
+
+    func testGoldenBytes() {
+        XCTAssertEqual(Array(WireFrame.encode(.list)), [0, 0, 0, 1, 2])
+        XCTAssertEqual(Array(WireFrame.encode(.shutdownIfIdle)), [0, 0, 0, 1, 11])
+        XCTAssertEqual(Array(WireFrame.encode(.output(Data("x".utf8)))), [0, 0, 0, 2, 8, 0x78])
+        let json = #"{"build":"b","version":1}"#
+        XCTAssertEqual(Array(WireFrame.encode(.hello(version: 1, build: "b"))),
+                       [0, 0, 0, UInt8(1 + json.utf8.count), 1] + Array(json.utf8))
+    }
+
+    func testEveryTagIsPinned() {
+        let expected: [(WireMessage, UInt8)] = [
+            (.hello(version: 1, build: "b"), 1), (.list, 2), (.sessions([]), 3),
+            (.spawn(SpawnRequest(executable: "a", argv: [], env: [], cwd: "/", cols: 1, rows: 1)), 4),
+            (.attach(id: "s"), 5), (.attached(info), 6), (.replay(Data()), 7), (.output(Data()), 8),
+            (.exited(id: "s", status: 0), 9), (.kill(id: "s", signal: 9), 10), (.shutdownIfIdle, 11), (.error("e"), 12),
+        ]
+        XCTAssertEqual(expected.count, allMessages.count)
+        for (message, tag) in expected {
+            XCTAssertEqual(WireFrame.encode(message)[4], tag, "\(message)")
+        }
+    }
+
+    // MARK: Edge cases
+
+    func testZeroLengthFrameThrows() {
+        var buffer = Data([0, 0, 0, 0])
+        XCTAssertThrowsError(try WireFrame.decode(&buffer)) {
+            XCTAssertEqual($0 as? WireFrameError, .badPayload)
+        }
+    }
+
+    func testMaxLengthHeaderWithoutBodyWaits() throws {
+        let length = UInt32(SessionWire.maxFrameLength)
+        var buffer = Data([UInt8(length >> 24), UInt8((length >> 16) & 0xff), UInt8((length >> 8) & 0xff), UInt8(length & 0xff), 0x08])
+        let before = buffer
+        XCTAssertNil(try WireFrame.decode(&buffer))
+        XCTAssertEqual(buffer, before)
+    }
+
+    func testOneOverMaxLengthThrowsFrameTooLarge() {
+        var buffer = Data([0x01, 0x00, 0x00, 0x01])
+        XCTAssertThrowsError(try WireFrame.decode(&buffer)) {
+            XCTAssertEqual($0 as? WireFrameError, .frameTooLarge(SessionWire.maxFrameLength + 1))
+        }
+    }
+
+    func testEmptyRawPayloadsRoundTrip() throws {
+        for message in [WireMessage.output(Data()), .replay(Data())] {
+            var buffer = WireFrame.encode(message)
+            XCTAssertEqual(try WireFrame.decode(&buffer), message)
+            XCTAssertTrue(buffer.isEmpty)
+        }
+    }
+
+    func testEmptyAndHeaderOnlyBuffersWait() throws {
+        for start in [Data(), Data([0, 0, 0, 5])] {
+            var buffer = start
+            XCTAssertNil(try WireFrame.decode(&buffer))
+            XCTAssertEqual(buffer, start)
+        }
+    }
+
+    func testDecodesFromASliceWithNonZeroStartIndex() throws {
+        var whole = Data([0xAA, 0xBB])
+        whole.append(WireFrame.encode(.attach(id: "s1")))
+        whole.append(WireFrame.encode(.list))
+        var slice = whole.dropFirst(2)
+        XCTAssertNotEqual(slice.startIndex, 0)
+        XCTAssertEqual(try WireFrame.decode(&slice), .attach(id: "s1"))
+        XCTAssertEqual(try WireFrame.decode(&slice), .list)
+        XCTAssertTrue(slice.isEmpty)
     }
 }

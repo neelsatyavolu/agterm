@@ -76,8 +76,13 @@ public enum WireFrame {
     private struct Exited: Codable { var id: String; var status: Int32 }
     private struct Kill: Codable { var id: String; var signal: Int32 }
 
+    /// Largest payload one frame can carry. Senders split larger `output` and `replay` data
+    /// into several frames, which receivers feed in order.
+    public static let maxPayload = SessionWire.maxFrameLength - 1
+
     public static func encode(_ m: WireMessage) -> Data {
         let (tag, payload) = parts(of: m)
+        precondition(payload.count <= maxPayload, "wire payload of \(payload.count) bytes exceeds \(maxPayload)")
         var frame = Data(capacity: 5 + payload.count)
         let length = UInt32(1 + payload.count)
         for shift in stride(from: 24, through: 0, by: -8) { frame.append(UInt8((length >> UInt32(shift)) & 0xff)) }
@@ -87,6 +92,7 @@ public enum WireFrame {
     }
 
     /// Takes one complete frame off the front of `buffer`. Returns nil, leaving `buffer` alone, while the frame is incomplete.
+    /// After any throw the caller must drop the connection: the buffer is left as-is, so retrying would fail forever.
     public static func decode(_ buffer: inout Data) throws -> WireMessage? {
         let base = buffer.startIndex
         guard buffer.count >= 4 else { return nil }
@@ -138,6 +144,7 @@ public enum WireFrame {
 
     private static func json<T: Encodable>(_ value: T) -> Data {
         let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         // These types always encode; an empty payload would fail decode loudly rather than corrupt state.
         return (try? encoder.encode(value)) ?? Data()
