@@ -3,6 +3,9 @@
 ## 1.0.4
 - Fixed: Text stays readable in light themes such as Paper when a program colors it for a dark background. Claude Code's default theme wrote white and pale gray text that was hard to see.
 - Added: Programs that follow the terminal's light or dark mode, like Claude Code with its theme set to Auto (`/theme`), switch along with agterm's theme.
+- Added: Grok accounts in Settings → Accounts, with their weekly usage and automatic switching. While Grok runs, agterm checks its usage every minute; when the account runs out, the same conversation continues on the account with the most left.
+- Added: Grok logins shared in agmux Teams are borrowed once all of yours are out, like Codex ones.
+- Added: Team owners and managers can add Codex and Grok accounts to their agmux Teams pool from Settings → Accounts → Add Team Account….
 
 ## 1.0.3 — 2026-10-26
 - Changed: ⌘K sends the model the tab's last 150 lines, scrollback included, so requests like "fix that error" or "run that again" work on commands that have scrolled off the screen.

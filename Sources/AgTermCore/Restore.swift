@@ -179,6 +179,52 @@ public enum AgentResume {
             .joined(separator: " ")
     }
 
+    /// Grok options that take a value; everything else starting with "-" is a switch.
+    private static let grokValueFlags: Set<String> = [
+        "--add-dir", "--agent", "--agents", "--allow", "--allowedTools", "--allowed-tools", "--cwd", "--debug-file",
+        "--deny", "--disallowedTools", "--disallowed-tools", "--json-schema", "-m", "--model", "--max-turns",
+        "--output-format", "--permission-mode", "--reasoning-effort", "--effort", "--rules", "--sandbox",
+        "--system-prompt-override", "--tools",
+    ]
+
+    /// `grok --resume <id>` with the options you started Grok with, minus the opening prompt, any
+    /// session choice and the leader socket (each login gets its own). Nil for one-shot runs,
+    /// subcommands and worktree runs (their conversation lives under the worktree's folder).
+    /// `prompt`, if given, is sent as the first message of the resumed session.
+    public static func grokCommandLine(userArgs: [String], sessionID: String, prompt: String? = nil) -> String? {
+        func name(_ arg: String) -> String { arg.split(separator: "=", maxSplits: 1).first.map(String.init) ?? arg }
+        let oneShot: Set<String> = ["-p", "--single", "--prompt-file", "--prompt-json", "-w", "--worktree", "--worktree-ref"]
+        guard AgentKind.grok.startsSession(userArgs), !userArgs.contains(where: { oneShot.contains(name($0)) }) else { return nil }
+        var kept: [String] = []
+        var i = 0
+        while i < userArgs.count {
+            let arg = userArgs[i]
+            if ["-s", "--session-id", "--leader-socket"].contains(arg) {
+                i += 2
+                continue
+            }
+            if ["-r", "--resume"].contains(arg) {
+                // Its value is optional.
+                i += i + 1 < userArgs.count && !userArgs[i + 1].hasPrefix("-") ? 2 : 1
+                continue
+            }
+            if ["-c", "--continue", "--fork-session", "--restore-code", "--resume", "--session-id", "--leader-socket"].contains(name(arg)) {
+                i += 1
+                continue
+            }
+            if grokValueFlags.contains(arg), i + 1 < userArgs.count {
+                kept += [arg, userArgs[i + 1]]
+                i += 2
+                continue
+            }
+            // Bare words are the opening prompt; resuming must not resend it.
+            if arg.hasPrefix("-") { kept.append(arg) }
+            i += 1
+        }
+        return (["command", "grok", "--resume", sessionID] + ((prompt.map { [$0] } ?? []) + kept).map(ShellEscape.path))
+            .joined(separator: " ")
+    }
+
     /// Agents whose conversation id agterm can't read: each one's own way to continue its
     /// latest conversation (most are per folder, and the tab reopens in the same folder).
     /// Flags come from each CLI's --help. Claude Code and Codex resume the exact conversation

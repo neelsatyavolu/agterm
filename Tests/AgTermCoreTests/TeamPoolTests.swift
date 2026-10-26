@@ -22,11 +22,11 @@ final class TeamPoolTests: XCTestCase {
         }
     }
 
-    func testAccountsKeepCodexOnlyAndReadStatus() throws {
+    func testAccountsSkipClaudeAndReadStatus() throws {
         let rows: [[String: Any]] = [
             ["id": "a", "provider": "codex", "label": "Work", "enabled": true, "remainingPercent": 70, "plan": "Pro 20x",
              "healthReportedAt": 1_789_999_900],
-            ["id": "b", "provider": "grok", "label": "Grok", "enabled": true],
+            ["id": "b", "provider": "claude", "label": "Claude", "enabled": true],
             ["id": "c", "provider": "codex", "label": "Busy", "enabled": true, "leasedUntil": 1_790_000_200,
              "inUse": ["self": false, "by": "Alex", "kind": "session"]],
             ["id": "d", "provider": "codex", "label": "Out", "enabled": true, "remainingPercent": 0, "blockedUntil": 1_790_003_600],
@@ -81,15 +81,15 @@ final class TeamPoolTests: XCTestCase {
         XCTAssertEqual(try TeamPool.renewed(status: 200, body: ok(["leaseId": "pal_1", "expiresAt": 1_790_000_300]), leaseID: "pal_1", now: now),
                        Date(timeIntervalSince1970: 1_790_000_300))
         XCTAssertThrowsError(try TeamPool.renewed(status: 200, body: ok(["leaseId": "pal_2", "expiresAt": 1_790_000_300]), leaseID: "pal_1", now: now))
-        let body = try XCTUnwrap(TeamPool.renewBody(credentials: self.body(credentials), health: TeamPool.Health(remainingPercent: 40, blockedUntil: 0)))
+        let body = try XCTUnwrap(TeamPool.renewBody(credentials: self.body(credentials), provider: .codex, health: TeamPool.Health(remainingPercent: 40, blockedUntil: 0)))
         XCTAssertEqual(body["remainingPercent"] as? Double, 40)
         XCTAssertEqual(body["blockedUntil"] as? Int, 0)
         XCTAssertNotNil(body["credentials"])
         // A credentials-only renewal leaves the last measurement alone.
-        let quiet = try XCTUnwrap(TeamPool.renewBody(credentials: self.body(credentials), health: nil))
+        let quiet = try XCTUnwrap(TeamPool.renewBody(credentials: self.body(credentials), provider: .codex, health: nil))
         XCTAssertNil(quiet["remainingPercent"])
         XCTAssertNil(quiet["blockedUntil"])
-        XCTAssertNil(TeamPool.renewBody(credentials: Data("{}".utf8), health: nil))
+        XCTAssertNil(TeamPool.renewBody(credentials: Data("{}".utf8), provider: .codex, health: nil))
     }
 
     func testHealthFromUsage() {

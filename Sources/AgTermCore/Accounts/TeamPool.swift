@@ -1,13 +1,21 @@
 import Foundation
 
 /// agmux Teams' shared account pool: logins a team's owners share, lent to one session at a
-/// time for 5 minutes, renewed every minute while used. Claude logins can't be shared (agmux
-/// keeps them personal), so this is Codex only in agterm. Credentials never reach an error
-/// message, a log line or anything stored besides the borrowed login's own auth.json.
+/// time for 5 minutes, renewed every minute while used. Codex and Grok only: agmux keeps
+/// Claude logins personal. Credentials never reach an error message, a log line or anything
+/// stored besides the borrowed login's own auth.json.
 public enum TeamPool {
-    public struct Team: Equatable, Sendable {
+    public struct Team: Equatable, Sendable, Identifiable {
         public let id: String
         public let name: String
+        /// Owners and managers can add logins to the pool.
+        public let canAdd: Bool
+
+        public init(id: String, name: String, canAdd: Bool = false) {
+            self.id = id
+            self.name = name
+            self.canAdd = canAdd
+        }
     }
 
     /// A pooled login as the service describes it. Never holds credentials.
@@ -173,7 +181,8 @@ public enum TeamPool {
         guard let rows = try data(body)["teams"] as? [[String: Any]] else { throw invalidResponse }
         return try rows.filter { $0["staffPreview"] as? Bool != true }.map { row in
             guard let id = row["id"] as? String, !id.isEmpty else { throw invalidResponse }
-            return Team(id: id, name: text(row["name"], max: 120) ?? "Team")
+            let role = row["role"] as? String
+            return Team(id: id, name: text(row["name"], max: 120) ?? "Team", canAdd: role == "owner" || role == "manager")
         }
     }
 
@@ -188,7 +197,7 @@ public enum TeamPool {
 
     static func account(_ row: [String: Any], team: Team) -> Account? {
         guard let id = row["id"] as? String, !id.isEmpty,
-              let provider = (row["provider"] as? String).flatMap(AccountProvider.init(rawValue:)), provider == .codex else { return nil }
+              let provider = (row["provider"] as? String).flatMap(AccountProvider.init(rawValue:)), provider.teamShareable else { return nil }
         let inUse = row["inUse"] as? [String: Any]
         return Account(id: id, teamID: team.id, teamName: team.name, provider: provider,
                        label: text(row["label"], max: 120) ?? "Team account", enabled: row["enabled"] as? Bool == true,
@@ -225,24 +234,54 @@ public enum TeamPool {
         return expires
     }
 
-    /// What the service needs before it hands a Codex login over: a ChatGPT sign-in with tokens.
+    /// What the service takes for a login: Codex, a ChatGPT sign-in with tokens; Grok, grok.com
+    /// sign-ins with tokens, all for one user.
     public static func validCredentials(_ json: [String: Any], provider: AccountProvider) -> Bool {
-        guard provider == .codex, let tokens = json["tokens"] as? [String: Any] else { return false }
-        if let mode = json["auth_mode"] as? String, mode != "chatgpt" { return false }
-        return ["access_token", "refresh_token", "id_token", "account_id"].allSatisfy { (tokens[$0] as? String)?.isEmpty == false }
+        switch provider {
+        case .claude:
+            return false
+        case .grok:
+            return GrokAuth.shareable(json)
+        case .codex:
+            guard let tokens = json["tokens"] as? [String: Any] else { return false }
+            if let mode = json["auth_mode"] as? String, mode != "chatgpt" { return false }
+            return ["access_token", "refresh_token", "id_token", "account_id"].allSatisfy { (tokens[$0] as? String)?.isEmpty == false }
+        }
     }
 
     // MARK: Requests
 
-    /// The renew body: the login's current auth.json (Codex refreshes its tokens there) and,
+    /// The renew body: the login's current auth.json (the CLI refreshes its tokens there) and,
     /// when measured, how much is left. Nil if the file isn't a valid login anymore.
-    public static func renewBody(credentials: Data, health: Health?) -> [String: Any]? {
+    public static func renewBody(credentials: Data, provider: AccountProvider, health: Health?) -> [String: Any]? {
         guard let json = (try? JSONSerialization.jsonObject(with: credentials)) as? [String: Any],
-              validCredentials(json, provider: .codex) else { return nil }
+              validCredentials(json, provider: provider) else { return nil }
         var body: [String: Any] = ["credentials": json]
         if let remaining = health?.remainingPercent { body["remainingPercent"] = remaining }
         if let blocked = health?.blockedUntil { body["blockedUntil"] = blocked }
         return body
+    }
+
+    /// `POST …/provider-accounts`: a new login for the pool, or nil if the file isn't one the
+    /// service takes.
+    public static func uploadBody(provider: AccountProvider, label: String, credentials: Data) -> [String: Any]? {
+        guard let json = (try? JSONSerialization.jsonObject(with: credentials)) as? [String: Any],
+              validCredentials(json, provider: provider) else { return nil }
+        let name = text(label, max: 120) ?? "\(provider.title) account"
+        return ["provider": provider.rawValue, "label": name, "credentials": json]
+    }
+
+    /// The reply to an upload: 201 for a new login, 200 when it was already in the pool.
+    public static func uploaded(status: Int, body: Data, team: Team) throws -> Account {
+        switch status {
+        case 200..<300: break
+        case 400: throw Failure(message: "agmux Teams didn't accept this sign-in.", retryable: false)
+        case 403: throw Failure(message: "Only a team's owners and managers can add accounts.", retryable: false)
+        case 413: throw Failure(message: "This sign-in is too large for agmux Teams.", retryable: false)
+        default: throw failure(status: status)
+        }
+        guard let row = try data(body)["account"] as? [String: Any], let account = account(row, team: team) else { throw invalidResponse }
+        return account
     }
 
     /// What to tell the service about a login's usage. `blockedUntil` 0 clears an old block.

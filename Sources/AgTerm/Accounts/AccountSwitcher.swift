@@ -2,7 +2,8 @@ import AgTermCore
 import Foundation
 
 /// Moves an agent to another login the moment it stops at a usage limit:
-/// 1. Its own transcript says so (Claude Code's 429 record, Codex's limit event), seen within a second.
+/// 1. Its own transcript says so (Claude Code's 429 record, Codex's limit event), seen within a
+///    second. Grok records no such thing, so a Grok tab's login is checked every minute instead.
 /// 2. The other logins are checked, and the one with the most left is picked.
 /// 3. The agent is stopped and the same conversation resumed on that login, in the same tab,
 ///    with "continue" as its first message, so the turn that hit the limit finishes.
@@ -24,6 +25,14 @@ final class AccountSwitcher {
     private var handled: [String: Date] = [:]
     /// Team logins that ran out in each tab, so it isn't lent the same one again.
     private var usedUpTeam: [String: Set<String>] = [:]
+    /// Grok: how often a running tab's login is checked, when it last was, and the run already
+    /// found out of usage (so it's handled once).
+    static let grokCheckEvery: TimeInterval = 60
+    private var grokCheckedAt: [String: Date] = [:]
+    private var grokOut: [String: Date] = [:]
+    /// Checks that found the login used up but not the conversation, which may not be on disk
+    /// yet; tried again a minute later, twice.
+    private var grokMisses: [String: Int] = [:]
 
     func teamExcluded(_ tabID: String) -> Set<String> { usedUpTeam[tabID] ?? [] }
 
@@ -38,12 +47,19 @@ final class AccountSwitcher {
     /// Called every second with the open tabs.
     func poll(_ sessions: [TerminalSession]) {
         let open = Set(sessions.map(\.tabID))
-        for key in Set(tails.keys).union(history.keys).union(handled.keys).union(busy).union(usedUpTeam.keys) where !open.contains(key) {
+        for key in Set(tails.keys).union(history.keys).union(handled.keys).union(busy).union(usedUpTeam.keys)
+            .union(grokCheckedAt.keys).union(grokOut.keys).union(grokMisses.keys) where !open.contains(key) {
             tails[key] = nil; lookedUp[key] = nil; history[key] = nil; handled[key] = nil; usedUpTeam[key] = nil; busy.remove(key)
+            grokCheckedAt[key] = nil; grokOut[key] = nil; grokMisses[key] = nil
         }
         for session in sessions {
             guard let provider = session.agentName.flatMap(AccountProvider.init(rawValue:)), !busy.contains(session.tabID),
-                  let started = session.agentStartedAt, let tail = tail(for: session, provider) else { continue }
+                  let started = session.agentStartedAt else { continue }
+            if provider == .grok {
+                checkGrok(session, started: started)
+                continue
+            }
+            guard let tail = tail(for: session, provider) else { continue }
             let tabID = session.tabID
             let since = max(started.addingTimeInterval(-5), handled[tabID] ?? .distantPast)
             queue.async {
@@ -70,6 +86,8 @@ final class AccountSwitcher {
         if let tail = tails[session.tabID], lookedUp[session.tabID] == key { return tail }
         let url: URL?
         switch provider {
+        case .grok:
+            url = nil
         case .claude:
             url = session.claudeSessionID.flatMap(TranscriptDiff.claudeTranscript)
         case .codex:
@@ -87,9 +105,36 @@ final class AccountSwitcher {
         return tail
     }
 
+    /// Checks the login a Grok tab runs on once a minute, when there's another to move to (or it's
+    /// a team's, which the team should hear about), and treats a used-up one like a limit record.
+    private func checkGrok(_ session: TerminalSession, started: Date) {
+        let tabID = session.tabID
+        guard grokOut[tabID] != started, Date().timeIntervalSince(grokCheckedAt[tabID] ?? .distantPast) >= Self.grokCheckEvery,
+              let launch = AccountStore.launch(tabID: tabID, provider: .grok), launch.account != AccountStore.external,
+              abs(launch.startedAt.timeIntervalSince(started)) < 20 else { return }
+        let store = AccountStore.shared
+        let elsewhere = store.settings.autoSwitch && (!store.accounts(.grok).isEmpty || TeamAccounts.shared.isConnected)
+        guard elsewhere || TeamPool.isLocalID(launch.account) else { return }
+        grokCheckedAt[tabID] = Date()
+        let home = launch.account == AccountStore.native ? nil : AccountStore.home(launch.account)
+        // A team loan's folder goes once its agent exits; never recreate it to check.
+        if let home, !FileManager.default.fileExists(atPath: home.appendingPathComponent("auth.json").path) { return }
+        // Off the transcript queue: a check can take seconds, and other tabs' limits can't wait.
+        DispatchQueue.global(qos: .utility).async {
+            guard let reading = UsageProbe.read(.grok, home: home).reading, let until = reading.exhaustedUntil(Date()) else { return }
+            DispatchQueue.main.async { [weak self, weak session] in
+                guard let self, let session, session.tabID == tabID, session.agentStartedAt == started, self.grokOut[tabID] != started else { return }
+                self.grokOut[tabID] = started
+                let resets = until.formatted(date: .abbreviated, time: .shortened)
+                self.limitReached(session, .grok, LimitHit(message: "You hit your Grok usage limit. It resets \(resets).", timestamp: Date()),
+                                  transcript: nil)
+            }
+        }
+    }
+
     // MARK: Switching
 
-    private func limitReached(_ session: TerminalSession, _ provider: AccountProvider, _ hit: LimitHit, transcript: URL) {
+    private func limitReached(_ session: TerminalSession, _ provider: AccountProvider, _ hit: LimitHit, transcript: URL?) {
         let store = AccountStore.shared
         // Only agents agterm started on a login it manages, recorded for this very run.
         guard let launch = AccountStore.launch(tabID: session.tabID, provider: provider),
@@ -103,12 +148,22 @@ final class AccountSwitcher {
             team.reportExhausted(launch.account)
             if let id = team.accountID(launch.account) { usedUpTeam[session.tabID, default: []].insert(id) }
         }
-        let canBorrow = provider == .codex && team.isConnected
+        let canBorrow = provider.teamShareable && team.isConnected
         guard store.settings.autoSwitch, !store.accounts(provider).isEmpty || canBorrow else { return }
         let sessionID: String?
         switch provider {
-        case .claude: sessionID = transcript.deletingPathExtension().lastPathComponent
-        case .codex: sessionID = Self.firstLine(transcript).flatMap(AgentResume.codexSessionID)
+        case .claude: sessionID = transcript?.deletingPathExtension().lastPathComponent
+        case .codex: sessionID = transcript.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
+        case .grok:
+            // Every login shares your own sessions folder.
+            let cwd = GrokSessions.folder(userArgs: launch.args, processCwd: ProcInfo.cwd(pid: group) ?? session.cwd)
+            sessionID = launch.sessionID ?? GrokSessions.written(in: AccountStore.nativeGrokHome.appendingPathComponent("sessions"),
+                                                                 cwd: cwd, since: started.addingTimeInterval(-5))
+        }
+        if provider == .grok, sessionID == nil, grokMisses[session.tabID, default: 0] < 2 {
+            grokMisses[session.tabID, default: 0] += 1
+            grokOut[session.tabID] = nil
+            return
         }
         guard let sessionID, !sessionID.isEmpty else {
             return notify(session, "Couldn't switch \(provider.title)", "agterm couldn't tell which conversation to resume.")
@@ -147,6 +202,7 @@ final class AccountSwitcher {
         switch provider {
         case .claude: resume = AgentResume.commandLine(argv: ["claude"] + target.launch.args, claudeSessionID: target.sessionID, prompt: prompt)
         case .codex: resume = AgentResume.codexCommandLine(userArgs: target.launch.args, sessionID: target.sessionID, prompt: prompt)
+        case .grok: resume = AgentResume.grokCommandLine(userArgs: target.launch.args, sessionID: target.sessionID, prompt: prompt)
         }
         guard let resume else {
             busy.remove(session.tabID)

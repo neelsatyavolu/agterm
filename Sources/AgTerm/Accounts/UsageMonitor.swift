@@ -111,7 +111,7 @@ final class UsageMonitor: ObservableObject {
         let all = candidates(provider)
         var routing = AccountStore.loadRouting()
         let nativeUsable = all.first.map { AccountPicker.next([$0], excluding: [], now: now) != nil } ?? true
-        let team = provider == .codex && TeamAccounts.shared.hasBorrowable ? AccountStore.teamRoute : nil
+        let team = provider.teamShareable && TeamAccounts.shared.hasBorrowable(provider) ? AccountStore.teamRoute : nil
         let next = nativeUsable || !AccountStore.shared.settings.autoSwitch ? nil
             : AccountPicker.next(all, excluding: [AccountStore.native], now: now) ?? team
         guard routing.active[provider.rawValue] != next else { return }

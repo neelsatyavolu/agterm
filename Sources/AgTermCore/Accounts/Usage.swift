@@ -2,11 +2,37 @@ import Foundation
 
 /// Agents whose logins agterm can switch between.
 public enum AccountProvider: String, Codable, CaseIterable, Sendable {
-    case claude, codex
+    case claude, codex, grok
 
-    public var title: String { self == .claude ? "Claude Code" : "Codex" }
+    public var title: String {
+        switch self {
+        case .claude: "Claude Code"
+        case .codex: "Codex"
+        case .grok: "Grok"
+        }
+    }
+
     /// The variable that points the CLI at a login's folder.
-    public var homeVariable: String { self == .claude ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME" }
+    public var homeVariable: String {
+        switch self {
+        case .claude: "CLAUDE_CONFIG_DIR"
+        case .codex: "CODEX_HOME"
+        case .grok: "GROK_HOME"
+        }
+    }
+
+    /// Variables that would sign the CLI in some other way (an API key, a gateway), so a session
+    /// on a login really uses that login.
+    public var authKeys: [String] {
+        switch self {
+        case .claude: ClaudeAuthEnv.keys
+        case .codex: ClaudeAuthEnv.codexKeys
+        case .grok: ClaudeAuthEnv.grokKeys
+        }
+    }
+
+    /// Whether agmux Teams can share its logins (it keeps Claude logins personal).
+    public var teamShareable: Bool { self != .claude }
 }
 
 /// One usage limit, like the 5-hour or weekly window.

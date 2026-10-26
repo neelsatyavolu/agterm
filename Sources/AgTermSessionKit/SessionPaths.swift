@@ -11,6 +11,12 @@ public enum SessionPaths {
         directory + "/" + String(format: "%08x", fnv1a32(stateDir)) + ".sock"
     }
 
+    /// `/tmp/agterm-<uid>/grok-<fnv1a32(home) as 8 lowercase hex>.sock`: the Grok leader socket
+    /// for a login agterm keeps. Grok adds `.daemon` beside it, so it must stay short too.
+    public static func grokLeader(home: String) -> String {
+        directory + "/grok-" + String(format: "%08x", fnv1a32(home)) + ".sock"
+    }
+
     static func fnv1a32(_ text: String) -> UInt32 {
         text.utf8.reduce(0x811c_9dc5 as UInt32) { ($0 ^ UInt32($1)) &* 0x0100_0193 }
     }

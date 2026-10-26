@@ -22,6 +22,9 @@ public enum ClaudeAuthEnv {
     /// Codex equivalents.
     public static let codexKeys = ["OPENAI_API_KEY", "CODEX_API_KEY"]
 
+    /// Grok equivalents.
+    public static let grokKeys = ["XAI_API_KEY", "GROK_API_KEY"]
+
     private static let sharedKeys: Set<String> = [
         "mcpServers", "projects", "hasCompletedOnboarding", "lastOnboardingVersion", "lastReleaseNotesSeen",
         "theme", "editorMode", "verbose", "autoUpdates", "autoUpdatesProtectedForNative", "installMethod",

@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Foundation
 
 /// A login added in Settings → Accounts. Your normal login is the implicit `AccountStore.native`.
@@ -24,11 +25,13 @@ struct TabLaunch: Codable {
     let account: String
     let args: [String]
     let startedAt: Date
+    /// Grok: the conversation it runs, when known (it doesn't say which one itself).
+    var sessionID: String? = nil
 }
 
 /// Logins live in Application Support/<bundle id>/accounts/<id>/, one folder each, pointed at
-/// with CLAUDE_CONFIG_DIR or CODEX_HOME. Conversations, settings and tools are symlinked to your
-/// own ~/.claude or ~/.codex, so any login can resume any conversation.
+/// with CLAUDE_CONFIG_DIR, CODEX_HOME or GROK_HOME. Conversations, settings and tools are
+/// symlinked to your own ~/.claude, ~/.codex or ~/.grok, so any login can resume any conversation.
 final class AccountStore: ObservableObject {
     static let shared = AccountStore()
     static let native = "native"
@@ -179,11 +182,33 @@ final class AccountStore: ObservableObject {
         URL(fileURLWithPath: ProcessInfo.processInfo.environment["CODEX_HOME"] ?? NSHomeDirectory() + "/.codex")
     }
 
+    static var nativeGrokHome: URL {
+        URL(fileURLWithPath: ProcessInfo.processInfo.environment["GROK_HOME"] ?? NSHomeDirectory() + "/.grok")
+    }
+
+    static func nativeHome(_ provider: AccountProvider) -> URL {
+        switch provider {
+        case .claude: nativeClaudeHome
+        case .codex: nativeCodexHome
+        case .grok: nativeGrokHome
+        }
+    }
+
     /// Shared with your own login: conversations and agent state, plus your tools and settings.
     private static let claudeShared = ["projects", "sessions", "todos", "plans", "skills", "plugins", "hooks", "rules",
                                        "commands", "agents", "output-styles", "CLAUDE.md"]
     private static let codexShared = ["sessions", "archived_sessions", "history.jsonl", "skills", "rules", "plugins",
                                       "hooks", "prompts", "AGENTS.md"]
+    /// The same list agmux shares. Never auth.json, its lock or the leader socket.
+    private static let grokShared = ["sessions", "skills", "rules", "plugins", "hooks", "prompts", "AGENTS.md"]
+
+    private static func shared(_ provider: AccountProvider) -> [String] {
+        switch provider {
+        case .claude: claudeShared
+        case .codex: codexShared
+        case .grok: grokShared
+        }
+    }
 
     /// Creates or refreshes a login's folder. Safe to run before every launch.
     @discardableResult
@@ -191,8 +216,11 @@ final class AccountStore: ObservableObject {
         let home = home(id)
         let fm = FileManager.default
         try fm.createDirectory(at: home, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let native = provider == .claude ? nativeClaudeHome : nativeCodexHome
-        for name in provider == .claude ? claudeShared : codexShared {
+        let native = nativeHome(provider)
+        // A login that wrote its own sessions folder would lose it to the link made once yours
+        // appears; Grok may never have run as you, so make yours first.
+        if provider == .grok { try? fm.createDirectory(at: native.appendingPathComponent("sessions"), withIntermediateDirectories: true) }
+        for name in shared(provider) {
             let target = native.appendingPathComponent(name), link = home.appendingPathComponent(name)
             guard fm.fileExists(atPath: target.path) else { continue }
             if (try? fm.destinationOfSymbolicLink(atPath: link.path)) == target.path { continue }
@@ -207,8 +235,26 @@ final class AccountStore: ObservableObject {
             syncClaudeState(to: home)
         case .codex:
             try writeCodexConfig(from: native, to: home)
+        case .grok:
+            copyGrokConfig(from: native, to: home)
         }
         return home
+    }
+
+    /// Your config.toml (models, MCP servers, plugins), copied rather than linked: Grok rewrites
+    /// it, and a login must not write yours.
+    private static func copyGrokConfig(from native: URL, to home: URL) {
+        guard let data = FileManager.default.contents(atPath: native.appendingPathComponent("config.toml").path) else { return }
+        let url = home.appendingPathComponent("config.toml")
+        try? data.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Grok shares one background "leader" per socket, signed in as whoever started it, so
+    /// another login gets its own. Not in the login's folder: a socket path is limited to 104 bytes.
+    static func grokLeaderSocket(_ home: URL) -> String {
+        try? SessionPaths.prepareDirectory(SessionPaths.directory)
+        return SessionPaths.grokLeader(home: home.path)
     }
 
     /// Your settings.json without anything that picks a login or API key.

@@ -8,10 +8,13 @@ import SQLite3
 /// shells get small `claude`, `codex` and `grok` wrappers first on PATH; each wrapper re-enters
 /// this binary (`--agterm-exec`), which works out the extra arguments and execs the real CLI.
 enum AgentIntegration {
-    /// Agents that get a wrapper: Claude Code and Codex always (MCP servers), others only while
-    /// "skip permission prompts" is on for them, so agterm shadows as few commands as it can.
+    /// Agents that get a wrapper: Claude Code, Codex and Grok always (MCP servers, account
+    /// switching), others only while "skip permission prompts" is on for them, so agterm shadows
+    /// as few commands as it can.
     static var wrappedAgents: [AgentKind] {
-        AgentKind.all.filter { $0 == .claude || $0 == .codex || ($0.bypassFlags != nil && UserDefaults.standard.bool(forKey: bypassKey($0))) }
+        AgentKind.all.filter {
+            AccountProvider(rawValue: $0.id) != nil || ($0.bypassFlags != nil && UserDefaults.standard.bool(forKey: bypassKey($0)))
+        }
     }
     static let memoryKey = "integrationMemory"
     static let consultKey = "integrationConsult"
@@ -134,7 +137,13 @@ enum AgentIntegration {
             argv = kind.bypassingPermissions(args) ?? args
         }
         let userArgs = argv
-        if let provider = AccountProvider(rawValue: agent) { useAccount(provider, args: args, env: env) }
+        // Grok doesn't say which conversation it's in, so a new one gets an id of agterm's.
+        let grok = agent == "grok" ? GrokSessions.launch(args) { UUID().uuidString.lowercased() } : nil
+        if let grok { argv = grok.extra + argv }
+        if let provider = AccountProvider(rawValue: agent), let home = useAccount(provider, args: args, env: env, sessionID: grok?.sessionID),
+           provider == .grok, !args.contains(where: { $0 == "--leader-socket" || $0.hasPrefix("--leader-socket=") }) {
+            argv = ["--leader-socket", AccountStore.grokLeaderSocket(home)] + argv
+        }
         // Marks Codex sessions as started in agterm (their header's originator), which is how
         // agmux Teams reporting tells them apart from sessions started elsewhere.
         if agent == "codex", env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == nil {
@@ -158,12 +167,14 @@ enum AgentIntegration {
         exit(126)
     }
 
-    /// Points the agent at its login (CLAUDE_CONFIG_DIR / CODEX_HOME) and records which one,
-    /// with your arguments, so a switch can resume it on another. In order: the login a switch
-    /// named (AGTERM_ACCOUNT), a folder you set yourself, then the one for new sessions.
-    private static func useAccount(_ provider: AccountProvider, args: [String], env: [String: String]) {
+    /// Points the agent at its login (CLAUDE_CONFIG_DIR / CODEX_HOME / GROK_HOME) and records
+    /// which one, with your arguments, so a switch can resume it on another. In order: the login a
+    /// switch named (AGTERM_ACCOUNT), a folder you set yourself, then the one for new sessions.
+    /// Returns the folder of a login agterm keeps, nil for your own or one you chose.
+    private static func useAccount(_ provider: AccountProvider, args: [String], env: [String: String], sessionID: String?) -> URL? {
         unsetenv("AGTERM_ACCOUNT")
-        guard let kind = AgentKind.named(provider.rawValue), kind.startsSession(args) else { return }
+        guard let kind = AgentKind.named(provider.rawValue), kind.startsSession(args) else { return nil }
+        var folder: URL?
         let settings = AccountStore.loadSettings()
         var id: String
         if let chosen = env["AGTERM_ACCOUNT"] {
@@ -190,15 +201,17 @@ enum AgentIntegration {
                     try? String(getpid()).write(to: home.appendingPathComponent("owner.pid"), atomically: true, encoding: .utf8)
                 }
                 setenv(provider.homeVariable, home.path, 1)
-                for key in provider == .claude ? ClaudeAuthEnv.keys : ClaudeAuthEnv.codexKeys { unsetenv(key) }
+                for key in provider.authKeys { unsetenv(key) }
+                folder = home
             } else {
                 id = AccountStore.native
             }
         }
         if id == AccountStore.native, env["AGTERM_ACCOUNT"] != nil { unsetenv(provider.homeVariable) }
         if let tab = env["AGTERM_TAB_ID"] {
-            AccountStore.recordLaunch(TabLaunch(provider: provider, account: id, args: args, startedAt: Date()), tabID: tab)
+            AccountStore.recordLaunch(TabLaunch(provider: provider, account: id, args: args, startedAt: Date(), sessionID: sessionID), tabID: tab)
         }
+        return folder
     }
 
     static let memoryInstructions = """

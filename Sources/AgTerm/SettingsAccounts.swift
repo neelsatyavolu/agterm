@@ -20,18 +20,20 @@ struct AccountsPane: View {
                 Text("Automatic switching")
             } footer: {
                 Footnote("When Claude Code or Codex stops at its usage limit, agterm sees it in the conversation within "
-                         + "a second, checks your other accounts, and resumes the same conversation in the same tab on the "
-                         + "one with the most left. New sessions start on your own login while it has usage. "
-                         + "Every account shares your conversations, settings and MCP servers. Codex can also "
-                         + "borrow a login your team shares in agmux Teams once all of yours are out.")
+                         + "a second; Grok's usage is checked every minute while it runs. agterm then checks your other "
+                         + "accounts and resumes the same conversation in the same tab on the one with the most left. "
+                         + "New sessions start on your own login while it has usage. Every account shares your "
+                         + "conversations, settings and MCP servers. Codex and Grok can also borrow a login your team "
+                         + "shares in agmux Teams once all of yours are out.")
             }
 
             ForEach(providers, id: \.self) { provider in
                 ProviderSection(provider: provider, store: store, monitor: monitor, login: login)
             }
 
-            if teams.isSignedIn || team.isConnected, providers.contains(.codex), !team.accounts.isEmpty || team.error != nil {
-                TeamSection(team: team)
+            if teams.isSignedIn || team.isConnected, !shareable.isEmpty,
+               !team.accounts.isEmpty || team.error != nil || !team.addableTeams.isEmpty || login.teamJob != nil {
+                TeamSection(team: team, login: login, providers: shareable)
             }
         }
         .task {
@@ -46,6 +48,7 @@ struct AccountsPane: View {
     }
 
     private var providers: [AccountProvider] { AccountProvider.allCases.filter { installed?.contains($0) ?? true } }
+    private var shareable: [AccountProvider] { providers.filter(\.teamShareable) }
 
     private func binding(_ keyPath: WritableKeyPath<AccountStore.Settings, Bool>) -> Binding<Bool> {
         Binding(get: { store.settings[keyPath: keyPath] }, set: { value in store.update { $0[keyPath: keyPath] = value } })
@@ -112,14 +115,19 @@ private struct ProviderSection: View {
     }
 }
 
-/// Codex logins shared through agmux Teams. Your team adds and manages them in agmux.
+/// Codex and Grok logins shared through agmux Teams. Owners and managers can add one here;
+/// renaming, pausing and removing them happen in agmux.
 private struct TeamSection: View {
     @ObservedObject var team: TeamAccounts
+    @ObservedObject var login: AccountLogin
+    /// Installed agents whose logins a team can share.
+    let providers: [AccountProvider]
 
     var body: some View {
         Section {
-            ForEach(team.accounts) { account in
-                AccountRow(title: account.label, subtitle: [account.teamName, account.plan].compactMap { $0 }.joined(separator: " · "),
+            ForEach(team.accounts.filter { providers.contains($0.provider) }) { account in
+                AccountRow(title: account.label,
+                           subtitle: [account.provider.title, account.teamName, account.plan].compactMap { $0 }.joined(separator: " · "),
                            reading: reading(account), error: nil, checking: team.checking.contains(account.id), note: note(account)) {
                     Menu {
                         Button("Check Usage") { team.check(account) }
@@ -132,11 +140,34 @@ private struct TeamSection: View {
                     .fixedSize()
                 }
             }
+            if let job = login.teamJob {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Waiting for the \(job.provider.title) sign-in for \(job.team.name)…").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { login.cancelTeam() }
+                }
+            } else if !team.addableTeams.isEmpty {
+                HStack {
+                    Menu("Add Team Account…") {
+                        ForEach(team.addableTeams) { target in
+                            ForEach(providers, id: \.self) { provider in
+                                Button(team.addableTeams.count > 1 ? "\(provider.title) for \(target.name)" : provider.title) {
+                                    login.start(provider, team: target)
+                                }
+                            }
+                        }
+                    }
+                    .fixedSize()
+                    Spacer()
+                }
+            }
         } header: {
-            Text("Codex · Shared by your team")
+            Text("Shared by your team")
         } footer: {
-            Footnote(team.error ?? "From agmux Teams. agterm borrows one of these only when every Codex login of yours is out, "
-                     + "keeps it for that tab, and gives it back when Codex exits.")
+            Footnote(login.teamMessage ?? team.error ?? "From agmux Teams. agterm borrows one of these only when every login "
+                     + "of yours for that agent is out, keeps it for that tab, and gives it back when the agent exits. "
+                     + (team.addableTeams.isEmpty ? "" : "An account you add is signed in once, for the team; agterm keeps no copy."))
         }
     }
 

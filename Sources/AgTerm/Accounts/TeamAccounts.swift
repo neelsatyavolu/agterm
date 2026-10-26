@@ -1,10 +1,11 @@
 import AgTermCore
 import Foundation
 
-/// Codex logins your team shares through agmux Teams. agterm borrows one only when your own
-/// logins are out, for one Codex process at a time: it renews the loan every minute with the
-/// login's current tokens (Codex refreshes them in auth.json), and once that process has exited
-/// it sends the tokens back, returns the loan and deletes its copy. Main queue only.
+/// Codex and Grok logins your team shares through agmux Teams. agterm borrows one only when your
+/// own logins are out, for one agent process at a time: it renews the loan every minute with the
+/// login's current tokens (the CLI refreshes them in auth.json), and once that process has exited
+/// it sends the tokens back, returns the loan and deletes its copy. Owners and managers can also
+/// add logins to their team's pool from here. Main queue only.
 ///
 /// A borrowed login's folder holds `lease.json` (which loan and tab, never tokens), so a loan left
 /// by a crash can still be returned, and `owner.pid`, written by the wrapper as the agent starts:
@@ -23,6 +24,8 @@ final class TeamAccounts: ObservableObject {
     static let startGrace: TimeInterval = 60
 
     @Published private(set) var accounts: [TeamPool.Account] = []
+    /// Your teams; owners and managers can add logins to theirs.
+    @Published private(set) var teams: [TeamPool.Team] = []
     @Published private(set) var error: String?
     @Published private(set) var checking: Set<String> = []
     /// Usage measured here with Check Usage, by team account id, and why a check failed.
@@ -65,8 +68,12 @@ final class TeamAccounts: ObservableObject {
     }
     var isConnected: Bool { token != nil }
 
-    /// Whether a new Codex session could borrow one now.
-    var hasBorrowable: Bool { isConnected && accounts.contains { $0.borrowable(Date()) } }
+    /// Whether a new session of `provider` could borrow one now.
+    func hasBorrowable(_ provider: AccountProvider) -> Bool {
+        isConnected && accounts.contains { $0.provider == provider && $0.borrowable(Date()) }
+    }
+
+    var addableTeams: [TeamPool.Team] { teams.filter(\.canAdd) }
 
     func label(_ id: String) -> String? { held[id].map { "\($0.lease.label) (team)" } }
 
@@ -74,7 +81,7 @@ final class TeamAccounts: ObservableObject {
     func accountID(_ id: String) -> String? { held[id]?.lease.accountID }
 
     /// Takes back up the loans of agents still running from the last run (their tab outlived the
-    /// quit or a crash) and returns the rest, with whatever tokens Codex last wrote.
+    /// quit or a crash) and returns the rest, with whatever tokens the CLI last wrote.
     func start() {
         let fm = FileManager.default
         try? fm.removeItem(at: AccountStore.requestsDir)
@@ -104,40 +111,77 @@ final class TeamAccounts: ObservableObject {
     func refresh(completion: (() -> Void)? = nil) {
         guard let token else {
             accounts = []
+            teams = []
             error = nil
             completion?()
             return
         }
         Task {
-            let result: Result<[TeamPool.Account], TeamPool.Failure>
+            let result: Result<([TeamPool.Team], [TeamPool.Account]), TeamPool.Failure>
             do { result = .success(try await Self.list(token: token)) } catch { result = .failure(Self.failure(error)) }
             await MainActor.run {
                 switch result {
-                case .success(let accounts): self.accounts = accounts; self.error = nil
+                case .success(let (teams, accounts)): self.teams = teams; self.accounts = accounts; self.error = nil
                 case .failure(let failure): self.error = failure.message
                 }
-                UsageMonitor.shared.updateRouting(.codex)
+                for provider in AccountProvider.allCases where provider.teamShareable { UsageMonitor.shared.updateRouting(provider) }
                 completion?()
             }
         }
     }
 
-    private static func list(token: String) async throws -> [TeamPool.Account] {
+    /// Your teams with a pool, and the logins in them.
+    private static func list(token: String) async throws -> ([TeamPool.Team], [TeamPool.Account]) {
         let (status, body) = try await send(token, "GET", ["api", "teams"])
+        var teams: [TeamPool.Team] = []
         var all: [TeamPool.Account] = []
         for team in try TeamPool.teams(status: status, body: body) {
             let (status, body) = try await send(token, "GET", ["api", "teams", team.id, "provider-accounts"])
-            all += try TeamPool.accounts(status: status, body: body, team: team) ?? []
+            guard let pool = try TeamPool.accounts(status: status, body: body, team: team) else { continue }
+            teams.append(team)
+            all += pool
         }
-        return all
+        return (teams, all)
+    }
+
+    // MARK: Adding
+
+    /// Adds a login (its auth.json) to `team`'s pool. The service keeps one copy per account:
+    /// signing in again to one already there renews it. `completion` runs on the main queue.
+    func upload(_ provider: AccountProvider, team: TeamPool.Team, label: String, credentials: Data,
+                completion: @escaping (Result<TeamPool.Account, TeamPool.Failure>) -> Void) {
+        guard let token else { return completion(.failure(TeamPool.Failure(message: "agterm is signed out of agmux Teams.", retryable: false))) }
+        guard let body = TeamPool.uploadBody(provider: provider, label: label, credentials: credentials) else {
+            return completion(.failure(TeamPool.Failure(message: "That isn't a \(provider.title) subscription sign-in agmux Teams can share.", retryable: false)))
+        }
+        Task {
+            var result: Result<TeamPool.Account, TeamPool.Failure> = .failure(TeamPool.networkError)
+            // A passing problem (network, busy, server error) is worth two more tries: giving up
+            // means signing in again.
+            for attempt in 0..<3 {
+                if attempt > 0 { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+                do {
+                    let (status, reply) = try await Self.send(token, "POST", ["api", "teams", team.id, "provider-accounts"], body: body)
+                    result = .success(try TeamPool.uploaded(status: status, body: reply, team: team))
+                } catch {
+                    result = .failure(Self.failure(error))
+                }
+                if case .failure(let failure) = result, failure.retryable { continue }
+                break
+            }
+            await MainActor.run {
+                completion(result)
+                self.refresh()
+            }
+        }
     }
 
     // MARK: Borrowing
 
-    /// Borrows a Codex login for `tabID` and gets its folder ready. Hands back its folder id, or
+    /// Borrows a Codex or Grok login for `tabID` and gets its folder ready. Hands back its folder id, or
     /// nil when no team login is free (or the free ones turn out to be used up too).
     func borrow(_ provider: AccountProvider, tabID: String, excluding: Set<String>, completion: @escaping (String?) -> Void) {
-        guard provider == .codex, let token else { return completion(nil) }
+        guard provider.teamShareable, let token else { return completion(nil) }
         let generation = generation
         Task {
             var excluded = excluding
@@ -271,8 +315,9 @@ final class TeamAccounts: ObservableObject {
         let home = AccountStore.home(id)
         let owner = Self.liveOwner(home)
         let token = token
+        let resume = loan.lease.provider == .grok ? "grok --resume" : "codex resume"
         Notifier.shared.post(title: "Team account \(loan.lease.label) was taken back",
-                             body: reason + " Codex was stopped; resume it with codex resume.", tabID: loan.tabID)
+                             body: reason + " \(loan.lease.provider.title) was stopped; resume it with \(resume).", tabID: loan.tabID)
         Task {
             if let owner { await Self.stop([owner]) }
             await self.finish(id) {
@@ -397,8 +442,8 @@ final class TeamAccounts: ObservableObject {
     /// Measures an idle team login: borrows it just for the check, sends back the reading and
     /// any refreshed tokens, then returns it. Nothing runs on it.
     func check(_ account: TeamPool.Account) {
-        // Never while an agent here runs on it: two Codex processes refreshing one login's
-        // tokens can sign it out.
+        // Never while an agent here runs on it: two processes refreshing one login's tokens can
+        // sign it out.
         if held.values.contains(where: { $0.lease.accountID == account.id }) {
             checkErrors[account.id] = "In use in agterm right now"
             return
@@ -504,7 +549,8 @@ final class TeamAccounts: ObservableObject {
     /// with the borrowed auth.json and which loan (and tab) it is, readable by you only.
     private static func install(_ lease: TeamPool.Lease, id: String, tabID: String? = nil) throws -> URL {
         let home = try AccountStore.prepareHome(id, provider: lease.provider)
-        var saved: [String: Any] = ["teamID": lease.teamID, "leaseID": lease.leaseID, "accountID": lease.accountID, "label": lease.label]
+        var saved: [String: Any] = ["teamID": lease.teamID, "leaseID": lease.leaseID, "accountID": lease.accountID, "label": lease.label,
+                                    "provider": lease.provider.rawValue]
         if let tabID { saved["tabID"] = tabID }
         guard let record = try? JSONSerialization.data(withJSONObject: saved),
               FileManager.default.createFile(atPath: home.appendingPathComponent("lease.json").path, contents: record, attributes: [.posixPermissions: 0o600]),
@@ -519,7 +565,9 @@ final class TeamAccounts: ObservableObject {
         guard let data = FileManager.default.contents(atPath: home.appendingPathComponent("lease.json").path),
               let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: String],
               let team = saved["teamID"], let leaseID = saved["leaseID"], let account = saved["accountID"] else { return nil }
-        return TeamPool.Lease(teamID: team, leaseID: leaseID, accountID: account, provider: .codex, label: saved["label"] ?? "Team account",
+        // Loans from before Grok could be borrowed are Codex ones.
+        let provider = saved["provider"].flatMap(AccountProvider.init(rawValue:)) ?? .codex
+        return TeamPool.Lease(teamID: team, leaseID: leaseID, accountID: account, provider: provider, label: saved["label"] ?? "Team account",
                               credentials: Data(), expiresAt: .distantFuture, remainingPercent: nil)
     }
 
@@ -531,9 +579,9 @@ final class TeamAccounts: ObservableObject {
     }
 
     private static func renew(_ token: String, _ lease: TeamPool.Lease, home: URL, health: TeamPool.Health?) async throws -> Date {
-        // Codex may be replacing the file this instant: a failed read is worth another try.
+        // The CLI may be replacing the file this instant: a failed read is worth another try.
         guard let credentials = FileManager.default.contents(atPath: home.appendingPathComponent("auth.json").path),
-              let body = TeamPool.renewBody(credentials: credentials, health: health) else {
+              let body = TeamPool.renewBody(credentials: credentials, provider: lease.provider, health: health) else {
             throw TeamPool.Failure(message: "The team account's sign-in couldn't be read.", retryable: true)
         }
         let (status, reply) = try await send(token, "POST", ["api", "teams", lease.teamID, "provider-accounts", "leases", lease.leaseID, "renew"], body: body)
@@ -542,7 +590,7 @@ final class TeamAccounts: ObservableObject {
 
     /// Sends back the latest tokens (and usage, if measured), then returns the loan and deletes
     /// the copy. If the tokens can't be sent, the loan isn't returned early: it lapses on its own,
-    /// as the service asks, rather than handing out tokens Codex may have replaced.
+    /// as the service asks, rather than handing out tokens the CLI may have replaced.
     private static func returnLease(_ token: String, _ lease: TeamPool.Lease, home: URL, health: TeamPool.Health? = nil, attempts: Int = 3) async {
         var unsent = false
         for attempt in 1...attempts {

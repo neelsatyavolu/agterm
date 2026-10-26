@@ -3,8 +3,9 @@ import Foundation
 
 /// Reads a login's usage by asking its own CLI, which already holds the token: Claude Code's
 /// `get_usage` control request (about 0.6 s) and Codex's app-server `account/rateLimits/read`
-/// (about 1 s). Nothing is read from the Keychain, and no model is called. Blocking; run off
-/// the main thread.
+/// (about 1 s). Grok's CLI has no such request, so its usage comes from grok.com's billing
+/// reply with the login's own token. Nothing is read from the Keychain, and no model is
+/// called. Blocking; run off the main thread.
 enum UsageProbe {
     static let timeout: TimeInterval = 20
 
@@ -22,6 +23,7 @@ enum UsageProbe {
         switch provider {
         case .claude: return claude(cli: cli, home: home)
         case .codex: return codex(cli: cli, home: home)
+        case .grok: return grok(cli: cli, home: home)
         }
     }
 
@@ -85,13 +87,111 @@ enum UsageProbe {
         return Result(reading: reading, signedIn: true, error: failure)
     }
 
+    private static func grok(cli: String, home: URL?) -> Result {
+        let folder = home ?? AccountStore.nativeGrokHome
+        guard var login = grokLogin(folder) else { return Result(reading: nil, signedIn: false, error: "Not signed in to Grok") }
+        // Access tokens last 6 hours and only the CLI renews them.
+        var refreshed = false
+        if let expires = login.expiresAt, expires < Date().addingTimeInterval(60) {
+            refreshGrok(cli: cli, home: home)
+            refreshed = true
+            login = grokLogin(folder) ?? login
+        }
+        var reply = grokBilling(login.token)
+        if [401, 403].contains(reply.status), !refreshed {
+            refreshGrok(cli: cli, home: home)
+            if let fresh = grokLogin(folder), fresh.token != login.token {
+                login = fresh
+                reply = grokBilling(login.token)
+            }
+        }
+        let plan = grokPlan(folder)
+        switch reply.status {
+        case 200..<300:
+            guard let snapshot = GrokBilling.parse(reply.data, now: Date()) else {
+                return Result(reading: UsageReading(windows: [], plan: plan, email: login.email, checkedAt: Date()), signedIn: true,
+                              error: "Grok didn't report usage")
+            }
+            return Result(reading: GrokBilling.reading(snapshot, plan: plan, email: login.email, now: Date()), signedIn: true, error: nil)
+        case 401, 403:
+            return Result(reading: nil, signedIn: false, error: "Grok's sign-in expired; run grok on this account to renew it")
+        case 0:
+            return Result(reading: nil, signedIn: true, error: "grok.com couldn't be reached")
+        default:
+            return Result(reading: UsageReading(windows: [], plan: plan, email: login.email, checkedAt: Date()), signedIn: true,
+                          error: "Usage isn't available right now")
+        }
+    }
+
+    private static func grokLogin(_ folder: URL) -> GrokAuth.Login? {
+        guard let data = FileManager.default.contents(atPath: folder.appendingPathComponent("auth.json").path),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return GrokAuth.login(json)
+    }
+
+    /// `grok models` signs in like a session would, renewing an expired token, and calls no model.
+    private static func refreshGrok(cli: String, home: URL?) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: cli)
+        process.arguments = ["models"] + (home.map { ["--leader-socket", AccountStore.grokLeaderSocket($0)] } ?? [])
+        process.environment = environment(.grok, home: home)
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
+        _ = QuickCommandRunner.execute(process, timeout: timeout)
+    }
+
+    /// One billing request; status 0 when it didn't get through. A 429 or a gateway error is
+    /// tried once more.
+    private static func grokBilling(_ token: String) -> (status: Int, data: Data) {
+        var request = URLRequest(url: GrokBilling.url, timeoutInterval: 15)
+        request.httpMethod = "POST"
+        request.httpBody = GrokBilling.requestBody
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/grpc-web+proto", forHTTPHeaderField: "Content-Type")
+        request.setValue("1", forHTTPHeaderField: "x-grpc-web")
+        request.setValue("https://grok.com", forHTTPHeaderField: "Origin")
+        request.setValue("agterm", forHTTPHeaderField: "User-Agent")
+        var reply: (status: Int, data: Data) = (0, Data())
+        for attempt in 0..<2 {
+            if attempt > 0 { Thread.sleep(forTimeInterval: 2) }
+            // Each attempt has its own answer, so a late one can't land in the next.
+            let answer = Answer()
+            let done = DispatchSemaphore(value: 0)
+            let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+                answer.set(((response as? HTTPURLResponse)?.statusCode ?? 0, data ?? Data()))
+                done.signal()
+            }
+            task.resume()
+            if done.wait(timeout: .now() + 20) == .timedOut { task.cancel() }
+            reply = answer.get() ?? (0, Data())
+            guard [0, 429, 502, 503, 504].contains(reply.status) else { break }
+        }
+        return reply
+    }
+
+    private final class Answer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: (Int, Data)?
+        func set(_ value: (Int, Data)) { lock.withLock { self.value = value } }
+        func get() -> (status: Int, data: Data)? { lock.withLock { value } }
+    }
+
+    /// The plan the CLI last logged for this login, from the end of its unified.jsonl.
+    private static func grokPlan(_ folder: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: folder.appendingPathComponent("logs/unified.jsonl")) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: size > 2_000_000 ? size - 2_000_000 : 0)
+        let data = (try? handle.readToEnd()) ?? Data()
+        return GrokBilling.plan(logTail: String(decoding: data, as: UTF8.self))
+    }
+
     /// Your environment with the login's folder set and any API key removed, so the CLI reports
     /// on that subscription login and nothing else.
     static func environment(_ provider: AccountProvider, home: URL?) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = QuickCommandRunner.shared.searchPath
         for key in env.keys where key.hasPrefix("AGTERM_") { env[key] = nil }
-        for key in provider == .claude ? ClaudeAuthEnv.keys : ClaudeAuthEnv.codexKeys { env[key] = nil }
+        for key in provider.authKeys { env[key] = nil }
         env[provider.homeVariable] = home?.path
         return env
     }
