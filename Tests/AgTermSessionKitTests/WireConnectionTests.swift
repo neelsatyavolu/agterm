@@ -75,6 +75,45 @@ final class WireConnectionTests: XCTestCase {
         XCTAssertEqual(try client.receive(timeout: 5), .list)
     }
 
+    /// A client reads `attached` blocking, then switches to events: whatever arrived with it
+    /// (the replay) must still be delivered, without waiting for more bytes.
+    func testStartReadingDeliversMessagesAlreadyBuffered() throws {
+        var fds: [Int32] = [-1, -1]
+        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        let server = WireConnection(fd: fds[0])
+        let client = WireConnection(fd: fds[1])
+        defer { server.close(); client.close() }
+        try server.send(.list)
+        try server.send(.output(Data("buffered".utf8)))
+        XCTAssertEqual(try client.receive(timeout: 2), .list)
+        let got = expectation(description: "buffered output")
+        client.onMessage = { if $0 == .output(Data("buffered".utf8)) { got.fulfill() } }
+        client.startReading(queue: DispatchQueue(label: "test.client"))
+        wait(for: [got], timeout: 2)
+    }
+
+    func testPausedReadingDeliversNothingUntilResumed() throws {
+        var fds: [Int32] = [-1, -1]
+        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        let server = WireConnection(fd: fds[0])
+        let client = WireConnection(fd: fds[1])
+        defer { server.close(); client.close() }
+        let queue = DispatchQueue(label: "test.client")
+        var received: [WireMessage] = []
+        client.onMessage = { received.append($0) }
+        client.startReading(queue: queue)
+        client.pauseReading()
+        try server.send(.output(Data("later".utf8)))
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(queue.sync { received }, [])
+        client.resumeReading()
+        let deadline = Date().addingTimeInterval(2)
+        while queue.sync(execute: { received.isEmpty }) && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+        XCTAssertEqual(queue.sync { received }, [.output(Data("later".utf8))])
+        // Closing while paused must not crash (a suspended source can't be released).
+        client.pauseReading()
+    }
+
     private func makeDir() throws -> String {
         var template = Array("/tmp/agwc.XXXXXX".utf8CString)
         guard let made = mkdtemp(&template) else { throw POSIXError(.EIO) }

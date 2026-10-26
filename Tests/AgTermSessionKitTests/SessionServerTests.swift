@@ -104,6 +104,18 @@ final class SessionServerTests: XCTestCase {
         XCTAssertThrowsError(try client.receive(timeout: 5))
     }
 
+    /// The app connects only to a helper speaking its protocol version; otherwise it gets nothing
+    /// back and runs its tabs in-process.
+    func testVersionMismatchFallsBackToLocal() throws {
+        XCTAssertNil(try? HelperHandshake.connect(socket: socketPath, build: "test", expectVersion: 2))
+        XCTAssertThrowsError(try HelperHandshake.connect(socket: socketPath, build: "test", expectVersion: 2)) {
+            XCTAssertEqual($0 as? HelperHandshake.VersionMismatch, HelperHandshake.VersionMismatch(server: SessionWire.protocolVersion))
+        }
+        let matching = try HelperHandshake.connect(socket: socketPath, build: "app")
+        defer { matching.connection.close() }
+        XCTAssertEqual(matching.build, "test")
+    }
+
     // MARK: Helpers
 
     private func connect() throws -> WireConnection {

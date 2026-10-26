@@ -51,6 +51,7 @@ public final class WireConnection {
     private var inbox = Data()
     private var queue: DispatchQueue?
     private var readSource: DispatchSourceRead?
+    private var readPaused = false
     private var writeSource: DispatchSourceWrite?
     /// Sources still registered on `fd`; the descriptor closes after the last cancel handler.
     private let liveSources = DispatchGroup()
@@ -84,8 +85,9 @@ public final class WireConnection {
     }
 
     /// Sends `hello` and returns the server's `hello`. The caller compares versions.
-    public func handshake(build: String, timeout: TimeInterval = 5) throws -> (version: Int, build: String) {
-        try send(.hello(version: SessionWire.protocolVersion, build: build))
+    public func handshake(build: String, version: Int = SessionWire.protocolVersion,
+                          timeout: TimeInterval = 5) throws -> (version: Int, build: String) {
+        try send(.hello(version: version, build: build))
         switch try receive(timeout: timeout) {
         case .hello(let version, let build): return (version, build)
         case .error(let text): throw WireError.remote(text)
@@ -167,6 +169,25 @@ public final class WireConnection {
         source.setCancelHandler { [liveSources] in liveSources.leave() }
         readSource = source
         source.resume()
+        // Messages read by an earlier blocking `receive` may be waiting in the inbox already.
+        queue.async { [weak self] in self?.deliverBuffered() }
+    }
+
+    /// Stops taking bytes off the socket (backpressure: the sender's backlog grows instead).
+    public func pauseReading() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed, !readPaused, let readSource else { return }
+        readSource.suspend()
+        readPaused = true
+    }
+
+    public func resumeReading() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard readPaused else { return }
+        readSource?.resume()
+        readPaused = false
     }
 
     public func close() {
@@ -180,6 +201,10 @@ public final class WireConnection {
     private func readAvailable() {
         let count = readOnce()
         if count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR) { return close() }
+        deliverBuffered()
+    }
+
+    private func deliverBuffered() {
         do {
             while !isClosed, let message = try decodeNext() { onMessage?(message) }
         } catch {
@@ -318,6 +343,8 @@ public final class WireConnection {
         receivedFDs.forEach { Darwin.close($0) }
         receivedFDs = []
         guard let queue else { Darwin.close(fd); return }
+        // A suspended source never runs its cancel handler (and crashes when released).
+        if readPaused { readSource?.resume(); readPaused = false }
         readSource?.cancel()
         writeSource?.cancel()
         readSource = nil
