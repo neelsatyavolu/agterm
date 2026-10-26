@@ -140,8 +140,8 @@ struct CommandPane: View {
                          + "check it; ⌘⏎ runs it. agterm asks through the CLI you're already signed in to, using its fastest "
                          + "setting: Claude Haiku (about 2.5 s), Codex Luna at low effort (about 4 s) or Grok at low effort "
                          + "(about 5 s). Automatic uses the first one installed, in that order.\n\n"
-                         + "The model gets your request, the tab's folder, your shell and the last \(QuickCommand.screenLines) "
-                         + "lines on screen. It has no tools, so it can't read files or run anything, and the "
+                         + "The model gets your request, the tab's folder, your shell and the tab's last \(QuickCommand.outputLines) "
+                         + "lines, scrollback included, so it sees the commands you ran and what they printed. It has no tools, so it can't read files or run anything, and the "
                          + "conversation isn't kept in the CLI's history.")
             }
         }

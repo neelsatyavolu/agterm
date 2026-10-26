@@ -95,10 +95,10 @@ final class QuickCommandRunner {
     }
 
     /// Asks the model; `completion` runs on the main queue unless the run was cancelled.
-    func generate(request: String, cwd: String, shell: String, screen: String,
+    func generate(request: String, cwd: String, shell: String, output: String,
                   completion: @escaping (QuickModel?, Result<String, Failure>) -> Void) -> Run {
         let run = Run()
-        let message = QuickCommand.message(request: request, cwd: cwd, shell: shell, screen: screen)
+        let message = QuickCommand.message(request: request, cwd: cwd, shell: shell, output: output)
         // Each request on its own thread, so one stuck CLI can't hold up the next ⌘K.
         DispatchQueue.global(qos: .userInitiated).async {
             guard let model = self.currentModel(), let cli = self.executable(model.cli) else {

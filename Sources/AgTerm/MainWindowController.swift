@@ -423,7 +423,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         commandBar.context = { [weak self] in
             guard let session = self?.commandBarTarget else { return (NSHomeDirectory(), "zsh", "") }
             session.pollProcess()
-            return (session.cwd, session.shellName, session.screenText())
+            return (session.cwd, session.shellName, session.recentText(rows: QuickCommand.outputLines * 2))
         }
         commandBar.onInsert = { [weak self] command, run in
             guard let view = self?.commandBarTarget?.view else { return }

@@ -57,18 +57,32 @@ public enum QuickCommand {
     public static let instructions = """
         You write one shell command for a macOS terminal. Reply with only the command on a single line: \
         no explanation, no code fences, no leading $. Prefer standard macOS and BSD tools. \
-        If the request is unclear or unsafe, reply with a harmless `echo` saying why.
+        If the request is unclear or unsafe, reply with a harmless `echo` saying why. \
+        The recent terminal output shows earlier commands and what they printed; use it for requests \
+        like "fix that error" or "run that again".
         """
 
-    /// Lines of the screen sent along, so "fix that error" has something to go on.
-    public static let screenLines = 20
+    /// Most recent lines of the tab (scrollback and screen) sent along, and at most this many characters
+    /// of them, so the model sees earlier commands and their output.
+    public static let outputLines = 150
+    public static let outputCharacters = 8000
 
     /// The message sent to the model.
-    public static func message(request: String, cwd: String, shell: String, screen: String) -> String {
-        let recent = screen.split(separator: "\n", omittingEmptySubsequences: true).suffix(screenLines).joined(separator: "\n")
+    public static func message(request: String, cwd: String, shell: String, output: String) -> String {
+        let recent = tail(output)
         var text = "Shell: \(shell) on macOS\nFolder: \(cwd)\n"
-        if !recent.isEmpty { text += "Last lines on screen:\n\(recent)\n" }
+        if !recent.isEmpty { text += "Recent terminal output, oldest first:\n\(recent)\n" }
         return text + "Request: \(request)"
+    }
+
+    /// The last `outputLines` non-blank lines, dropping whole lines from the top to fit `outputCharacters`.
+    private static func tail(_ output: String) -> String {
+        var lines = output.split(separator: "\n", omittingEmptySubsequences: true).suffix(outputLines)
+        var count = lines.reduce(0) { $0 + $1.count + 1 }
+        while count > outputCharacters, lines.count > 1 {
+            count -= lines.removeFirst().count + 1
+        }
+        return String(lines.joined(separator: "\n").suffix(outputCharacters))
     }
 
     /// The model's preference if it's installed, else the first installed in `QuickModel.preference`.

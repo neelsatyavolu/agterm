@@ -131,6 +131,18 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         return rows.joined(separator: "\n")
     }
 
+    /// The last `rows` lines of the tab as plain text, scrollback included, so ⌘K sees earlier
+    /// commands and their output. A full-screen program (alternate screen) has only its screen.
+    func recentText(rows: Int) -> String {
+        let terminal = view.getTerminal()
+        guard !terminal.isCurrentBufferAlternate else { return screenText() }
+        let top = terminal.buffer.totalLinesTrimmed
+        let end = Self.endRow(terminal, top: top)
+        var lines = (max(top, end - rows)..<end).compactMap { terminal.getScrollInvariantLine(row: $0)?.translateToString(trimRight: true) }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
+
     /// What to save so this tab can be reopened: folder, history and, for agents that can
     /// resume a conversation, the command that brings them back.
     func snapshot() -> SavedTab {

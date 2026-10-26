@@ -428,8 +428,12 @@ enum SelfTest {
                 print("selftest: ⌘K cancel: model processes left:", left, "| typed:", screenLine(shell, containing: "CANCELLED") != nil)
             }
         }
+        // ⌘K gets what scrolled off the screen too.
+        after(6.5) { shell.view.send(txt: "echo CONTEXT-MARKER; seq 1 80\r") }
         after(8) {
             controller.toggleCommandBar()
+            let output = controller.commandBarForTest.context?().output ?? ""
+            print("selftest: ⌘K sees scrollback:", output.contains("CONTEXT-MARKER") && screenLine(shell, containing: "CONTEXT-MARKER") == nil)
             controller.commandBarForTest.selfTestSubmit("show the 3 biggest files in this folder")
             let start = Date()
             func wait() {
@@ -708,7 +712,25 @@ enum SelfTest {
             print("selftest: cd hidden after accept:", controller.cdSuggestionsForTest.shownForTest.isEmpty)
             session.view.send(txt: "\u{15}")
         }
-        after(5) { exit(0) }
+        // Several words, for a folder whose name has a space.
+        let fixture = (NSTemporaryDirectory() as NSString).appendingPathComponent("agterm-cd-check")
+        try? FileManager.default.createDirectory(atPath: fixture + "/Show Resources", withIntermediateDirectories: true)
+        after(5) { session.view.send(txt: "cd '\(fixture)' && clear\r") }
+        after(6.5) { session.view.send(txt: "cd show reso") }
+        after(7.5) {
+            print("selftest: cd words shown:", controller.cdSuggestionsForTest.shownForTest)
+            snapshot(window, "\(outDir)/cd-suggestions-words.png")
+            let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                       windowNumber: window.windowNumber, context: nil, characters: "\t",
+                                       charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)
+            tab.map { NSApp.postEvent($0, atStart: false) }
+        }
+        after(8.5) {
+            print("selftest: cd words line:", screenLine(session, containing: "cd ") ?? "none")
+            session.view.send(txt: "\u{15}")
+            try? FileManager.default.removeItem(atPath: fixture)
+        }
+        after(9) { exit(0) }
     }
 
     /// What's New with every release plays into a new tab, prompt below, in Ink and then Paper.

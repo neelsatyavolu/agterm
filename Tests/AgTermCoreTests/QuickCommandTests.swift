@@ -18,14 +18,23 @@ final class QuickCommandTests: XCTestCase {
         XCTAssertNil(QuickCommand.clean("```\n```"))
     }
 
-    func testMessageKeepsOnlyRecentScreenLines() {
-        let screen = (1...30).map { "line \($0)" }.joined(separator: "\n")
-        let message = QuickCommand.message(request: "fix it", cwd: "/tmp", shell: "zsh", screen: screen)
-        XCTAssertTrue(message.contains("line 30"))
-        XCTAssertTrue(message.contains("line 11"))
-        XCTAssertFalse(message.contains("line 10\n"))
+    func testMessageSendsRecentCommandsAndOutput() {
+        let output = (1...200).map { "line \($0)" }.joined(separator: "\n")
+        let message = QuickCommand.message(request: "fix it", cwd: "/tmp", shell: "zsh", output: output)
+        XCTAssertTrue(message.contains("Recent terminal output"))
+        XCTAssertTrue(message.contains("line 200"))
+        XCTAssertTrue(message.contains("line \(200 - QuickCommand.outputLines + 1)\n"))
+        XCTAssertFalse(message.contains("line \(200 - QuickCommand.outputLines)\n"))
         XCTAssertTrue(message.hasSuffix("Request: fix it"))
-        XCTAssertFalse(QuickCommand.message(request: "x", cwd: "/", shell: "zsh", screen: "").contains("screen"))
+        XCTAssertFalse(QuickCommand.message(request: "x", cwd: "/", shell: "zsh", output: "").contains("output"))
+    }
+
+    func testMessageCapsLongOutputKeepingTheEnd() {
+        let output = (1...100).map { "\($0) " + String(repeating: "x", count: 500) }.joined(separator: "\n")
+        let message = QuickCommand.message(request: "x", cwd: "/", shell: "zsh", output: output)
+        XCTAssertLessThan(message.count, QuickCommand.outputCharacters + 200)
+        XCTAssertTrue(message.contains("100 xxx"))
+        XCTAssertFalse(message.contains("\n1 xxx"))
     }
 
     func testPickPrefersChoiceThenFastest() {

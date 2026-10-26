@@ -12,11 +12,31 @@ final class CdSuggestTests: XCTestCase {
         XCTAssertNil(CdSuggest.query(beforeCursor: "% ls sheaf"))
         XCTAssertNil(CdSuggest.query(beforeCursor: "% abcd sheaf"))
         XCTAssertNil(CdSuggest.query(beforeCursor: "% cd "))
-        XCTAssertNil(CdSuggest.query(beforeCursor: "% cd sheaf other"))
+        // A second command on the same line isn't part of the folder name.
+        XCTAssertNil(CdSuggest.query(beforeCursor: "% cd sheaf && ls"))
+        XCTAssertNil(CdSuggest.query(beforeCursor: "% cd sheaf; ls"))
         // Paths are left to the shell's own tab completion.
         XCTAssertNil(CdSuggest.query(beforeCursor: "% cd ~/Doc"))
         XCTAssertNil(CdSuggest.query(beforeCursor: "% cd ../x"))
         XCTAssertNil(CdSuggest.query(beforeCursor: "% cd -"))
+    }
+
+    func testQueryKeepsEveryWordTypedAfterCd() {
+        XCTAssertEqual(CdSuggest.query(beforeCursor: "% cd show resources"), "show resources")
+        XCTAssertEqual(CdSuggest.query(beforeCursor: "% cd a && cd show res"), "show res")
+        XCTAssertEqual(CdSuggest.query(beforeCursor: "% cd show "), "show ")
+        XCTAssertEqual(CdSuggest.query(beforeCursor: #"% cd show\ res"#), #"show\ res"#)
+        XCTAssertEqual(CdSuggest.query(beforeCursor: #"% cd "show res"#), #""show res"#)
+    }
+
+    func testMultiWordQueriesMatchNamesWithSpacesDashesOrUnderscores() {
+        let dirs = ["/h/a/Show Resources", "/h/b/show-resources-old", "/h/c/show_resources_2", "/h/d/showroom"]
+        XCTAssertEqual(CdSuggest.rank(query: "show resources", cwd: "/h", candidates: dirs, visits: [:]),
+                       ["/h/a/Show Resources", "/h/b/show-resources-old", "/h/c/show_resources_2"])
+        // As typed with an escaped space, a quote or a trailing space.
+        XCTAssertEqual(CdSuggest.rank(query: #"show\ reso"#, cwd: "/h", candidates: dirs, visits: [:]).first, "/h/a/Show Resources")
+        XCTAssertEqual(CdSuggest.rank(query: #""show reso"#, cwd: "/h", candidates: dirs, visits: [:]).first, "/h/a/Show Resources")
+        XCTAssertEqual(CdSuggest.rank(query: "show ", cwd: "/h", candidates: dirs, visits: [:]).count, 4)
     }
 
     func testRankingPrefersExactThenPrefixThenContainsThenFuzzy() {

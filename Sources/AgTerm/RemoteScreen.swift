@@ -31,7 +31,7 @@ extension TerminalSession {
     }
 
     /// One past the last line in the buffer (SwiftTerm doesn't expose the count).
-    private static func endRow(_ terminal: Terminal, top: Int) -> Int {
+    static func endRow(_ terminal: Terminal, top: Int) -> Int {
         guard terminal.getScrollInvariantLine(row: top) != nil else { return top }
         var low = top, step = 1
         while terminal.getScrollInvariantLine(row: low + step) != nil {

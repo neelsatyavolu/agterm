@@ -9,8 +9,8 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     /// Called with the command and whether to run it; the bar closes itself after.
     var onInsert: ((String, Bool) -> Void)?
     var onClose: (() -> Void)?
-    /// What the model gets besides your request: folder, shell and recent screen lines.
-    var context: (() -> (cwd: String, shell: String, screen: String))?
+    /// What the model gets besides your request: folder, shell and the tab's recent commands and output.
+    var context: (() -> (cwd: String, shell: String, output: String))?
 
     private let field = NSTextField()
     private let modelLabel = NSTextField(labelWithString: "")
@@ -155,12 +155,12 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         }
         let request = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty, running == nil else { return }
-        let context = context?() ?? (cwd: NSHomeDirectory(), shell: "zsh", screen: "")
+        let context = context?() ?? (cwd: NSHomeDirectory(), shell: "zsh", output: "")
         generation += 1
         let current = generation
         modelLabel.stringValue = QuickCommandRunner.shared.currentModelName + "…"
         showResult("Writing a command…", isError: false, pending: true)
-        running = QuickCommandRunner.shared.generate(request: request, cwd: context.cwd, shell: context.shell, screen: context.screen) { [weak self] model, outcome in
+        running = QuickCommandRunner.shared.generate(request: request, cwd: context.cwd, shell: context.shell, output: context.output) { [weak self] model, outcome in
             guard let self, current == self.generation else { return }
             self.running = nil
             self.modelLabel.stringValue = model?.shortName ?? ""

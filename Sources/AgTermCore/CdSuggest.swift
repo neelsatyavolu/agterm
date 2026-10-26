@@ -6,22 +6,41 @@ import Foundation
 public enum CdSuggest {
     public static let limit = 6
 
-    /// The word being typed after `cd`, from the text left of the cursor. Nil when the line isn't
-    /// a `cd` or the word is a path (`~/…`, `../…`, `-`), which the shell's own completion handles.
+    /// Everything typed after `cd`, as typed (`show resources`, `show\ res`, `"show res`), from the
+    /// text left of the cursor. Nil when the line isn't a `cd`, another command follows it, or the
+    /// word is a path (`~/…`, `../…`, `-`), which the shell's own completion handles.
     public static func query(beforeCursor text: String) -> String? {
-        guard let match = text.range(of: #"(?:^|[\s;&|(])cd +(\S+)$"#, options: .regularExpression) else { return nil }
-        let word = String(text[match].split(separator: " ").last ?? "")
-        guard let first = word.first, !"~.-$".contains(first), !word.contains("/") else { return nil }
-        return word
+        guard let match = text.range(of: #"(?:^|[\s;&|(])cd +([^;&|<>`$()]+)$"#, options: .regularExpression) else { return nil }
+        // The match starts at `cd` or the one character before it; what follows `cd` and its spaces.
+        let typed = String(text[match].drop { $0 != "c" }.dropFirst(2).drop { $0 == " " })
+        let name = unescaped(typed)
+        guard let first = name.first, !"~.-$".contains(first), !name.contains("/") else { return nil }
+        return typed
+    }
+
+    /// The folder name `typed` spells: opening quote and backslash escapes dropped, outer spaces trimmed.
+    private static func unescaped(_ typed: String) -> String {
+        let unquoted = typed.first == "\"" || typed.first == "'" ? typed.dropFirst() : Substring(typed)
+        return unquoted.replacingOccurrences(of: "\\", with: "").trimmingCharacters(in: .whitespaces)
+    }
+
+    /// `-` and `_` read as spaces, so `show resources` finds `Show Resources`, `show-resources`
+    /// and `show_resources`.
+    private static func searchTerm(_ typed: String) -> String {
+        normalized(unescaped(typed))
+    }
+
+    private static func normalized(_ name: String) -> String {
+        name.lowercased().replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
     }
 
     /// Best matches first: exact name, then prefix, then substring, then (only if none of those)
     /// letters in order. Ties go to folders inside `cwd`, then ones visited more, then shallower paths.
     public static func rank(query: String, cwd: String, candidates: [String], visits: [String: Int]) -> [String] {
-        let q = query.lowercased()
+        let q = searchTerm(query)
         var seen = Set<String>()
         let scored: [(path: String, tier: Int, child: Bool, visits: Int, depth: Int)] = candidates.compactMap { path in
-            guard path != cwd, seen.insert(path).inserted, let tier = tier(name: (path as NSString).lastPathComponent.lowercased(), query: q) else { return nil }
+            guard path != cwd, seen.insert(path).inserted, let tier = tier(name: normalized((path as NSString).lastPathComponent), query: q) else { return nil }
             return (path, tier, (path as NSString).deletingLastPathComponent == cwd, visits[path] ?? 0, path.split(separator: "/").count)
         }
         // Letters-in-order matches are noise once any name actually contains the word.
@@ -41,7 +60,7 @@ public enum CdSuggest {
         if name.hasPrefix(query) { return 1 }
         if name.contains(query) { return 2 }
         var rest = Substring(name)
-        for character in query {
+        for character in query where character != " " {
             guard let index = rest.firstIndex(of: character) else { return nil }
             rest = rest[rest.index(after: index)...]
         }
