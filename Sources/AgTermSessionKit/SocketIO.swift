@@ -52,6 +52,8 @@ public final class WireConnection {
     private var queue: DispatchQueue?
     private var readSource: DispatchSourceRead?
     private var readPaused = false
+    /// Called once the backlog is down to `bytes` (see `whenBacklog`).
+    private var backlogWatch: (bytes: Int, handler: () -> Void)?
     private var writeSource: DispatchSourceWrite?
     /// Sources still registered on `fd`; the descriptor closes after the last cancel handler.
     private let liveSources = DispatchGroup()
@@ -120,6 +122,31 @@ public final class WireConnection {
             closeLocked()
             throw WireError.closed
         }
+    }
+
+    /// Bytes queued but not yet written to the socket.
+    public var backlogBytes: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return queuedBytes
+    }
+
+    /// Calls `handler` once, on the reading queue, when the backlog is down to `bytes` (soon, if
+    /// it already is). Replaces any earlier watch; never called if the connection closes first.
+    public func whenBacklog(atMost bytes: Int, _ handler: @escaping () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed else { return }
+        backlogWatch = (bytes, handler)
+        checkBacklogLocked()
+    }
+
+    /// The process at the other end.
+    public var peerPID: pid_t? {
+        var pid: pid_t = 0
+        var length = socklen_t(MemoryLayout<pid_t>.size)
+        guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) == 0, pid > 0 else { return nil }
+        return pid
     }
 
     /// Closes once everything queued has been written (right away if nothing is).
@@ -281,6 +308,7 @@ public final class WireConnection {
                 queuedBytes -= written
                 if outbox[0].offset == outbox[0].data.count { outbox.removeFirst() }
             } else if written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                checkBacklogLocked()
                 return armWriteSource()
             } else if written < 0 && errno == EINTR {
                 continue
@@ -293,7 +321,14 @@ public final class WireConnection {
             writeSource = nil
             source.cancel()
         }
+        checkBacklogLocked()
         if closeWhenFlushed { closeLocked() }
+    }
+
+    private func checkBacklogLocked() {
+        guard let watch = backlogWatch, queuedBytes <= watch.bytes, let queue else { return }
+        backlogWatch = nil
+        queue.async(execute: watch.handler)
     }
 
     private func write(_ pending: Pending) -> Int {
@@ -340,6 +375,7 @@ public final class WireConnection {
         for pending in outbox { if let passed = pending.fd { Darwin.close(passed) } }
         outbox = []
         queuedBytes = 0
+        backlogWatch = nil
         receivedFDs.forEach { Darwin.close($0) }
         receivedFDs = []
         guard let queue else { Darwin.close(fd); return }

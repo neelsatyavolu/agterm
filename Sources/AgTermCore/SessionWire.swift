@@ -6,6 +6,8 @@ public enum SessionWire {
     public static let protocolVersion = 1
     /// Largest accepted length field (tag + payload).
     public static let maxFrameLength = 16 * 1024 * 1024
+    /// The `error` text a client gets when another client attaches to its session; it must not reattach.
+    public static let superseded = "superseded"
 }
 
 public struct SpawnRequest: Codable, Equatable {

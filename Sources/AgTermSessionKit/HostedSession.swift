@@ -9,6 +9,11 @@ final class HostedSession {
     private static let readSize = 64 * 1024
     /// How long after a `kill` before the shell gets SIGKILL.
     private static let killGrace: TimeInterval = 2
+    /// Backpressure: the pty isn't read while the attached client has more than `pauseAbove`
+    /// unsent, until it is down to `resumeAt`, so a slow client blocks the shell's writes
+    /// rather than growing the helper's memory (or getting dropped).
+    private static let pauseAbove = 4 * 1024 * 1024
+    private static let resumeAt = 1 * 1024 * 1024
 
     let id = UUID().uuidString
     let pid: pid_t
@@ -26,6 +31,8 @@ final class HostedSession {
     private var readerSuspended = false
     private var exitSource: DispatchSourceProcess?
     private var client: WireConnection?
+    /// The client whose backlog has the reader suspended.
+    private var throttledBy: WireConnection?
     private var exited = false
     private let readBuffer = UnsafeMutableRawPointer.allocate(byteCount: readSize, alignment: 8)
 
@@ -62,10 +69,14 @@ final class HostedSession {
         queue.async { [weak self] in self?.reap(blocking: false) }
     }
 
-    /// Makes `connection` this session's client, closing any previous one, and sends it
-    /// `attached` (carrying the pty master) and the screen replay.
+    /// Makes `connection` this session's client, and sends it `attached` (carrying the pty
+    /// master) and the screen replay. A previous client is told it was superseded, then closed.
     func attach(_ connection: WireConnection) {
-        if let old = client, old !== connection { old.close() }
+        if let old = client, old !== connection {
+            try? old.send(.error(SessionWire.superseded))
+            old.closeAfterSending()
+        }
+        unthrottle()
         client = connection
         syncSize()
         try? connection.send(.attached(info), fd: masterFd)
@@ -74,6 +85,7 @@ final class HostedSession {
 
     func detach(_ connection: WireConnection) {
         if client === connection { client = nil }
+        if throttledBy === connection { unthrottle() }
     }
 
     /// Sends `signal` to the shell, and SIGHUP to the foreground job too (as Terminal.app does
@@ -132,7 +144,24 @@ final class HostedSession {
     private func received(_ bytes: Data) {
         syncSize()
         terminal.feed(buffer: [UInt8](bytes)[...])
-        try? client?.send(.output(bytes))
+        guard let client else { return }
+        try? client.send(.output(bytes))
+        if throttledBy == nil, client.backlogBytes > Self.pauseAbove { throttle(client) }
+    }
+
+    private func throttle(_ connection: WireConnection) {
+        throttledBy = connection
+        readSource?.suspend()
+        connection.whenBacklog(atMost: Self.resumeAt) { [weak self, weak connection] in
+            guard let self, let connection, self.throttledBy === connection else { return }
+            self.unthrottle()
+        }
+    }
+
+    private func unthrottle() {
+        guard throttledBy != nil else { return }
+        throttledBy = nil
+        readSource?.resume()
     }
 
     /// The client resizes the pty directly; follow it so the screen kept here wraps the same.
@@ -160,6 +189,8 @@ final class HostedSession {
         exited = true
         exitSource?.cancel()
         exitSource = nil
+        // A suspended source never runs its cancel handler, which closes the master.
+        unthrottle()
         if readerSuspended { readSource?.resume() }
         readSource?.cancel()
         readSource = nil

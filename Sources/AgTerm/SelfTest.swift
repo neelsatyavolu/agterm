@@ -178,8 +178,11 @@ enum SelfTest {
         // One tab runs a long job in the foreground, like an agent would.
         after(29.6) { controller.sessions[0].view.send(txt: "sleep 777\r") }
         after(30.3) { controller.sessions.forEach { $0.terminate() } }
-        // Closed shells must be reaped, not left as zombies.
+        // Closed shells must end and be reaped, not left as zombies: in-process shells are our
+        // children, helper shells the helper's.
         after(31.3) {
+            let parents = Set([getpid()] + [SessionHelper.runningPID].compactMap { $0 }).map(String.init)
+            print("selftest: shells counted under:", SessionHelper.runningPID == nil ? "app" : "app, helper")
             let ps = Process()
             ps.executableURL = URL(fileURLWithPath: "/bin/ps")
             ps.arguments = ["-axo", "ppid=,stat=,pid=,command="]
@@ -187,8 +190,8 @@ enum SelfTest {
             ps.standardOutput = pipe
             try? ps.run()
             let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            let me = String(getpid())
-            let children = out.split(separator: "\n").map { $0.split(separator: " ") }.filter { $0.first.map(String.init) == me }; let zombieCol = 1
+            let children = out.split(separator: "\n").map { $0.split(separator: " ") }
+                .filter { $0.first.map { parents.contains(String($0)) } == true }; let zombieCol = 1
             let zombies = children.filter { $0[zombieCol].hasPrefix("Z") }.count
             let shells = children.filter { $0.contains("-zsh") }.count
             let orphanSleep = out.split(separator: "\n").contains { $0.hasSuffix("sleep 777") }

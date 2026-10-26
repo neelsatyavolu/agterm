@@ -22,6 +22,11 @@ enum SessionHelper {
         return client
     }
 
+    /// The helper's process, if this app is using one (the self-test counts its shells).
+    static var runningPID: pid_t? {
+        answer??.pid
+    }
+
     /// Next to the app's executable: `Contents/MacOS` in the bundle, `.build/debug` in development.
     private static var binary: String? {
         guard let url = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("agterm-sessions"),
@@ -119,12 +124,14 @@ enum SessionHelper {
 
         let socket: String
         let build: String
+        let pid: pid_t?
         private let control: WireConnection
         private let lock = NSLock()
         private let links = NSHashTable<HelperLink>.weakObjects()
 
         fileprivate init(control: WireConnection, socket: String, build: String) {
             self.control = control
+            pid = control.peerPID
             self.socket = socket
             self.build = build
         }

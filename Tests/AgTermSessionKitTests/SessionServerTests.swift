@@ -62,15 +62,20 @@ final class SessionServerTests: XCTestCase {
         let first = try connect()
         let info = try spawn(first, "yes | head -c 2000000; echo DONE; sleep 5")
         first.close()
-        Thread.sleep(forTimeInterval: 2)
-
-        let second = try connect()
-        defer { second.close() }
-        try second.send(.attach(id: info.id))
-        guard case .attached = try second.receive(timeout: 5) else { return XCTFail("expected attached") }
-        if let fd = second.takeFD() { close(fd) }
-        guard case .replay(let screen) = try second.receive(timeout: 5) else { return XCTFail("expected replay") }
-        XCTAssertTrue(String(decoding: screen, as: UTF8.self).contains("DONE"))
+        // The helper takes about 2 s to parse 2 MB in a debug build, so look until it's there.
+        let deadline = Date().addingTimeInterval(15)
+        var screen = ""
+        while !screen.contains("DONE"), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.5)
+            let second = try connect()
+            defer { second.close() }
+            try second.send(.attach(id: info.id))
+            guard case .attached = try second.receive(timeout: 5) else { return XCTFail("expected attached") }
+            if let fd = second.takeFD() { close(fd) }
+            guard case .replay(let bytes) = try second.receive(timeout: 5) else { return XCTFail("expected replay") }
+            screen = String(decoding: bytes, as: UTF8.self)
+        }
+        XCTAssertTrue(screen.contains("DONE"))
     }
 
     func testExitIsReportedAndSessionDropped() throws {
@@ -116,7 +121,65 @@ final class SessionServerTests: XCTestCase {
         XCTAssertEqual(matching.build, "test")
     }
 
+    /// A second client attaching takes the session over; the first is told why, so it stops
+    /// instead of reattaching (two apps on one helper would otherwise kick each other forever).
+    func testSecondAttachSupersedesFirst() throws {
+        let first = try connect()
+        defer { first.close() }
+        let info = try spawn(first, "sleep 30")
+        if let fd = first.takeFD() { close(fd) }
+
+        let second = try connect()
+        defer { second.close() }
+        try second.send(.attach(id: info.id))
+        guard case .attached = try second.receive(timeout: 5) else { return XCTFail("expected attached") }
+        if let fd = second.takeFD() { close(fd) }
+
+        var told = false
+        while let message = try? first.receive(timeout: 5) {
+            if message == .error(SessionWire.superseded) { told = true }
+        }
+        XCTAssertTrue(told, "the first client wasn't told it was superseded")
+        var policy = ReattachPolicy()
+        XCTAssertNil(policy.delay(after: .superseded))
+    }
+
+    /// A client that stops reading makes the shell block on its pty instead of the helper
+    /// buffering without bound (or dropping the client); everything arrives once it reads again.
+    func testSlowClientBlocksTheShellNotTheHelper() throws {
+        let client = try connect()
+        defer { client.close() }
+        let lines = 1_500_000 // ~11 MB: past the 8 MiB backlog cap that would drop the client
+        let info = try spawn(client, "seq -f %.0f 1 \(lines); echo SEQ-DONE")
+        if let fd = client.takeFD() { close(fd) }
+        let before = footprint()
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertEqual(kill(info.pid, 0), 0, "seq finished, so nothing held it back")
+        XCTAssertLessThan(footprint() - before, 32 * 1024 * 1024, "the helper buffered the output")
+
+        var output = Data()
+        let deadline = Date().addingTimeInterval(60)
+        // Only the tail can hold the marker; searching all of it every frame is quadratic.
+        while !String(decoding: output.suffix(64), as: UTF8.self).contains("SEQ-DONE"), deadline.timeIntervalSinceNow > 0 {
+            if case .output(let bytes) = try client.receive(timeout: deadline.timeIntervalSinceNow) { output.append(bytes) }
+        }
+        let numbers = String(decoding: output, as: UTF8.self).replacingOccurrences(of: "\r", with: "").split(separator: "\n").compactMap { Int($0) }
+        XCTAssertEqual(numbers.count, lines)
+        XCTAssertEqual(numbers.first, 1)
+        XCTAssertTrue(zip(numbers, numbers.dropFirst()).allSatisfy { $1 == $0 + 1 }, "output out of order or missing")
+    }
+
     // MARK: Helpers
+
+    /// This process's physical footprint, as Activity Monitor shows it.
+    private func footprint() -> Int {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return result == KERN_SUCCESS ? Int(info.phys_footprint) : 0
+    }
 
     private func connect() throws -> WireConnection {
         let client = try WireConnection.connect(path: socketPath)

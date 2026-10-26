@@ -6,12 +6,11 @@ import SwiftTerm
 /// A shell kept by the `agterm-sessions` helper, so it can outlive the app. Output arrives as
 /// `replay` and `output` frames, read off the socket on a background queue and handed to the view
 /// on the main queue in order, with LocalProcess's backpressure: past 4 MiB waiting, the socket
-/// isn't read until the backlog is under 1 MiB. Input and resizes go straight to the pty master
-/// the helper passed with `attached`.
+/// isn't read until the backlog is under 1 MiB, and the helper in turn stops reading the shell's
+/// pty. Input and resizes go straight to the pty master the helper passed with `attached`.
 ///
-/// The helper drops a client that falls far behind, so a lost connection reattaches and the fresh
-/// replay repaints the screen. Only when that fails is the session taken as gone (the helper died):
-/// the tab is told the shell exited, status unknown.
+/// A lost connection reattaches (see `lost`); a link another client superseded stops for good.
+/// Either way, when it can't go on the tab is told the shell exited, status unknown.
 final class HelperLink: PtyLink {
     private static let highWater = 4 * 1024 * 1024
     private static let lowWater = 1 * 1024 * 1024
@@ -46,6 +45,11 @@ final class HelperLink: PtyLink {
     private var pendingBytes = 0
     private var paused = false
     private var drainScheduled = false
+
+    // Read queue only.
+    private var policy = ReattachPolicy()
+    /// The helper said another client attached to this session.
+    private var superseded = false
 
     /// `showReplay` is false for a new shell: its replay is of an empty screen, and would wipe
     /// what the tab already shows (restored history, What's New).
@@ -99,6 +103,7 @@ final class HelperLink: PtyLink {
             case .output(let bytes): self?.enqueue(bytes)
             case .replay(let bytes) where showReplay: self?.enqueue(bytes)
             case .exited(let id, let status) where id == self?.id: self?.finish(status)
+            case .error(let text) where text == SessionWire.superseded: self?.superseded = true
             default: break
             }
         }
@@ -143,18 +148,30 @@ final class HelperLink: PtyLink {
         if schedule { DispatchQueue.main.async { [weak self] in self?.drain() } }
     }
 
+    /// Reattaches, up to three times with backoff, unless superseded. Reattaching repaints the tab
+    /// from the helper's replay, which wipes what only the app drew (restored history, What's New
+    /// lines); it is rare, since the helper throttles the shell rather than drop a slow client, and
+    /// takes the helper dropping the connection anyway or restarting.
     private func lost(_ dropped: WireConnection) {
-        lock.lock()
-        let unexpected = dropped === connection && !released && !exited
-        lock.unlock()
-        guard unexpected else { return }
-        let fresh: WireConnection
-        let fd: Int32
-        do {
-            (fresh, _, fd) = try client.open(.attach(id: id))
-        } catch {
-            return finish(nil)
+        guard isCurrent(dropped) else { return }
+        while let delay = policy.delay(after: superseded ? .superseded : .dropped) {
+            Thread.sleep(forTimeInterval: delay)
+            guard isCurrent(dropped) else { return }
+            if let (fresh, _, fd) = try? client.open(.attach(id: id)) {
+                policy.connected()
+                return adopt(fresh, ptyFd: fd)
+            }
         }
+        finish(nil)
+    }
+
+    private func isCurrent(_ connection: WireConnection) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return connection === self.connection && !released && !exited
+    }
+
+    private func adopt(_ fresh: WireConnection, ptyFd fd: Int32) {
         lock.lock()
         let keep = !released
         if keep {
