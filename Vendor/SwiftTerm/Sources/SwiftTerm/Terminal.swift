@@ -386,6 +386,10 @@ open class Terminal {
     }
 
     private let synchronizedOutputTimeoutSeconds: TimeInterval = 1.0
+    /// The queue the synchronized-output safety timeout runs on; nil turns the timeout off.
+    /// agterm: a headless terminal on a queue other than main (whose main queue may never
+    /// run) sets this to nil, or every `ESC[?2026h` would leave work on the main queue.
+    public var synchronizedOutputTimeoutQueue: DispatchQueue? = .main
     public private(set) var synchronizedOutputActive: Bool = false
     private var synchronizedOutputTimeoutItem: DispatchWorkItem?
 
@@ -6828,6 +6832,10 @@ open class Terminal {
     private func scheduleSynchronizedOutputTimeout ()
     {
         synchronizedOutputTimeoutItem?.cancel()
+        guard let timeoutQueue = synchronizedOutputTimeoutQueue else {
+            synchronizedOutputTimeoutItem = nil
+            return
+        }
         let workItem = DispatchWorkItem { [weak self] in
             guard let self, self.synchronizedOutputActive else {
                 return
@@ -6835,7 +6843,7 @@ open class Terminal {
             self.endSynchronizedOutput()
         }
         synchronizedOutputTimeoutItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + synchronizedOutputTimeoutSeconds, execute: workItem)
+        timeoutQueue.asyncAfter(deadline: .now() + synchronizedOutputTimeoutSeconds, execute: workItem)
     }
 
     func setViewYDisp (_ newValue: Int)

@@ -42,9 +42,18 @@ final class HostedSession {
         (pid, masterFd) = try PtySpawn.fork(request)
         cwd = request.cwd
         self.queue = queue
-        let options = TerminalOptions(cols: max(1, Int(request.cols)), rows: max(1, Int(request.rows)),
-                                      scrollback: Self.scrollback)
-        terminal = Terminal(delegate: terminalDelegate, options: options)
+        terminal = Self.makeTerminal(cols: Int(request.cols), rows: Int(request.rows), delegate: terminalDelegate)
+    }
+
+    /// The headless terminal that keeps a session's screen.
+    static func makeTerminal(cols: Int, rows: Int, delegate: TerminalDelegate) -> Terminal {
+        let options = TerminalOptions(cols: max(1, cols), rows: max(1, rows), scrollback: scrollback)
+        let terminal = Terminal(delegate: delegate, options: options)
+        // The safety timeout would run on the main queue, which the helper never drains (its
+        // main thread waits in `SessionServer.run`), so each `ESC[?2026h` would leak. Nothing
+        // here draws, and the attached app's own terminal keeps its timeout.
+        terminal.synchronizedOutputTimeoutQueue = nil
+        return terminal
     }
 
     deinit {

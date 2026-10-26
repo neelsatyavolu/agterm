@@ -15,3 +15,8 @@ Differences from upstream 1.20.0:
 - The end of `Terminal.swift` adds read-only accessors (cursor visibility, keypad, focus, origin,
   insert and wraparound modes, mouse encoding, window title, per-buffer rows) so agterm's session
   helper can replay a terminal's screen and modes into a new terminal.
+- `Terminal.synchronizedOutputTimeoutQueue` (default `.main`) picks the queue for the 1 s
+  synchronized-output (`ESC[?2026h`) safety timeout; nil turns the timeout off. Upstream always
+  used the main queue. agterm's session helper never drains its main queue, so each toggle left
+  ~0.6 KB behind (~118 MB per 200k toggles, and Claude Code and Codex toggle on every redraw);
+  its headless terminals set this to nil.
