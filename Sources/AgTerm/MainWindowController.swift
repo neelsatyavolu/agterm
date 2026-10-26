@@ -507,7 +507,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         if sessions.indices.contains(selected) { sessions[selected].setFocused(false, now: Date()) }
     }
 
+    /// Full screen moves the toolbar into a bar of its own that covers the tab bar; it's only
+    /// there to size the title bar, so hide it until the window leaves full screen.
+    func windowWillEnterFullScreen(_ notification: Notification) { window?.toolbar?.isVisible = false }
     func windowDidEnterFullScreen(_ notification: Notification) { applyAppearance() }
+    func windowWillExitFullScreen(_ notification: Notification) { window?.toolbar?.isVisible = true }
     func windowDidExitFullScreen(_ notification: Notification) { applyAppearance() }
 
     /// The window server window exists only once shown, so apply the blur radius again then.

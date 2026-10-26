@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6 — 2026-10-26
+- Fixed: A tab shows "needs you" when Claude Code asks you a question with choices (such as a list of questions to answer), instead of "done" or no status.
+- Fixed: The tab bar stays visible when the window is in full screen.
+
 ## 1.0.5 — 2026-10-26
 - Added: agmux Teams cost estimates price GPT-6.1 Terra at OpenAI's list rates.
 

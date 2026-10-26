@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import AppKit
 import SwiftTerm
 
@@ -126,7 +127,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// The visible screen as plain text, trailing blank rows dropped (for the phone remote).
     func screenText() -> String {
         let terminal = view.getTerminal()
-        var rows = (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.translateToString(trimRight: true) }
+        var rows = (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.plainText() }
         while rows.last?.isEmpty == true { rows.removeLast() }
         return rows.joined(separator: "\n")
     }
@@ -138,7 +139,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         guard !terminal.isCurrentBufferAlternate else { return screenText() }
         let top = terminal.buffer.totalLinesTrimmed
         let end = Self.endRow(terminal, top: top)
-        var lines = (max(top, end - rows)..<end).compactMap { terminal.getScrollInvariantLine(row: $0)?.translateToString(trimRight: true) }
+        var lines = (max(top, end - rows)..<end).compactMap { terminal.getScrollInvariantLine(row: $0)?.plainText() }
         while lines.last?.isEmpty == true { lines.removeLast() }
         return lines.joined(separator: "\n")
     }
