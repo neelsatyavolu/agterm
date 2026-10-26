@@ -3,100 +3,299 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>agterm: a light, native Mac terminal for coding agents</title>
-  <meta name="description" content="A 3.5 MB native Mac terminal. Every tab shows what its agent is doing, and agents you start get agmux project memory and consult.">
-  <meta property="og:title" content="agterm: a light, native Mac terminal for coding agents">
-  <meta property="og:description" content="Every tab shows its agent's task, status and diff. Agents get agmux project memory and consult. 3.5 MB, about 0.5 MB per extra tab.">
+  <title>agterm: a native Mac terminal for coding agents</title>
+  <meta name="description" content="A 3.5 MB native Mac terminal for Claude Code, Codex and 20 other agent CLIs. Each tab shows its agent's task, status, folder, branch and lines changed.">
+  <meta name="theme-color" content="#0E0E0D">
+  <link rel="canonical" href="https://agterm.xanom.co/">
+  <meta property="og:site_name" content="agterm">
+  <meta property="og:title" content="agterm: know which agent needs you">
+  <meta property="og:description" content="A native Mac terminal for coding agents. Each tab shows its agent's task, status and diff. 3.5 MB, macOS 14 or later.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://agterm.xanom.co/">
   <meta property="og:image" content="https://agterm.xanom.co/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="agterm tab bar: agent tabs marked working, needs you and done, each with folder, diff and branch.">
+  <meta property="og:image:alt" content="agterm: know which agent needs you. Three tab cards marked working, needs you and done, each with its folder, diff and branch.">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=0.3.0">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="/styles.css?v=0.6.0">
   <script defer src="https://analytics.n3el.dev/p.js"></script>
 </head>
 <body>
-  <header class="bar wrap">
-    <a class="mark" href="/" aria-label="agterm home"><span class="prompt" aria-hidden="true">&gt;</span>agterm<span class="caret" aria-hidden="true"></span></a>
-    <nav>
-      <span class="meta-label">v0.6.0</span>
-      <a href="https://github.com/neelsatyavolu/agterm">GitHub</a>
-    </nav>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
+      <nav aria-label="Sections">
+        <ul class="nav-links">
+          <li><a href="#tabs">Tabs</a></li>
+          <li><a href="#agents">Agents</a></li>
+          <li><a href="#accounts">Accounts</a></li>
+          <li><a href="#agmux">agmux</a></li>
+          <li><a href="#install">Install</a></li>
+        </ul>
+        <a class="nav-gh" href="https://github.com/neelsatyavolu/agterm">GitHub</a>
+        <a class="btn btn-ghost btn-sm" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download</a>
+      </nav>
+    </div>
   </header>
 
-  <main>
-    <section class="hero wrap">
-      <p class="eyebrow">Terminal for coding agents · macOS</p>
-      <h1>A light, native<br>terminal for agents.</h1>
-      <p class="lede">agterm is a Mac terminal written in Swift. Each tab shows what its agent is working on, whether it needs you, and how much it has changed. Claude Code and Codex started in it get agmux project memory and consult, with no config files to edit.</p>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <p class="eyebrow"><span class="dot dot-working" aria-hidden="true"></span>Terminal for coding agents · macOS</p>
+      <h1 id="hero-title">Know which agent needs you.<span class="caret" aria-hidden="true"></span></h1>
+      <p class="lede">agterm is a native Mac terminal for running Claude Code, Codex and twenty other agent CLIs in tabs. Each tab card shows the agent's task and whether it's waiting on you, with the folder, the lines it changed and the git branch underneath.</p>
       <div class="cta">
-        <a class="dl" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
-        <p class="meta">3.5 MB · macOS 14+ · Apple silicon and Intel · signed and notarized · updates itself</p>
+        <a class="btn btn-primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
+        <a class="btn btn-ghost" href="https://github.com/neelsatyavolu/agterm">Source on GitHub</a>
       </div>
+      <p class="meta hero-meta">v0.6.0 · 3.5 MB · macOS 14+ · Apple silicon and Intel · signed and notarized · updates itself</p>
     </section>
 
     <figure class="shot wrap">
-      <img src="/agterm-window.png?v=0.2.1" width="1240" height="560"
-           alt="The agterm window: four tabs. Fix login redirect loop is working in web, +4 −1. Rename env vars in workers needs you in api, +18 −18. Add dark mode tokens is done in design, +142 −9. The selected tab shows a Claude Code session fixing a redirect.">
-      <figcaption>The app itself, rendered from a real window. Each diff is what changed since that agent started, measured with git.</figcaption>
+      <a class="shot-link" href="/agterm-window.png?v=0.6.0" aria-label="Open the full-size screenshot"><img src="/agterm-window.png?v=0.6.0" width="1240" height="550"
+           alt="The agterm window with four tabs. Fix login redirect loop is working in web, +4 −1 on main. Rename env vars in workers needs you in api, +18 −18 on env-rename. Add dark mode tokens is done in design, +142 −9 on tokens. The fourth tab is a zsh shell in docs. The selected tab shows a Claude Code session fixing a redirect and running its tests."></a>
+      <figcaption>The real app, rendered off screen by its debug self-test with stand-in agents. agterm measured each diff itself, with git, from the moment that agent started.</figcaption>
     </figure>
 
-    <section class="stats wrap" aria-labelledby="light">
-      <h2 id="light" class="label">How light</h2>
-      <dl>
-        <div><dt>Download</dt><dd>3.5 MB</dd></div>
-        <div><dt>Memory, one tab</dt><dd>41 MB</dd></div>
-        <div><dt>Each extra tab</dt><dd>~0.5 MB</dd></div>
-        <div><dt>Opening a tab</dt><dd>~4 ms</dd></div>
-      </dl>
-      <p class="note">Measured on an M5 Max with macOS 27.2, optimized build, physical memory as Activity Monitor reports it. The first prompt took 220–450 ms after launch; most of that is the shell's own startup files.</p>
+    <section class="block" id="tabs" aria-labelledby="tabs-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">01</span>Tab cards</p>
+          <div>
+            <h2 id="tabs-title">Every tab answers before you click it</h2>
+            <p class="sec-lede">Claude Code writes its task into the terminal title, and agterm puts that title on the tab. The line under it carries a status, then the folder, the lines changed since the agent started and the branch.</p>
+          </div>
+        </header>
+
+        <ul class="cells cells-3 states">
+          <li>
+            <img src="/tab-working.png?v=0.6.0" width="272" height="50" alt="Tab card: Fix login redirect loop, WORKING, web, +4 −1, main.">
+            <h3><span class="dot dot-working" aria-hidden="true"></span><span class="s-working">Working</span></h3>
+            <p>The agent is running. For Claude Code that's the spinner in its title; for other programs, it's output that isn't an echo of your typing.</p>
+          </li>
+          <li>
+            <img src="/tab-needs.png?v=0.6.0" width="272" height="50" alt="Tab card: Rename env vars in workers, NEEDS YOU, api, +18 −18, env-rename.">
+            <h3><span class="dot dot-needs" aria-hidden="true"></span><span class="s-needs">Needs you</span></h3>
+            <p>A permission prompt is on screen, in any tab (the one you're looking at too), or the bell rang in a tab you aren't watching.</p>
+          </li>
+          <li>
+            <img src="/tab-done.png?v=0.6.0" width="272" height="50" alt="Tab card: Add dark mode tokens, DONE, design, +142 −9, tokens.">
+            <h3><span class="dot dot-done" aria-hidden="true"></span><span class="s-done">Done</span></h3>
+            <p>It finished while you were in another tab. agterm can post a notification and play a sound; clicking the notification opens that tab.</p>
+          </li>
+        </ul>
+        <p class="footnote">Lines changed come from a <code>git stash create</code> snapshot taken when the agent starts, plus any files it creates. There are no hooks or plugins to install: status comes from the title, the screen and git.</p>
+      </div>
     </section>
 
-    <section class="points wrap" aria-labelledby="agmux">
-      <h2 id="agmux" class="label">Works with agmux</h2>
-      <ul class="grid">
-        <li><h3>Project memory</h3><p>Agents in agterm get the same <code>agmux-memory</code> server agmux gives its own, for every folder agmux knows. Claude Code here and Codex in agmux read and add to one set of notes about the repo.</p></li>
-        <li><h3>consult</h3><p>An agent can ask Claude, Codex or Grok on your Mac for a second opinion, or have them review its diff before calling the work done.</p></li>
-        <li><h3>No setup</h3><p>agterm adds both servers when you type <code>claude</code> or <code>codex</code> in its tabs, skips any you already configured, and edits no config files. <code>AGTERM_MCP=0</code> turns it off for one run. Needs agmux installed.</p></li>
-      </ul>
+    <section class="block" id="agents" aria-labelledby="agents-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">02</span>Agents</p>
+          <div>
+            <h2 id="agents-title">Works with 22 agent CLIs</h2>
+            <p class="sec-lede">Each of these gets tab status, the needs-you flag and lines changed. <kbd>⌥⌘T</kbd> opens a tab in the current folder and starts your usual agent; <kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘3</kbd> start Claude Code, Codex and Grok.</p>
+          </div>
+        </header>
+
+        <ul class="agents" aria-label="Supported agent CLIs">
+          <li class="lead">Claude Code</li><li class="lead">Codex</li><li class="lead">Grok</li><li>Gemini CLI</li><li>Antigravity</li><li>Cursor Agent</li><li>OpenCode</li><li>Kimi Code</li><li>Aider</li><li>Amp</li><li>Qwen Code</li><li>Crush</li><li>GitHub Copilot CLI</li><li>Factory Droid</li><li>Kilo Code</li><li>Cline</li><li>Goose</li><li>Auggie</li><li>Qodo</li><li>Kiro CLI</li><li>Continue</li><li>Pi</li>
+        </ul>
+
+        <ul class="cells cells-2">
+          <li>
+            <h3>Typed at a real prompt</h3>
+            <p>A new agent tab types the agent's command into an ordinary shell. When the agent quits, the shell is still there, and the tab restores like any other.</p>
+          </li>
+          <li>
+            <h3>Skip permission prompts, if you choose</h3>
+            <p>Settings → Permissions can start each installed agent with its own bypass flag, such as <code>--dangerously-skip-permissions</code> for Claude Code or <code>--yolo</code> for Gemini. It's off by default.</p>
+          </li>
+        </ul>
+      </div>
     </section>
 
-    <section class="points wrap" aria-labelledby="team">
-      <h2 id="team" class="label">Teams and your phone</h2>
-      <ul class="grid">
-        <li><h3>agmux Teams</h3><p>Sign in once and your agterm sessions count toward your team's usage, the same hourly totals agmux reports.</p></li>
-        <li><h3>Never shared</h3><p>Prompts, replies, code, diffs, file paths and terminal output stay on your Mac. So do sessions started outside agterm and agmux.</p></li>
-        <li><h3>agmux phone app</h3><p>Pair your phone to see every tab, read its screen, reply, stop an agent or answer a permission prompt, with a notification when one needs you.</p></li>
-      </ul>
+    <section class="block" id="accounts" aria-labelledby="accounts-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">03</span>Accounts</p>
+          <div>
+            <h2 id="accounts-title">Out of usage? The tab moves to another login</h2>
+            <p class="sec-lede">Add more Claude Code or Codex logins in Settings → Accounts. Each one signs in through the CLI's own login, in its own folder, and shares your conversations, settings, skills and MCP servers through symlinks. Any login can resume any conversation.</p>
+          </div>
+        </header>
+
+        <ol class="cells cells-4 steps">
+          <li>
+            <span class="step">01</span>
+            <h3>Sees the limit</h3>
+            <p>Claude Code writes a 429 record into the conversation and Codex logs a usage-limit event. agterm follows each agent tab's transcript and reacts within a second.</p>
+          </li>
+          <li>
+            <span class="step">02</span>
+            <h3>Picks a login with room</h3>
+            <p>It checks every login's usage through that CLI (no Keychain reads, no model calls) and takes the one with the most left.</p>
+          </li>
+          <li>
+            <span class="step">03</span>
+            <h3>Resumes the conversation</h3>
+            <p>It stops the agent and runs <code class="nw">claude --resume</code> or <code class="nw">codex resume</code> with your original options on the new login, in the same tab, then tells it to continue.</p>
+          </li>
+          <li>
+            <span class="step">04</span>
+            <h3>Tells you</h3>
+            <p>A notification names the account it moved to. A tab switches at most 3 times in 30 minutes, so two empty logins can't loop.</p>
+          </li>
+        </ol>
+        <div class="aside">
+          <p class="label">agmux Teams</p>
+          <p>If your team shares Codex logins in agmux Teams, agterm borrows one once every Codex login of yours is out. It's lent to one tab at a time and handed back, with the tokens Codex refreshed, as soon as Codex exits. Claude logins can't be shared, and Grok isn't supported yet.</p>
+        </div>
+      </div>
     </section>
 
-    <section class="points wrap" aria-labelledby="what">
-      <h2 id="what" class="label">What a tab tells you</h2>
-      <ul class="grid">
-        <li><h3>The task</h3><p>Claude Code names what it's doing in the terminal title; agterm puts that name on the tab.</p></li>
-        <li><h3>Working or waiting</h3><p><b class="s-working">WORKING</b> while it runs, <b class="s-done">DONE</b> when it finished while you were elsewhere, <b class="s-waiting">NEEDS YOU</b> when it asks for permission, with a notification and a sound if you want them.</p></li>
-        <li><h3>What it changed</h3><p>Lines added and removed since the agent started, next to the folder and branch. Files it created count too.</p></li>
-      </ul>
+    <section class="block" id="prompt" aria-labelledby="prompt-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">04</span>At the prompt</p>
+          <div>
+            <h2 id="prompt-title">Folders by name, commands by description</h2>
+          </div>
+        </header>
+
+        <div class="cells cells-2 prompt-pair">
+          <article>
+            <figure class="pane">
+              <img src="/cd-suggestions.png?v=0.6.0" width="495" height="89" alt="A shell line reading cd agter, with a suggestion list under the cursor: agterm in ~/Documents/GitHub, and the hints tab to go, arrows to choose, esc to hide.">
+            </figure>
+            <h3><code class="plain">cd</code> by folder name</h3>
+            <p>Type <code>cd</code> and part of a folder's name. agterm lists matching folders from your home folder (three levels down) and the folders your tabs have visited. <kbd>⇥</kbd> fills in the full path.</p>
+          </article>
+          <article>
+            <dl class="timings" aria-label="Typical ⌘K reply times">
+              <div><dt>Claude Haiku</dt><dd>~2.5 s</dd></div>
+              <div><dt>Codex, lowest effort</dt><dd>~4 s</dd></div>
+              <div><dt>Grok, low effort</dt><dd>~5 s</dd></div>
+            </dl>
+            <h3><kbd>⌘K</kbd> writes a command</h3>
+            <p>Describe what you want. <kbd>⏎</kbd> puts the command at your prompt to check, and <kbd>⌘⏎</kbd> runs it. It goes through the CLI you're already signed in to, at its fastest setting. The model sees your request, the tab's folder, your shell and the last 20 lines on screen. It has no tools, and the run isn't kept in the CLI's history.</p>
+          </article>
+        </div>
+      </div>
     </section>
 
-    <section class="points wrap" aria-labelledby="native">
-      <h2 id="native" class="label">Native</h2>
-      <ul class="grid">
-        <li><h3>No web view</h3><p>AppKit and the SwiftTerm emulator, drawn with Core Graphics. Your login shell runs as it does in Terminal.app.</p></li>
-        <li><h3>Comes back as you left it</h3><p>Quit with tabs open and they reopen with their history. A tab that was running Claude Code resumes the same conversation.</p></li>
-        <li><h3>Mac manners</h3><p>Drag in files or images, reorder tabs by dragging, five themes, any monospaced font, and a see-through background that blurs what's behind it.</p></li>
-      </ul>
+    <section class="block" id="agmux" aria-labelledby="agmux-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">05</span>With agmux</p>
+          <div>
+            <h2 id="agmux-title">Shared with agmux</h2>
+            <p class="sec-lede">With <a class="inline" href="https://agmux.dev">agmux</a> installed, agents in agterm use the same project memory and second opinions as agents in agmux, and the agmux phone app can follow your tabs.</p>
+          </div>
+        </header>
+
+        <ul class="cells cells-2">
+          <li>
+            <h3>Project memory</h3>
+            <p>Claude Code and Codex started in agterm get the <code>agmux-memory</code> server for every folder agmux knows. Agents in both apps read and add to one set of notes about the repo.</p>
+          </li>
+          <li>
+            <h3>consult</h3>
+            <p>An agent can ask Claude, Codex or Grok on your Mac for a second opinion, or have them review its diff before it calls the work done.</p>
+          </li>
+          <li>
+            <h3>Your phone</h3>
+            <p>Pair the agmux phone app with a QR code or an 8-letter code. Claude Code and Codex tabs read as the conversation itself, message by message and tool call by tool call. Reply, stop an agent, or allow and deny a permission prompt, and get a notification when one finishes or needs you.</p>
+          </li>
+          <li>
+            <h3>agmux Teams</h3>
+            <p>Sign in and agterm reports hourly totals for sessions started in it: tokens, estimated cost, active time, turns and tool calls. Prompts, replies, code, diffs, file paths and terminal output stay on your Mac.</p>
+          </li>
+        </ul>
+        <p class="footnote">agterm adds the memory and consult servers when you type <code>claude</code> or <code>codex</code> in its tabs, skips any you configured yourself and edits no config files. <code>AGTERM_MCP=0</code> turns them off for one run. The phone app keeps one paired Mac, so pairing agterm replaces agmux on that phone.</p>
+      </div>
+    </section>
+
+    <section class="block" id="native" aria-labelledby="native-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">06</span>Native</p>
+          <div>
+            <h2 id="native-title">Light and native</h2>
+          </div>
+        </header>
+
+        <dl class="cells cells-4 stats">
+          <div><dt>Download</dt><dd>3.5 MB</dd></div>
+          <div><dt>Memory, one tab</dt><dd>41 MB</dd></div>
+          <div><dt>Each extra tab</dt><dd>~0.5 MB</dd></div>
+          <div><dt>Opening a tab</dt><dd>~4 ms</dd></div>
+        </dl>
+        <p class="footnote">Measured on an M5 Max with macOS 27.2, optimized build, physical memory as Activity Monitor reports it. The first prompt took 220–450 ms after launch; most of that is the shell's own startup files.</p>
+
+        <ul class="cells cells-2 native-points">
+          <li>
+            <h3>No web view</h3>
+            <p>AppKit and the SwiftTerm emulator, drawn with Core Graphics. Your login shell runs as it does in Terminal.app.</p>
+          </li>
+          <li>
+            <h3>Tabs come back</h3>
+            <p>Quit with tabs open and they reopen with their folder and colored history. Claude Code and Codex tabs resume the same conversation with their original flags; other agents pick up their latest one in that folder.</p>
+          </li>
+          <li>
+            <h3>Mac manners</h3>
+            <p>Drag in files or images, drag tabs to reorder them, pick one of five themes and any monospaced font. A see-through window blurs what's behind it.</p>
+          </li>
+          <li>
+            <h3>Asks first</h3>
+            <p>Closing a tab or quitting asks before it stops a program that's still running.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="block" id="install" aria-labelledby="install-title">
+      <div class="wrap">
+        <header class="sec-head">
+          <p class="label"><span class="num">07</span>Install</p>
+          <div>
+            <h2 id="install-title">Get agterm</h2>
+          </div>
+        </header>
+
+        <div class="cells cells-2 install">
+          <div>
+            <ol class="install-steps">
+              <li>Download <code>agterm.zip</code> from <a class="inline" href="https://github.com/neelsatyavolu/agterm/releases/latest">GitHub Releases</a>.</li>
+              <li>Unzip it and move <code>agterm.app</code> to Applications.</li>
+              <li>On first launch, allow Full Disk Access. Programs in a terminal get the terminal's permissions, so without it macOS blocks agents from Desktop, Documents and other apps' data, or keeps asking.</li>
+            </ol>
+            <a class="btn btn-primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
+            <p class="meta install-meta">macOS 14 or later. Signed and notarized; updates itself through Sparkle.</p>
+          </div>
+          <div>
+            <h3>Build from source</h3>
+            <p>Needs Xcode 16 or later (Swift 6) and the Metal toolchain.</p>
+            <dl class="commands">
+              <div><dt><code>swift test</code></dt><dd>Unit tests for the status, title, git and settings logic.</dd></div>
+              <div><dt><code>./install.sh --adhoc</code></dt><dd>Build, sign ad hoc and install to /Applications.</dd></div>
+            </dl>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
-  <footer class="wrap">
-    <p class="meta">MIT licensed · <a href="https://github.com/neelsatyavolu/agterm">Source</a> · <a href="https://xanom.co">Xanom</a></p>
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
+      <p class="meta">v0.6.0 · MIT licensed · <a href="https://github.com/neelsatyavolu/agterm">Source</a> · <a href="https://github.com/neelsatyavolu/agterm/releases">Releases</a> · <a href="https://xanom.co">Xanom</a></p>
+    </div>
   </footer>
 </body>
 </html>
