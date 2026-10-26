@@ -5,22 +5,32 @@ let package = Package(
     name: "agterm",
     // iOS is for agterm Remote (Mobile/), which uses AgTermCore only.
     platforms: [.macOS(.v14), .iOS(.v17)],
-    products: [.library(name: "AgTermCore", targets: ["AgTermCore"])],
+    products: [
+        .library(name: "AgTermCore", targets: ["AgTermCore"]),
+        .executable(name: "agterm-sessions", targets: ["AgTermSessions"]),
+    ],
     dependencies: [
         .package(path: "Vendor/SwiftTerm"),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
     ],
     targets: [
         .target(name: "AgTermCore"),
+        .target(
+            name: "AgTermSessionKit",
+            dependencies: ["AgTermCore", .product(name: "SwiftTerm", package: "SwiftTerm")]
+        ),
+        .executableTarget(name: "AgTermSessions", dependencies: ["AgTermSessionKit"]),
         .executableTarget(
             name: "AgTerm",
             dependencies: [
                 "AgTermCore",
+                "AgTermSessionKit",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "AgTermCoreTests", dependencies: ["AgTermCore"]),
+        .testTarget(name: "AgTermSessionKitTests", dependencies: ["AgTermCore", "AgTermSessionKit"]),
     ]
 )

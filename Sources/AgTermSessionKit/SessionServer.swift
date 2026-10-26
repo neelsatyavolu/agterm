@@ -1,0 +1,206 @@
+import AgTermCore
+import Foundation
+
+public enum SessionServerError: Error, Equatable {
+    /// Another helper is already serving this socket.
+    case alreadyRunning
+    /// Something other than a socket sits at the socket path.
+    case pathInUse
+}
+
+/// The `agterm-sessions` helper: owns every tab's shell and serves the app over a Unix socket,
+/// so shells outlive app updates, quits and crashes. All state lives on one serial queue.
+public final class SessionServer {
+    /// With no sessions and no clients for this long, the server stops.
+    public var idleExitAfter: TimeInterval = 10
+
+    private let socketPath: String
+    private let build: String
+    private let queue = DispatchQueue(label: "agterm.sessions")
+    private let finished = DispatchSemaphore(value: 0)
+    private var listener: DispatchSourceRead?
+    private var clients: [ObjectIdentifier: WireConnection] = [:]
+    /// Clients that have sent a matching `hello`.
+    private var greeted: Set<ObjectIdentifier> = []
+    private var sessions: [String: HostedSession] = [:]
+    private var stopped = false
+    private var idleToken = 0
+
+    public init(socketPath: String, build: String) {
+        self.socketPath = socketPath
+        self.build = build
+    }
+
+    /// Serves until idle or `stop()`. Returns at once if another server already has the socket.
+    public func run() throws {
+        do {
+            try start()
+        } catch SessionServerError.alreadyRunning {
+            return
+        }
+        finished.wait()
+    }
+
+    /// Binds the socket and starts serving on the server's queue without blocking.
+    public func start() throws {
+        try queue.sync { try listen() }
+        queue.async { self.noteActivity() }
+    }
+
+    /// Kills every session, drops every client and removes the socket. Not for use on the server's queue.
+    public func stop() {
+        queue.sync { shutdown() }
+    }
+
+    // MARK: Socket
+
+    private func listen() throws {
+        try SessionPaths.prepareDirectory((socketPath as NSString).deletingLastPathComponent)
+        let fd: Int32
+        do {
+            fd = try UnixSocket.listen(path: socketPath)
+        } catch let error as POSIXError where error.code == .EADDRINUSE {
+            // Live server, or a stale socket left by one that died.
+            if let probe = try? UnixSocket.connect(path: socketPath) {
+                close(probe)
+                throw SessionServerError.alreadyRunning
+            }
+            var info = stat()
+            guard lstat(socketPath, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK else { throw SessionServerError.pathInUse }
+            unlink(socketPath)
+            fd = try UnixSocket.listen(path: socketPath)
+        }
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+        source.setEventHandler { [weak self] in self?.acceptAll(fd) }
+        source.setCancelHandler { close(fd) }
+        listener = source
+        source.resume()
+    }
+
+    private func acceptAll(_ listenFd: Int32) {
+        while true {
+            let fd = accept(listenFd, nil, nil)
+            guard fd >= 0 else { return }
+            UnixSocket.configure(fd)
+            var uid: uid_t = 0
+            var gid: gid_t = 0
+            guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else {
+                close(fd)
+                continue
+            }
+            let connection = WireConnection(fd: fd)
+            let key = ObjectIdentifier(connection)
+            connection.onMessage = { [weak self, weak connection] message in
+                guard let self, let connection else { return }
+                self.handle(message, from: connection)
+            }
+            connection.onClose = { [weak self, weak connection] in
+                guard let self, let connection else { return }
+                self.dropClient(connection, key: key)
+            }
+            clients[key] = connection
+            connection.startReading(queue: queue)
+            noteActivity()
+        }
+    }
+
+    // MARK: Messages
+
+    private func handle(_ message: WireMessage, from client: WireConnection) {
+        let key = ObjectIdentifier(client)
+        guard greeted.contains(key) else { return greet(message, from: client, key: key) }
+        switch message {
+        case .list:
+            reply(client, .sessions(sessions.values.map(\.info).sorted { $0.startedAt < $1.startedAt }))
+        case .spawn(let request):
+            spawn(request, for: client)
+        case .attach(let id):
+            guard let session = sessions[id] else { return reply(client, .error("no such session")) }
+            detachEverywhere(client)
+            session.attach(client)
+        case .kill(let id, let signal):
+            guard let session = sessions[id] else { return reply(client, .error("no such session")) }
+            guard (1..<32).contains(signal) else { return reply(client, .error("bad signal")) }
+            session.signal(signal)
+        case .shutdownIfIdle:
+            if sessions.isEmpty { shutdown() }
+        default:
+            reply(client, .error("unexpected message"))
+        }
+    }
+
+    /// Every connection starts with `hello`; the server answers with its own, then refuses a
+    /// client speaking a different protocol version.
+    private func greet(_ message: WireMessage, from client: WireConnection, key: ObjectIdentifier) {
+        guard case .hello(let version, _) = message else {
+            reply(client, .error("expected hello"))
+            return client.closeAfterSending()
+        }
+        reply(client, .hello(version: SessionWire.protocolVersion, build: build))
+        guard version == SessionWire.protocolVersion else {
+            reply(client, .error("protocol version mismatch"))
+            return client.closeAfterSending()
+        }
+        greeted.insert(key)
+    }
+
+    private func spawn(_ request: SpawnRequest, for client: WireConnection) {
+        let session: HostedSession
+        do {
+            session = try HostedSession(request: request, queue: queue)
+        } catch {
+            return reply(client, .error("spawn failed: \(error)"))
+        }
+        session.onExit = { [weak self] session in
+            self?.sessions[session.id] = nil
+            self?.noteActivity()
+        }
+        sessions[session.id] = session
+        detachEverywhere(client)
+        session.attach(client)
+        session.start()
+        noteActivity()
+    }
+
+    private func reply(_ client: WireConnection, _ message: WireMessage) {
+        try? client.send(message)
+    }
+
+    private func detachEverywhere(_ client: WireConnection) {
+        sessions.values.forEach { $0.detach(client) }
+    }
+
+    private func dropClient(_ client: WireConnection, key: ObjectIdentifier) {
+        clients[key] = nil
+        greeted.remove(key)
+        detachEverywhere(client)
+        noteActivity()
+    }
+
+    // MARK: Lifetime
+
+    /// Called on every change; schedules the idle exit when nothing is left.
+    private func noteActivity() {
+        idleToken &+= 1
+        guard !stopped, sessions.isEmpty, clients.isEmpty else { return }
+        let token = idleToken
+        queue.asyncAfter(deadline: .now() + idleExitAfter) { [weak self] in
+            guard let self, self.idleToken == token, self.sessions.isEmpty, self.clients.isEmpty else { return }
+            self.shutdown()
+        }
+    }
+
+    private func shutdown() {
+        guard !stopped else { return }
+        stopped = true
+        listener?.cancel()
+        listener = nil
+        unlink(socketPath)
+        sessions.values.forEach { $0.terminate() }
+        sessions = [:]
+        clients.values.forEach { $0.close() }
+        clients = [:]
+        greeted = []
+        finished.signal()
+    }
+}

@@ -7,9 +7,12 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 |------|------|
 | `Sources/AgTerm/` | The Mac app (AppKit, SwiftTerm) |
 | `Sources/AgTermCore/` | Logic shared with the iPhone app: no AppKit, no SwiftTerm imports |
+| `Sources/AgTermSessionKit/` | The session helper's server and socket code (shells live here, not in the app) |
+| `Sources/AgTermSessions/` | `agterm-sessions`, the helper executable |
 | `Vendor/SwiftTerm/` | SwiftTerm with local changes; edit in place, keep the comments explaining each change |
 | `Mobile/` | agterm Remote (iOS); see `Mobile/README.md` |
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
+| `Tests/AgTermSessionKitTests/` | XCTest for the session helper (runs a server in-process) |
 | `site/` | agterm.xanom.co landing page (Vercel) |
 
 ## Commands

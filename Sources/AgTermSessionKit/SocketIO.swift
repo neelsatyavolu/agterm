@@ -1,0 +1,328 @@
+import AgTermCore
+import Foundation
+
+public enum WireError: Error, Equatable {
+    case closed
+    case timedOut
+    case pathTooLong
+    /// The other side answered with `error`.
+    case remote(String)
+    case unexpectedReply
+}
+
+/// One end of a helper connection: framed `WireMessage`s, plus file descriptors passed as
+/// SCM_RIGHTS on the same `sendmsg` as a message's bytes.
+///
+/// Two ways to use it: blocking (`send` / `receive`, for clients and tests), or event-driven
+/// after `startReading(queue:)`, where messages arrive on `onMessage` and sends queue up
+/// instead of blocking. A queue that grows past `maxQueuedBytes` closes the connection: a
+/// client that far behind reattaches and gets a fresh replay.
+public final class WireConnection {
+    public static let maxQueuedBytes = 8 * 1024 * 1024
+    private static let readSize = 64 * 1024
+    private static let controlSize = 256
+    /// `CMSG_DATA` offset and `CMSG_LEN(4)` on Darwin, where `cmsghdr` is three 32-bit fields.
+    private static let cmsgHeader = 12
+
+    public let fd: Int32
+    /// Called on the reading queue for each message, after `startReading`.
+    public var onMessage: ((WireMessage) -> Void)?
+    /// Called once on the reading queue when an event-driven connection closes, from either end.
+    public var onClose: (() -> Void)?
+
+    private struct Pending {
+        let data: Data
+        var offset = 0
+        /// A dup of the descriptor to pass; closed once it has gone out.
+        var fd: Int32?
+    }
+
+    private let lock = NSLock()
+    private var closed = false
+    private var closeWhenFlushed = false
+    private var outbox: [Pending] = []
+    private var queuedBytes = 0
+    private var receivedFDs: [Int32] = []
+    private var inbox = Data()
+    private var queue: DispatchQueue?
+    private var readSource: DispatchSourceRead?
+    private var writeSource: DispatchSourceWrite?
+    /// Sources still registered on `fd`; the descriptor closes after the last cancel handler.
+    private let liveSources = DispatchGroup()
+    private let readBuffer = UnsafeMutableRawPointer.allocate(byteCount: readSize, alignment: 8)
+    private let controlBuffer = UnsafeMutableRawPointer.allocate(byteCount: controlSize, alignment: 8)
+
+    public init(fd: Int32) {
+        self.fd = fd
+    }
+
+    deinit {
+        lock.lock()
+        closeLocked(notify: false)
+        lock.unlock()
+        readBuffer.deallocate()
+        controlBuffer.deallocate()
+    }
+
+    public static func connect(path: String) throws -> WireConnection {
+        WireConnection(fd: try UnixSocket.connect(path: path))
+    }
+
+    /// Sends `hello` and returns the server's `hello`. The caller compares versions.
+    public func handshake(build: String, timeout: TimeInterval = 5) throws -> (version: Int, build: String) {
+        try send(.hello(version: SessionWire.protocolVersion, build: build))
+        switch try receive(timeout: timeout) {
+        case .hello(let version, let build): return (version, build)
+        case .error(let text): throw WireError.remote(text)
+        default: throw WireError.unexpectedReply
+        }
+    }
+
+    /// Queues `m` (split into several frames when it is `output` or `replay` data larger than
+    /// one frame) and writes what the socket takes. `fd`, if given, is dup'ed now and passed
+    /// with the first bytes of the message.
+    public func send(_ m: WireMessage, fd passing: Int32? = nil) throws {
+        let frames = Self.frames(for: m)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed else { throw WireError.closed }
+        var dup: Int32?
+        if let passing {
+            dup = fcntl(passing, F_DUPFD_CLOEXEC, 0)
+            guard dup! >= 0 else { throw POSIXError.current }
+        }
+        for (index, frame) in frames.enumerated() {
+            outbox.append(Pending(data: frame, fd: index == 0 ? dup : nil))
+            queuedBytes += frame.count
+        }
+        if queue != nil && queuedBytes > Self.maxQueuedBytes {
+            closeLocked()
+            throw WireError.closed
+        }
+        try flushLocked()
+    }
+
+    /// Closes once everything queued has been written (right away if nothing is).
+    public func closeAfterSending() {
+        lock.lock()
+        defer { lock.unlock() }
+        closeWhenFlushed = true
+        if outbox.isEmpty { closeLocked() }
+    }
+
+    /// Blocks for the next message. Throws `timedOut`, or `closed` at end of stream, or the
+    /// decode error (after closing: a bad frame poisons the stream).
+    public func receive(timeout: TimeInterval? = nil) throws -> WireMessage {
+        let deadline = timeout.map { Date().addingTimeInterval($0) }
+        while true {
+            if let message = try decodeNext() { return message }
+            if let deadline {
+                var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                let millis = max(0, Int32(deadline.timeIntervalSinceNow * 1000))
+                let ready = poll(&poller, 1, millis)
+                if ready == 0 { throw WireError.timedOut }
+                if ready < 0 && errno != EINTR { throw POSIXError.current }
+                if ready < 0 { continue }
+            }
+            let count = readOnce()
+            if count == 0 || (count < 0 && errno != EINTR) { throw WireError.closed }
+        }
+    }
+
+    /// The next descriptor received with a message, if any. The caller owns it.
+    public func takeFD() -> Int32? {
+        lock.lock()
+        defer { lock.unlock() }
+        return receivedFDs.isEmpty ? nil : receivedFDs.removeFirst()
+    }
+
+    /// Switches to event-driven mode: non-blocking, messages delivered on `queue`.
+    public func startReading(queue: DispatchQueue) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed, self.queue == nil else { return }
+        self.queue = queue
+        UnixSocket.setNonBlocking(fd)
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+        liveSources.enter()
+        source.setEventHandler { [weak self] in self?.readAvailable() }
+        source.setCancelHandler { [liveSources] in liveSources.leave() }
+        readSource = source
+        source.resume()
+    }
+
+    public func close() {
+        lock.lock()
+        defer { lock.unlock() }
+        closeLocked()
+    }
+
+    // MARK: Reading
+
+    private func readAvailable() {
+        let count = readOnce()
+        if count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR) { return close() }
+        do {
+            while !isClosed, let message = try decodeNext() { onMessage?(message) }
+        } catch {
+            // decodeNext already closed the connection.
+        }
+    }
+
+    private var isClosed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return closed
+    }
+
+    private func decodeNext() throws -> WireMessage? {
+        do {
+            return try WireFrame.decode(&inbox)
+        } catch {
+            close()
+            throw error
+        }
+    }
+
+    /// One `recvmsg`: bytes go to `inbox`, passed descriptors to `receivedFDs`.
+    private func readOnce() -> Int {
+        var iov = iovec(iov_base: readBuffer, iov_len: Self.readSize)
+        var message = msghdr()
+        let count = withUnsafeMutablePointer(to: &iov) { iovPointer -> Int in
+            message.msg_iov = iovPointer
+            message.msg_iovlen = 1
+            message.msg_control = controlBuffer
+            message.msg_controllen = socklen_t(Self.controlSize)
+            return recvmsg(fd, &message, 0)
+        }
+        guard count >= 0 else { return count }
+        let fds = Self.descriptors(in: controlBuffer, length: Int(message.msg_controllen))
+        if !fds.isEmpty {
+            lock.lock()
+            if closed { fds.forEach { Darwin.close($0) } } else { receivedFDs += fds }
+            lock.unlock()
+        }
+        inbox.append(readBuffer.assumingMemoryBound(to: UInt8.self), count: count)
+        return count
+    }
+
+    private static func descriptors(in control: UnsafeMutableRawPointer, length: Int) -> [Int32] {
+        var fds: [Int32] = []
+        var offset = 0
+        while offset + cmsgHeader <= length {
+            let cmsgLength = Int(control.load(fromByteOffset: offset, as: UInt32.self))
+            let level = control.load(fromByteOffset: offset + 4, as: Int32.self)
+            let type = control.load(fromByteOffset: offset + 8, as: Int32.self)
+            guard cmsgLength >= cmsgHeader, offset + cmsgLength <= length else { break }
+            if level == SOL_SOCKET && type == SCM_RIGHTS {
+                for index in 0..<(cmsgLength - cmsgHeader) / 4 {
+                    let fd = control.load(fromByteOffset: offset + cmsgHeader + index * 4, as: Int32.self)
+                    _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+                    fds.append(fd)
+                }
+            }
+            offset += (cmsgLength + 3) & ~3
+        }
+        return fds
+    }
+
+    // MARK: Writing (lock held)
+
+    private func flushLocked() throws {
+        while !outbox.isEmpty {
+            let written = write(outbox[0])
+            if written > 0 {
+                // The kernel attaches the descriptor to the first bytes it accepts, so it is gone now.
+                if let passed = outbox[0].fd { Darwin.close(passed); outbox[0].fd = nil }
+                outbox[0].offset += written
+                queuedBytes -= written
+                if outbox[0].offset == outbox[0].data.count { outbox.removeFirst() }
+            } else if written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return armWriteSource()
+            } else if written < 0 && errno == EINTR {
+                continue
+            } else {
+                closeLocked()
+                throw WireError.closed
+            }
+        }
+        if let source = writeSource {
+            writeSource = nil
+            source.cancel()
+        }
+        if closeWhenFlushed { closeLocked() }
+    }
+
+    private func write(_ pending: Pending) -> Int {
+        pending.data.withUnsafeBytes { raw -> Int in
+            var iov = iovec(iov_base: UnsafeMutableRawPointer(mutating: raw.baseAddress! + pending.offset),
+                            iov_len: raw.count - pending.offset)
+            return withUnsafeMutablePointer(to: &iov) { iovPointer -> Int in
+                var message = msghdr()
+                message.msg_iov = iovPointer
+                message.msg_iovlen = 1
+                guard let passing = pending.fd else { return sendmsg(fd, &message, 0) }
+                let length = Self.cmsgHeader + 4
+                let control = UnsafeMutableRawPointer.allocate(byteCount: length, alignment: 8)
+                defer { control.deallocate() }
+                control.storeBytes(of: UInt32(length), toByteOffset: 0, as: UInt32.self)
+                control.storeBytes(of: SOL_SOCKET, toByteOffset: 4, as: Int32.self)
+                control.storeBytes(of: SCM_RIGHTS, toByteOffset: 8, as: Int32.self)
+                control.storeBytes(of: passing, toByteOffset: Self.cmsgHeader, as: Int32.self)
+                message.msg_control = control
+                message.msg_controllen = socklen_t(length)
+                return sendmsg(fd, &message, 0)
+            }
+        }
+    }
+
+    private func armWriteSource() {
+        guard writeSource == nil, let queue else { return }
+        let source = DispatchSource.makeWriteSource(fileDescriptor: fd, queue: queue)
+        liveSources.enter()
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            try? self.flushLocked()
+        }
+        source.setCancelHandler { [liveSources] in liveSources.leave() }
+        writeSource = source
+        source.resume()
+    }
+
+    private func closeLocked(notify: Bool = true) {
+        guard !closed else { return }
+        closed = true
+        for pending in outbox { if let passed = pending.fd { Darwin.close(passed) } }
+        outbox = []
+        queuedBytes = 0
+        receivedFDs.forEach { Darwin.close($0) }
+        receivedFDs = []
+        guard let queue else { Darwin.close(fd); return }
+        readSource?.cancel()
+        writeSource?.cancel()
+        readSource = nil
+        writeSource = nil
+        liveSources.notify(queue: queue) { [fd] in Darwin.close(fd) }
+        guard notify else { return }
+        queue.async { [self] in
+            onClose?()
+            onClose = nil
+            onMessage = nil
+        }
+    }
+
+    private static func frames(for m: WireMessage) -> [Data] {
+        let bytes: Data
+        let wrap: (Data) -> WireMessage
+        switch m {
+        case .output(let data) where data.count > WireFrame.maxPayload: (bytes, wrap) = (data, WireMessage.output)
+        case .replay(let data) where data.count > WireFrame.maxPayload: (bytes, wrap) = (data, WireMessage.replay)
+        default: return [WireFrame.encode(m)]
+        }
+        return stride(from: bytes.startIndex, to: bytes.endIndex, by: WireFrame.maxPayload).map {
+            WireFrame.encode(wrap(bytes[$0..<min($0 + WireFrame.maxPayload, bytes.endIndex)]))
+        }
+    }
+}
