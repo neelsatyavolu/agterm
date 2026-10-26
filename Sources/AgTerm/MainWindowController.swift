@@ -55,8 +55,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             self.window?.makeKeyAndOrderFront(nil)
             self.select(index)
         }
+        // `$appearance` fires before the new value is stored, so pass it along rather than re-reading it.
         appearanceSubscription = Preferences.shared.$appearance.dropFirst().sink { [weak self] settings in
-            self?.applyAppearance()
+            self?.applyAppearance(settings)
         }
     }
 
@@ -337,9 +338,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     /// Pushes the current `Theme` to the window, tab bar and every terminal.
     /// Full screen forces a solid background (see `WindowBlur.effectiveOpacity`).
-    private func applyAppearance() {
+    private func applyAppearance(_ settings: AppearanceSettings = Preferences.shared.appearance) {
         guard let window else { return }
-        let settings = Preferences.shared.appearance
         Theme.apply(settings, fullScreen: window.styleMask.contains(.fullScreen))
         let seeThrough = Theme.opacity < 1
         window.appearance = Theme.appearance
@@ -376,16 +376,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     @objc func toggleCommandBar() {
         guard commandBar.superview == nil else { return hideCommandBar() }
         guard sessions.indices.contains(selected) else { return }
-        commandBarTarget = sessions[selected]
+        let session = sessions[selected]
+        commandBarTarget = session
         // Added last so it sits above the terminals, including tabs opened since.
         container.addSubview(commandBar)
-        let fill = commandBar.widthAnchor.constraint(equalTo: container.widthAnchor, constant: -28)
-        fill.priority = .defaultHigh
+        // Below the window's own size priority, so a narrow window narrows the bar, never the reverse.
+        let fill = commandBar.widthAnchor.constraint(equalToConstant: CommandBar.width)
+        fill.priority = NSLayoutConstraint.Priority(NSLayoutConstraint.Priority.windowSizeStayPut.rawValue - 10)
         NSLayoutConstraint.activate([
             fill,
-            commandBar.widthAnchor.constraint(lessThanOrEqualToConstant: CommandBar.width),
-            commandBar.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            commandBar.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14),
+            commandBar.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            commandBar.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -14),
+            commandBarVerticalPlacement(for: session),
         ])
         commandBar.begin()
     }
@@ -395,6 +397,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     var cdSuggestionsForTest: CdSuggestions { cdSuggestions }
     func renderForTest() { render() }
     #endif
+
+    /// Just under the line you're typing on, or just above it when the bottom of the window is too close.
+    private func commandBarVerticalPlacement(for session: TerminalSession) -> NSLayoutConstraint {
+        let caret = session.view.convert(session.view.caretFrame, to: container)
+        let lineTop = container.isFlipped ? caret.minY : container.bounds.height - caret.maxY
+        let lineBottom = container.isFlipped ? caret.maxY : container.bounds.height - caret.minY
+        // Room for a wrapped command under the request.
+        let roomNeeded: CGFloat = 170
+        if lineBottom + roomNeeded <= container.bounds.height {
+            return commandBar.topAnchor.constraint(equalTo: container.topAnchor, constant: lineBottom + 6)
+        }
+        return commandBar.bottomAnchor.constraint(equalTo: container.topAnchor, constant: max(lineTop - 6, 0))
+    }
 
     private func hideCommandBar(refocus: Bool = true) {
         commandBar.cancelRun()

@@ -2,7 +2,7 @@ import AgTermCore
 import AppKit
 
 /// While you type `cd <word>` at a shell prompt, lists matching folders under the cursor.
-/// ⇥ puts the highlighted one on the command line, ↑↓ move, esc hides the list.
+/// ⇥ (or a click) puts the highlighted one on the command line, ↑↓ move, esc hides the list.
 final class CdSuggestions {
     private let list = CdSuggestionList()
     private weak var session: TerminalSession?
@@ -14,6 +14,7 @@ final class CdSuggestions {
 
     init() {
         _ = FolderIndex.shared.candidates(cwd: NSHomeDirectory())
+        list.onPick = { [weak self] in self?.pick() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handle(event) == true ? nil : event
         }
@@ -78,16 +79,23 @@ final class CdSuggestions {
                             width: size.width, height: size.height)
     }
 
+    /// Puts the highlighted folder on the command line in place of the typed word.
+    private func pick() {
+        guard let session, let path = list.selectedPath else { return }
+        let text = CdSuggest.display(path, home: NSHomeDirectory())
+        session.view.send(data: CdSuggest.keystrokes(replacing: word, with: text)[...])
+        hide()
+        session.view.window?.makeFirstResponder(session.view)
+    }
+
     private func handle(_ event: NSEvent) -> Bool {
         guard list.superview != nil, let session, event.window === session.view.window,
               event.window?.firstResponder === session.view,
               event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return false }
         switch event.keyCode {
         case 48: // tab
-            guard let path = list.selectedPath else { return false }
-            let text = CdSuggest.display(path, home: NSHomeDirectory())
-            session.view.send(data: CdSuggest.keystrokes(replacing: word, with: text)[...])
-            hide()
+            guard list.selectedPath != nil else { return false }
+            pick()
         case 125: list.move(by: 1) // down
         case 126: list.move(by: -1) // up
         case 53: // esc
@@ -109,6 +117,8 @@ final class CdSuggestionList: NSView {
 
     private var rows: [(path: String, name: String, parent: String)] = []
     private var selected = 0
+    /// A row was clicked; it's already highlighted.
+    var onPick: (() -> Void)?
 
     #if DEBUG
     var pathsForTest: [String] { rows.map(\.path) }
@@ -156,16 +166,28 @@ final class CdSuggestionList: NSView {
         needsDisplay = true
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let index = Int((point.y - Self.inset) / Self.rowHeight)
+        guard point.y >= Self.inset, rows.indices.contains(index) else { return }
+        selected = index
+        onPick?()
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let font = Theme.terminalFont(family: Theme.settings.fontFamily, size: 13)
         let nameStyle: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.fg]
         let parentStyle: [NSAttributedString.Key: Any] = [.font: Theme.metaFont, .foregroundColor: Theme.fg3]
+        let keyStyle: [NSAttributedString.Key: Any] = [.font: Theme.metaFont, .foregroundColor: Theme.fg2]
         let inner = bounds.width - Self.inset * 2
         for (index, row) in rows.enumerated() {
-            let rect = NSRect(x: Self.inset, y: Self.inset + CGFloat(index) * Self.rowHeight, width: inner, height: Self.rowHeight)
+            var rect = NSRect(x: Self.inset, y: Self.inset + CGFloat(index) * Self.rowHeight, width: inner, height: Self.rowHeight)
             if index == selected {
                 Theme.accent.withAlphaComponent(0.22).setFill()
                 NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
+                rect.size.width -= drawKeycap("tab ⇥", style: keyStyle, rightEdge: rect.maxX - 6, midY: rect.midY) + 6
             }
             let name = NSAttributedString(string: row.name, attributes: nameStyle)
             let nameWidth = min(name.size().width, inner * 0.55)
@@ -177,7 +199,18 @@ final class CdSuggestionList: NSView {
                       options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
         let hintY = Self.inset + CGFloat(rows.count) * Self.rowHeight + 3
-        NSAttributedString(string: "⇥ go   ↑↓ choose   esc hide", attributes: parentStyle)
+        NSAttributedString(string: "tab select   ↑↓ move   esc hide", attributes: parentStyle)
             .draw(at: NSPoint(x: Self.inset + 8, y: hintY))
+    }
+
+    /// A small outlined key label ending at `rightEdge`; returns its width.
+    private func drawKeycap(_ label: String, style: [NSAttributedString.Key: Any], rightEdge: CGFloat, midY: CGFloat) -> CGFloat {
+        let text = NSAttributedString(string: label, attributes: style)
+        let size = text.size()
+        let box = NSRect(x: rightEdge - size.width - 10, y: midY - 8, width: size.width + 10, height: 16)
+        Theme.border.setStroke()
+        NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4).stroke()
+        text.draw(at: NSPoint(x: box.minX + 5, y: midY - size.height / 2))
+        return box.width
     }
 }

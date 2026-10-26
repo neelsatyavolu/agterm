@@ -7,6 +7,7 @@ struct AgentsPane: View {
     @AppStorage(AgentIntegration.launchAgentKey) private var launchAgent = AgentKind.claude.id
     @AppStorage(AgentIntegration.memoryKey) private var memory = true
     @AppStorage(AgentIntegration.consultKey) private var consult = true
+    @State private var shortcut = AgentIntegration.newAgentTabShortcut
     /// Found off the main thread, since it may wait on your shell's startup files.
     @State private var installed: [AgentKind]?
 
@@ -30,7 +31,12 @@ struct AgentsPane: View {
     var body: some View {
         Form {
             Section {
-                Picker("⌥⌘T starts", selection: $launchAgent) {
+                LabeledContent("Shortcut") {
+                    ShortcutRecorder(shortcut: $shortcut, defaultShortcut: .newAgentTabDefault,
+                                     action: #selector(MainWindowController.newDefaultAgentTab))
+                }
+                .onChange(of: shortcut) { _, new in AgentIntegration.newAgentTabShortcut = new }
+                Picker("Starts", selection: $launchAgent) {
                     ForEach(installed ?? AgentKind.all, id: \.self) { Text($0.title).tag($0.id) }
                 }
             } header: {

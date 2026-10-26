@@ -2,7 +2,7 @@ import AgTermCore
 import AppKit
 
 /// ⌘K: describe what you want, a small fast model writes the shell command, ⏎ puts it at your
-/// prompt to check before running (⌘⏎ runs it). Floats over the bottom of the terminal.
+/// prompt to check before running (⌘⏎ runs it). Opens under the line you're typing on, like Cursor's.
 final class CommandBar: NSView, NSTextFieldDelegate {
     static let width: CGFloat = 640
 
@@ -13,10 +13,9 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     var context: (() -> (cwd: String, shell: String, screen: String))?
 
     private let field = NSTextField()
-    private let badge = NSTextField(labelWithString: "⌘K")
     private let modelLabel = NSTextField(labelWithString: "")
     private let result = NSTextField(labelWithString: "")
-    private let hint = NSTextField(labelWithString: "⏎ insert   ⌘⏎ run   esc close")
+    private let hint = NSTextField(labelWithString: "")
     private var command: String?
     private var running: QuickCommandRunner.Run?
     /// Bumped on every request so a late reply to an old one is ignored.
@@ -49,31 +48,28 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         result.cell?.wraps = true
         result.cell?.truncatesLastVisibleLine = true
         result.isSelectable = true
-        for label in [badge, modelLabel, hint] { label.font = Theme.metaFont }
-        badge.font = Theme.labelFont
-        for view in [badge, field, modelLabel, result, hint] as [NSView] {
+        for label in [modelLabel, hint] { label.font = Theme.metaFont }
+        for view in [field, modelLabel, result, hint] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
         modelLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        badge.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // The request, the command it wrote (once there is one), then keys on the left and the model on the right.
         NSLayoutConstraint.activate([
-            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            badge.centerYAnchor.constraint(equalTo: field.centerYAnchor),
-            field.leadingAnchor.constraint(equalTo: badge.trailingAnchor, constant: 10),
+            field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             field.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            field.trailingAnchor.constraint(equalTo: modelLabel.leadingAnchor, constant: -10),
-            modelLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            modelLabel.centerYAnchor.constraint(equalTo: field.centerYAnchor),
+            field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             result.leadingAnchor.constraint(equalTo: field.leadingAnchor),
             result.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
-            result.trailingAnchor.constraint(lessThanOrEqualTo: hint.leadingAnchor, constant: -12),
-            hint.trailingAnchor.constraint(equalTo: modelLabel.trailingAnchor),
-            hint.topAnchor.constraint(equalTo: result.topAnchor, constant: 1),
+            result.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            hint.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: modelLabel.leadingAnchor, constant: -12),
+            hint.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            modelLabel.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            modelLabel.centerYAnchor.constraint(equalTo: hint.centerYAnchor),
         ])
-        hint.setContentCompressionResistancePriority(.required, for: .horizontal)
-        compactConstraints = [field.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12)]
-        resultConstraints = [result.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12)]
+        compactConstraints = [hint.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 8)]
+        resultConstraints = [hint.topAnchor.constraint(equalTo: result.bottomAnchor, constant: 10)]
         showResult(nil, isError: false)
         refreshAppearance()
     }
@@ -95,7 +91,6 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         field.placeholderAttributedString = NSAttributedString(string: "Describe a command", attributes: [
             .foregroundColor: Theme.fg3, .font: NSFont.systemFont(ofSize: 14),
         ])
-        badge.textColor = Theme.fg3
         modelLabel.textColor = Theme.fg3
         hint.textColor = Theme.fg3
         result.font = Theme.terminalFont(family: Theme.settings.fontFamily, size: 13)
@@ -195,7 +190,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     private func showResult(_ text: String?, isError: Bool, pending: Bool = false) {
         let visible = text != nil
         result.isHidden = !visible
-        hint.isHidden = !visible || isError || pending
+        hint.stringValue = visible && !isError && !pending ? "⏎ insert   ⌘⏎ run   esc close" : "⏎ write   esc close"
         result.stringValue = text ?? ""
         result.textColor = isError ? Theme.danger : pending ? Theme.fg3 : Theme.fg
         NSLayoutConstraint.deactivate(visible ? compactConstraints : resultConstraints)

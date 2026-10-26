@@ -387,11 +387,20 @@ enum SelfTest {
             after(0.6) {
                 let size = settings.window?.contentView?.bounds.size ?? .zero
                 print("selftest: settings pane \(i) \(settings.window?.title ?? "?") \(Int(size.width))x\(Int(size.height))")
+                let toolbar = settings.window?.toolbar
+                print("selftest: settings toolbar shows \(toolbar?.visibleItems?.count ?? 0) of \(toolbar?.items.count ?? 0)")
                 snapshotSettings("\(outDir)/settings-\(i).png")
                 pane(i + 1)
             }
         }
         after(0.5) { pane(0) }
+        // The new-agent-tab shortcut follows Settings, and a taken shortcut is caught.
+        let agentAction = #selector(MainWindowController.newDefaultAgentTab)
+        let menuItem = { NSApp.mainMenu?.items.compactMap { $0.submenu?.items.first { $0.action == agentAction } }.first }
+        AgentIntegration.newAgentTabShortcut = KeyShortcut(key: "a", modifiers: [.control, .option])
+        print("selftest: shortcut menu follows settings:", menuItem()?.keyEquivalent == "a" && menuItem()?.keyEquivalentModifierMask == [.control, .option],
+              "| ⌘T taken by:", KeyShortcut(key: "t", modifiers: [.command]).conflict(in: NSApp.mainMenu, ignoring: agentAction) ?? "nothing")
+        AgentIntegration.newAgentTabShortcut = .newAgentTabDefault
         let shell = controller.sessions[0]
         UserDefaults.standard.set(ProcessInfo.processInfo.environment["AGTERM_QUICK_MODEL"] ?? "auto", forKey: QuickCommandRunner.modelKey)
         after(3) { shell.view.send(txt: "cd /tmp && clear\r") }
@@ -420,6 +429,7 @@ enum SelfTest {
                 let text = controller.commandBarForTest.selfTestResult
                 if text.hasPrefix("Writing") { return after(0.2, wait) }
                 print("selftest: ⌘K reply in \(String(format: "%.1f", Date().timeIntervalSince(start))) s:", text)
+                print("selftest: ⌘K window width:", Int(window.frame.width), "| bar width:", Int(controller.commandBarForTest.frame.width))
                 snapshot(window, "\(outDir)/command-bar.png")
                 controller.commandBarForTest.selfTestSubmit(nil)
                 after(0.8) {

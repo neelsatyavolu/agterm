@@ -42,7 +42,7 @@ final class SettingsWindowController: NSWindowController {
 
 /// Resizes the window to each pane's height, keeping its top edge still, and titles it after the pane.
 private final class SettingsTabs: NSTabViewController {
-    static let width: CGFloat = 500
+    static let width: CGFloat = 600
 
     func add<Pane: View>(_ label: String, symbol: String, _ pane: Pane) {
         let host = NSHostingController(rootView: pane.formStyle(.grouped).frame(width: Self.width).fixedSize(horizontal: false, vertical: true))

@@ -3,6 +3,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: MainWindowController?
+    private var shortcutObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
@@ -98,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
-            item("New Agent Tab", #selector(MainWindowController.newDefaultAgentTab), "t", [.command, .option]),
+            newAgentTabItem(),
         ] + Self.agentItems([.claude, .codex, .grok]) + [
             moreAgentsItem(),
             .separator(),
@@ -159,6 +160,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         holder.submenu = menu
         return holder
+    }
+
+    /// Its shortcut is set in Settings → Agents and follows changes there.
+    private func newAgentTabItem() -> NSMenuItem {
+        let item = item("New Agent Tab", #selector(MainWindowController.newDefaultAgentTab))
+        item.setShortcut(AgentIntegration.newAgentTabShortcut)
+        shortcutObserver = NotificationCenter.default.addObserver(forName: .agtermShortcutChanged, object: nil, queue: .main) { [weak item] _ in
+            item?.setShortcut(AgentIntegration.newAgentTabShortcut)
+        }
+        return item
     }
 
     private func item(_ title: String, _ action: Selector, _ key: String = "",
