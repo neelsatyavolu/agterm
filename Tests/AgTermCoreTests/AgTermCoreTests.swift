@@ -145,3 +145,36 @@ final class PathDisplayTests: XCTestCase {
         XCTAssertEqual(PathDisplay.folder("/", home: "/Users/sam"), "/")
     }
 }
+
+final class ClaudeSessionTitleTests: XCTestCase {
+    func testAITitleWins() {
+        let lines = """
+        {"type":"last-prompt","lastPrompt":"fix the login page","sessionId":"s"}
+        {"type":"ai-title","aiTitle":"Login page fix","sessionId":"s"}
+        {"type":"ai-title","aiTitle":"Login page redirect fix","sessionId":"s"}
+        """
+        XCTAssertEqual(ClaudeSessionTitle.parse(lines: lines), "Login page redirect fix")
+    }
+
+    func testSlashCommandFirstPromptFallsBackToItsArguments() {
+        // Recorded from Claude Code 2.1.310: a session opened with a skill command never gets an ai-title.
+        let lines = """
+        {"type":"last-prompt","leafUuid":"a","sessionId":"s"}
+        {"type":"user","message":{"role":"user","content":"<command-name>/workflow-authoring</command-name>"}}
+        {"type":"last-prompt","lastPrompt":"/workflow-authoring Make some UI fixes\\nand more","sessionId":"s"}
+        {"type":"last-prompt","lastPrompt":"later prompt","sessionId":"s"}
+        """
+        XCTAssertEqual(ClaudeSessionTitle.parse(lines: lines), "Make some UI fixes")
+    }
+
+    func testBareSlashCommandAndEmptyTranscriptHaveNoTitle() {
+        XCTAssertNil(ClaudeSessionTitle.parse(lines: #"{"type":"last-prompt","lastPrompt":"/model","sessionId":"s"}"#))
+        XCTAssertNil(ClaudeSessionTitle.parse(lines: ""))
+    }
+
+    func testGenericTopic() {
+        XCTAssertTrue(ClaudeSessionTitle.isGeneric(""))
+        XCTAssertTrue(ClaudeSessionTitle.isGeneric("Claude Code"))
+        XCTAssertFalse(ClaudeSessionTitle.isGeneric("Login page fix"))
+    }
+}

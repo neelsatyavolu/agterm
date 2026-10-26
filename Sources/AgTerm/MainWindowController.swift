@@ -148,6 +148,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         for session in sessions where session.agentName != nil {
             if session.agentName == "claude", let id = session.claudeSessionID {
                 transcripts.claude(sessionID: id) { [weak session] diff in session?.updateAgentDiff(diff ?? (0, 0)) }
+                if session.needsTranscriptTitle {
+                    transcripts.claudeTitle(sessionID: id) { [weak session] title in session?.updateTranscriptTitle(title) }
+                }
                 continue
             }
             if session.agentName == "codex", let start = session.agentStartedAt {

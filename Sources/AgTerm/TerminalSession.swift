@@ -20,6 +20,8 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     /// When the current agent started, and (for Claude) the conversation it's in.
     private(set) var agentStartedAt: Date?
     private(set) var claudeSessionID: String?
+    /// Claude's session name from its transcript, shown when its terminal title is generic.
+    private var transcriptTitle: String?
     private(set) var signals = StatusSignals()
     private(set) var status: TabStatus = .idle
     let shellName: String
@@ -168,6 +170,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     // MARK: What the tab shows
 
     var topic: String {
+        if needsTranscriptTitle, let transcriptTitle { return transcriptTitle }
         if !parsedTitle.topic.isEmpty { return parsedTitle.topic }
         if let name = foregroundName, name != shellName { return name }
         return shellName
@@ -252,9 +255,20 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         agentName = agent
         agentStartedAt = agent == nil ? nil : Date()
         claudeSessionID = nil
+        transcriptTitle = nil
         agentBaseline = nil
         agentBaselineRequested = false
         agentDiff = nil
+        onChange?()
+    }
+
+    var needsTranscriptTitle: Bool {
+        agentName == "claude" && ClaudeSessionTitle.isGeneric(parsedTitle.topic)
+    }
+
+    func updateTranscriptTitle(_ title: String?) {
+        guard title != transcriptTitle else { return }
+        transcriptTitle = title
         onChange?()
     }
 

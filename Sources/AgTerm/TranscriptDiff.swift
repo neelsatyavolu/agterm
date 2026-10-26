@@ -8,6 +8,7 @@ final class TranscriptDiff {
     private var inFlight = Set<String>()
     /// Parsed totals per transcript, reused while the file is unchanged.
     private var cache: [String: (modified: Date, added: Int, removed: Int)] = [:]
+    private var titleCache: [String: (modified: Date, title: String?)] = [:]
     private let lock = NSLock()
 
     /// Claude Code: the session's transcript under ~/.claude/projects.
@@ -15,6 +16,24 @@ final class TranscriptDiff {
         run(key: "claude:" + sessionID, completion: completion) {
             guard let file = Self.claudeTranscript(sessionID) else { return nil }
             return self.total(file) { ClaudeTranscript.parse(lines: $0, sessionID: sessionID, fallbackDir: "") }
+        }
+    }
+
+    /// Claude Code: the session's name from its transcript, for when the terminal title has none.
+    func claudeTitle(sessionID: String, completion: @escaping (String?) -> Void) {
+        run(key: "claude-title:" + sessionID, completion: completion) {
+            guard let file = Self.claudeTranscript(sessionID),
+                  let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
+            self.lock.lock()
+            let hit = self.titleCache[file.path]
+            self.lock.unlock()
+            if let hit, hit.modified == modified { return hit.title }
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+            let title = ClaudeSessionTitle.parse(lines: text)
+            self.lock.lock()
+            self.titleCache[file.path] = (modified, title)
+            self.lock.unlock()
+            return title
         }
     }
 
@@ -26,8 +45,7 @@ final class TranscriptDiff {
         }
     }
 
-    private func run(key: String, completion: @escaping ((added: Int, removed: Int)?) -> Void,
-                     work: @escaping () -> (added: Int, removed: Int)?) {
+    private func run<T>(key: String, completion: @escaping (T) -> Void, work: @escaping () -> T) {
         guard !inFlight.contains(key) else { return }
         inFlight.insert(key)
         queue.async {
