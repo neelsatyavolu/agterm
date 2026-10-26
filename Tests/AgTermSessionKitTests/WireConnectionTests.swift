@@ -92,6 +92,30 @@ final class WireConnectionTests: XCTestCase {
         wait(for: [got], timeout: 2)
     }
 
+    /// A frame with a tag this version doesn't know (from a newer app or helper) is skipped;
+    /// the connection stays open and the next message arrives.
+    func testUnknownTagDoesNotDropTheConnection() throws {
+        var fds: [Int32] = [-1, -1]
+        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        let client = WireConnection(fd: fds[1])
+        defer { close(fds[0]); client.close() }
+        var on: Int32 = 1
+        setsockopt(fds[0], SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        var bytes: [UInt8] = [0, 0, 0, 4, 0xEE, 0x7b, 0x7d, 0x0a]
+        bytes += Array(WireFrame.encode(.output(Data("next".utf8))))
+        XCTAssertEqual(write(fds[0], bytes, bytes.count), bytes.count)
+        XCTAssertEqual(try client.receive(timeout: 2), .output(Data("next".utf8)))
+
+        let queue = DispatchQueue(label: "test.client")
+        let got = expectation(description: "message after unknown tag")
+        client.onMessage = { if $0 == .list { got.fulfill() } }
+        client.startReading(queue: queue)
+        bytes = [0, 0, 0, 1, 0xEF] + Array(WireFrame.encode(.list))
+        XCTAssertEqual(write(fds[0], bytes, bytes.count), bytes.count)
+        wait(for: [got], timeout: 2)
+        XCTAssertNoThrow(try client.send(.list))
+    }
+
     func testPausedReadingDeliversNothingUntilResumed() throws {
         var fds: [Int32] = [-1, -1]
         XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)

@@ -1,5 +1,5 @@
 import AgTermCore
-import AgTermSessionKit
+@testable import AgTermSessionKit
 import Foundation
 import XCTest
 
@@ -40,6 +40,20 @@ final class SessionServerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(fd, 0)
         close(fd)
         XCTAssertTrue(try collect(client, until: "HELLO", timeout: 2).contains("HELLO"))
+    }
+
+    /// A newer app may send messages this helper doesn't know; the helper skips them and
+    /// keeps serving the connection.
+    func testServerSkipsUnknownMessages() throws {
+        let fd = try UnixSocket.connect(path: socketPath)
+        let client = WireConnection(fd: fd)
+        defer { client.close() }
+        var bytes = Array(WireFrame.encode(.hello(version: SessionWire.protocolVersion, build: "newer")))
+        bytes += [0, 0, 0, 3, 0xEE, 0x7b, 0x7d]
+        bytes += Array(WireFrame.encode(.list))
+        XCTAssertEqual(write(fd, bytes, bytes.count), bytes.count)
+        guard case .hello = try client.receive(timeout: 5) else { return XCTFail("expected hello") }
+        XCTAssertEqual(try client.receive(timeout: 5), .sessions([]))
     }
 
     func testReattachReplaysScreen() throws {

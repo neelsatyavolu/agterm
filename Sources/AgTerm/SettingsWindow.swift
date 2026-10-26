@@ -100,6 +100,10 @@ private struct GeneralPane: View {
     @AppStorage(Notifier.soundKey) private var notifySound = true
 
     private static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    private static let oldHelperNote = "Your tabs are running in a session helper from another version of agterm. "
+        + "To update it, choose agterm > Quit and End Sessions."
+    /// Read when the pane is built; the helper in use doesn't change while agterm runs.
+    private let helperIsOld = SessionHelper.runsOtherBuild
 
     var body: some View {
         Form {
@@ -110,13 +114,19 @@ private struct GeneralPane: View {
             }
 
             if Updater.shared.isAvailable {
-                Section("Updates") {
+                Section {
                     Toggle("Check for updates automatically", isOn: $autoUpdate)
                         .onChange(of: autoUpdate) { _, on in Updater.shared.automaticallyChecks = on }
                     LabeledContent("Version \(Self.version)") {
                         Button("Check Now") { Updater.shared.checkForUpdates(nil) }
                     }
+                } header: {
+                    Text("Updates")
+                } footer: {
+                    if helperIsOld { Footnote(Self.oldHelperNote) }
                 }
+            } else if helperIsOld {
+                Section { Footnote(Self.oldHelperNote) }
             }
 
             Section {

@@ -59,11 +59,26 @@ final class SessionWireTests: XCTestCase {
         }
     }
 
-    func testUnknownTagThrows() {
-        var buffer = Data([0, 0, 0, 1, 0xEE])
-        XCTAssertThrowsError(try WireFrame.decode(&buffer)) {
-            XCTAssertEqual($0 as? WireFrameError, .unknownTag(0xEE))
-        }
+    /// A newer peer may send messages this version doesn't know; they are skipped, not fatal.
+    func testUnknownTagIsSkipped() throws {
+        var buffer = Data([0, 0, 0, 3, 0xEE, 0x01, 0x02])
+        buffer.append(WireFrame.encode(.list))
+        XCTAssertEqual(try WireFrame.decode(&buffer), .list)
+        XCTAssertTrue(buffer.isEmpty)
+
+        buffer = Data([0, 0, 0, 1, 0xEE])
+        XCTAssertNil(try WireFrame.decode(&buffer))
+        XCTAssertTrue(buffer.isEmpty)
+    }
+
+    func testIncompleteUnknownFrameIsKept() throws {
+        var buffer = Data([0, 0, 0, 3, 0xEE, 0x01])
+        XCTAssertNil(try WireFrame.decode(&buffer))
+        XCTAssertEqual(buffer, Data([0, 0, 0, 3, 0xEE, 0x01]))
+        buffer.append(0x02)
+        buffer.append(WireFrame.encode(.shutdownIfIdle))
+        XCTAssertEqual(try WireFrame.decode(&buffer), .shutdownIfIdle)
+        XCTAssertTrue(buffer.isEmpty)
     }
 
     func testBadJSONThrows() {

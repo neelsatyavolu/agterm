@@ -33,6 +33,14 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 - Add a check there for any UI change you can't cover with a unit test.
 - Debug builds keep their own state (`agterm-dev`); `AGTERM_STATE_DIR` overrides it, so tests never touch the installed app's tabs.
 
+## Session helper compatibility
+`agterm-sessions` outlives app updates: someone who keeps tabs open keeps the helper from the version they started it with, possibly several releases back, and a helper bug can't be fixed by an update until they choose Quit and End Sessions. So:
+- Every app version must keep working with every helper version already shipped, and every helper with newer apps.
+- Wire changes (`Sources/AgTermCore/SessionWire.swift`) only add: new tags and new optional JSON fields (`decodeIfPresent` with a default). Never renumber or reuse a tag, rename or retype a field, or change what an existing message means.
+- Receivers skip frames with unknown tags, so an old peer ignores a new message: never rely on it being answered without checking the helper's build first. A new message that passes a descriptor goes only to a peer that asked for it.
+- Bump `SessionWire.protocolVersion` only together with a fallback that keeps talking to helpers of the old version.
+- Test helper changes over long runs (memory, CPU) before shipping; see `HeadlessTerminalTests` and `SessionServerTests`.
+
 ## Changelog and releases
 - `CHANGELOG.md` holds user-facing release notes. The app shows them in its What's New tab, and `scripts/release.sh` publishes the same text as the GitHub release notes.
 - Every user-visible change adds a bullet under the next version's `## <version> — <YYYY-MM-DD>` section, in the same commit as the change.

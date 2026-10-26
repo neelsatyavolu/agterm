@@ -29,6 +29,12 @@ enum SessionHelper {
         client?.pid
     }
 
+    /// The helper in use came from another build: it had tabs to keep when this one started,
+    /// so it wasn't replaced. Settings says how to update it. Main queue only.
+    static var runsOtherBuild: Bool {
+        client.map { $0.helperBuild != $0.build } ?? false
+    }
+
     /// Next to the app's executable: `Contents/MacOS` in the bundle, `.build/debug` in development.
     private static var binary: String? {
         guard let url = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("agterm-sessions"),
@@ -56,7 +62,7 @@ enum SessionHelper {
             do {
                 let (control, serverBuild) = try HelperHandshake.connect(socket: socket, build: build,
                                                                          timeout: max(0.1, deadline.timeIntervalSinceNow))
-                let client = Client(control: control, socket: socket, build: build)
+                let client = Client(control: control, socket: socket, build: build, helperBuild: serverBuild)
                 // A helper from another build with no shells to keep makes way for ours, once.
                 if serverBuild != build, !replaced, client.list()?.isEmpty == true {
                     replaced = true
@@ -135,15 +141,18 @@ enum SessionHelper {
 
         let socket: String
         let build: String
+        /// The build the helper reported in its `hello`.
+        let helperBuild: String
         let pid: pid_t?
         private let control: WireConnection
         private let lock = NSLock()
 
-        fileprivate init(control: WireConnection, socket: String, build: String) {
+        fileprivate init(control: WireConnection, socket: String, build: String, helperBuild: String) {
             self.control = control
             pid = control.peerPID
             self.socket = socket
             self.build = build
+            self.helperBuild = helperBuild
         }
 
         /// The helper's shells, oldest first; nil if it doesn't answer (unlike an empty list,

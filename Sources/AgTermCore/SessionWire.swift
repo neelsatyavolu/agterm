@@ -75,7 +75,6 @@ public enum WireMessage: Equatable {
 
 public enum WireFrameError: Error, Equatable {
     case frameTooLarge(Int)
-    case unknownTag(UInt8)
     case badPayload
 }
 
@@ -107,20 +106,26 @@ public enum WireFrame {
     }
 
     /// Takes one complete frame off the front of `buffer`. Returns nil, leaving `buffer` alone, while the frame is incomplete.
+    /// Frames with a tag this version doesn't know come from a newer app or helper; they are
+    /// taken off and skipped, so old and new versions keep talking (see AGENTS.md).
     /// After any throw the caller must drop the connection: the buffer is left as-is, so retrying would fail forever.
     public static func decode(_ buffer: inout Data) throws -> WireMessage? {
-        let base = buffer.startIndex
-        guard buffer.count >= 4 else { return nil }
-        let length = buffer[base..<base + 4].reduce(0) { ($0 << 8) | Int($1) }
-        guard length <= SessionWire.maxFrameLength else { throw WireFrameError.frameTooLarge(length) }
-        guard length >= 1 else { throw WireFrameError.badPayload }
-        guard buffer.count >= 4 + length else { return nil }
-        let rawTag = buffer[base + 4]
-        guard let tag = Tag(rawValue: rawTag) else { throw WireFrameError.unknownTag(rawTag) }
-        let payload = Data(buffer[base + 5..<base + 4 + length])
-        let message = try message(tag: tag, payload: payload)
-        buffer.removeSubrange(base..<base + 4 + length)
-        return message
+        while true {
+            let base = buffer.startIndex
+            guard buffer.count >= 4 else { return nil }
+            let length = buffer[base..<base + 4].reduce(0) { ($0 << 8) | Int($1) }
+            guard length <= SessionWire.maxFrameLength else { throw WireFrameError.frameTooLarge(length) }
+            guard length >= 1 else { throw WireFrameError.badPayload }
+            guard buffer.count >= 4 + length else { return nil }
+            guard let tag = Tag(rawValue: buffer[base + 4]) else {
+                buffer.removeSubrange(base..<base + 4 + length)
+                continue
+            }
+            let payload = Data(buffer[base + 5..<base + 4 + length])
+            let message = try message(tag: tag, payload: payload)
+            buffer.removeSubrange(base..<base + 4 + length)
+            return message
+        }
     }
 
     private static func parts(of m: WireMessage) -> (Tag, Data) {
