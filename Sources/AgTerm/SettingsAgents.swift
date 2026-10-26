@@ -13,10 +13,11 @@ struct AgentsPane: View {
     /// Checked once when Settings opens.
     private static let mcpStatus: String = {
         let base = "claude and codex started in agterm get these MCP servers, the same ones agmux gives its agents. "
-            + "Memory is shared with agmux for folders it knows; servers you already configured aren't added twice. "
-            + "Start an agent with AGTERM_MCP=0 to skip them once."
-        guard AgentIntegration.agmuxBundles() != nil else {
-            return "agmux isn't installed, so there are no servers to add. " + base
+            + "With agmux installed they're agmux's own, and memory is shared with agmux for the folders it knows. "
+            + "Without agmux, agterm's copies give every git repo its own memory. "
+            + "Servers you already configured aren't added twice. Start an agent with AGTERM_MCP=0 to skip them once."
+        guard AgentIntegration.mcpBundles() != nil else {
+            return "agterm's copies of the servers are missing (a development build?). " + base
         }
         guard AgentIntegration.findOnPath("node", excluding: nil) != nil else {
             return "Node.js wasn't found on agterm's PATH; agents' own shells may still find it. " + base

@@ -25,12 +25,12 @@ On first launch agterm asks for Full Disk Access. Programs you run in a terminal
 
 ## agmux memory and consult
 
-Claude Code and Codex started in an agterm tab get the two MCP servers [agmux](https://agmux.dev) gives its own agents:
+Claude Code and Codex started in an agterm tab get the two MCP servers [agmux](https://agmux.dev) gives its own agents. agmux doesn't have to be installed:
 
-- **agmux-memory**, for folders agmux knows, using agmux's project ids so both apps share one memory.
+- **agmux-memory**, project memory every agent in a repo reads and adds to. With agmux installed it is agmux's own server, for the folders agmux knows, with agmux's project ids and stores, so both apps share one memory. Without agmux, agterm's copy gives each git repo its own memory (stored in agterm's Application Support folder, plus the repo's `.agmux/MEMORY.md`).
 - **consult**, for second opinions and diff reviews from other agents on your Mac.
 
-agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add `--mcp-config` for Claude or `-c mcp_servers.…` for Codex, skip servers you already configured, and edit no config files. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs agmux installed (the servers ship inside agmux.app) and Node on PATH.
+agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add `--mcp-config` for Claude or `-c mcp_servers.…` for Codex, skip servers you already configured, and edit no config files. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs Node on PATH (22 or later for consult). agterm's copies of the servers are in `Resources/mcp`, under agmux's license.
 
 ## Starting agents and ⌘K
 
@@ -52,6 +52,9 @@ Add more Claude Code or Codex logins in Settings → Accounts. Each one signs in
 Grok isn't supported yet.
 
 ## agmux Teams and the phone app
+
+Neither needs agmux installed: Teams is agmux's hosted service, and the phone connects through agmux's hosted relay.
+
 
 - **Teams.** Settings → Teams & Phone links agterm as its own device (a browser sign-in, like agmux) and reports hourly totals for Claude Code and Codex sessions started in agterm: tokens, estimated cost, active time, turns, tool calls by kind, and lines changed as counts. Never prompts, replies, code, diffs, paths or terminal output, and never sessions started elsewhere. Codex sessions are marked with `originator: agterm`; Claude sessions are the ones agterm saw in its tabs. The counting is a port of agmux's own, with its tests.
 - **Phone.** agterm Remote, agterm's own iPhone app ([`Mobile/`](Mobile/README.md); on TestFlight for now), pairs from Settings → Teams & Phone with a QR code. Your tabs show up as agterm draws them; open one to see its live screen in your theme's colors, answer an agent's prompt with a tap, type a reply, press keys a phone keyboard lacks (Esc, arrows, Tab, ^C) or stop it. Claude Code and Codex tabs also read as a conversation. The + button opens a new tab on the Mac running any agent you have installed, in one of your folders. "Needs you" and "finished" arrive as notifications while the app is closed. The agmux phone app still works with agterm too, but keeps one paired Mac, so pairing agterm replaces agmux on that phone. Traffic goes through the agmux relay over TLS.

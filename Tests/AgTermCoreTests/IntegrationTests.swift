@@ -82,3 +82,28 @@ final class AgentLaunchTests: XCTestCase {
         XCTAssertEqual(AgentLaunch.codexServerNames(toml), ["context7", "consult", "firecrawl"])
     }
 }
+
+final class StandaloneProjectTests: XCTestCase {
+    private let repos: Set<String> = ["/Users/sam/code/web", "/Users/sam/code/web/vendor/lib"]
+
+    func testFindsTheNearestGitRoot() {
+        let project = AgmuxProject.standalone("/Users/sam/code/web/src/app", isRepoRoot: repos.contains)
+        XCTAssertEqual(project?.repoPath, "/Users/sam/code/web")
+        XCTAssertEqual(AgmuxProject.standalone("/Users/sam/code/web/vendor/lib/x", isRepoRoot: repos.contains)?.repoPath,
+                       "/Users/sam/code/web/vendor/lib")
+    }
+
+    func testNoProjectOutsideARepo() {
+        XCTAssertNil(AgmuxProject.standalone("/Users/sam/Downloads", isRepoRoot: repos.contains))
+    }
+
+    func testIDIsStablePerRepoAndNotAgmuxShaped() {
+        let a = AgmuxProject.standalone("/Users/sam/code/web", isRepoRoot: repos.contains)
+        let b = AgmuxProject.standalone("/Users/sam/code/web/src", isRepoRoot: repos.contains)
+        let other = AgmuxProject.standalone("/Users/sam/code/web/vendor/lib", isRepoRoot: repos.contains)
+        XCTAssertEqual(a?.id, b?.id)
+        XCTAssertNotEqual(a?.id, other?.id)
+        XCTAssertTrue(a?.id.hasPrefix("agterm-") == true)
+        XCTAssertEqual(a?.id.count, "agterm-".count + 16)
+    }
+}

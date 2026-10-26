@@ -217,15 +217,20 @@ enum AgentIntegration {
         let defaults = UserDefaults.standard
         let wantMemory = defaults.object(forKey: memoryKey) as? Bool ?? true
         let wantConsult = defaults.object(forKey: consultKey) as? Bool ?? true
-        guard wantMemory || wantConsult, let bundles = agmuxBundles(), let node = findOnPath("node", excluding: nil) else { return [] }
+        guard wantMemory || wantConsult, let bundles = mcpBundles(), let node = findOnPath("node", excluding: nil) else { return [] }
         let existing = configuredServers(for: agent, cwd: cwd)
         let home = NSHomeDirectory()
-        let project = AgmuxProject.match(cwd, in: agmuxProjects())
+        // With agmux installed, exactly agmux's projects and stores, so memory matches agmux.
+        let project = bundles.fromAgmux
+            ? AgmuxProject.match(cwd, in: agmuxProjects())
+            : AgmuxProject.standalone(cwd) { FileManager.default.fileExists(atPath: $0 + "/.git") }
         var servers: [MCPServer] = []
         if wantMemory, let project, !existing.contains("agmux-memory") {
             let session = "agterm-" + (env["AGTERM_TAB_ID"] ?? UUID().uuidString)
-            servers.append(MCPServer(name: "agmux-memory", command: node, args: [bundles.memory],
-                                     env: project.memoryEnv(home: home, sessionID: session)))
+            let memoryEnv = bundles.fromAgmux
+                ? project.memoryEnv(home: home, sessionID: session)
+                : project.memoryEnv(dataDir: supportDir.appendingPathComponent("projects/" + project.id).path, sessionID: session)
+            servers.append(MCPServer(name: "agmux-memory", command: node, args: [bundles.memory], env: memoryEnv))
         }
         if wantConsult, !existing.contains("consult"), nodeMajorVersion(node) >= 22 {
             var consultEnv = ["PATH": env["PATH"] ?? ""]
@@ -237,8 +242,20 @@ enum AgentIntegration {
 
     // MARK: Finding things
 
-    /// agmux's bundled servers, if agmux is installed.
+    /// The memory and consult servers: agmux's own while agmux is installed, else the copies agterm
+    /// ships (Resources/mcp).
+    static func mcpBundles() -> (memory: String, consult: String, fromAgmux: Bool)? {
+        if let agmux = agmuxBundles() { return (agmux.memory, agmux.consult, true) }
+        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("mcp") else { return nil }
+        let memory = dir.appendingPathComponent("agmux-memory-mcp.bundle.mjs").path
+        let consult = dir.appendingPathComponent("agmux-consult-mcp.bundle.mjs").path
+        guard FileManager.default.fileExists(atPath: memory), FileManager.default.fileExists(atPath: consult) else { return nil }
+        return (memory, consult, false)
+    }
+
+    /// agmux's bundled servers, if agmux is installed. AGTERM_NO_AGMUX=1 acts as if it weren't.
     static func agmuxBundles() -> (memory: String, consult: String)? {
+        guard ProcessInfo.processInfo.environment["AGTERM_NO_AGMUX"] != "1" else { return nil }
         for app in ["/Applications/agmux.app", NSHomeDirectory() + "/Applications/agmux.app"] {
             let dist = app + "/Contents/Resources/sidecar/dist/"
             let memory = dist + "agmux-memory-mcp.bundle.mjs", consult = dist + "agmux-consult-mcp.bundle.mjs"

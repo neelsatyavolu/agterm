@@ -18,10 +18,30 @@ public struct AgmuxProject: Equatable, Sendable {
             .max { $0.repoPath.count < $1.repoPath.count }
     }
 
+    /// For when agmux isn't installed: the git repo containing `cwd`, with an id made from its
+    /// path, so every tab in it shares one memory. Nil outside a repo. (With agmux installed only
+    /// agmux's own projects are used, as in agmux.)
+    public static func standalone(_ cwd: String, isRepoRoot: (String) -> Bool) -> AgmuxProject? {
+        var dir = (cwd as NSString).standardizingPath
+        while true {
+            if isRepoRoot(dir) {
+                let digest = SHA256.digest(Array(dir.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+                return AgmuxProject(id: "agterm-" + digest, repoPath: dir)
+            }
+            let parent = (dir as NSString).deletingLastPathComponent
+            if parent == dir || parent.isEmpty { return nil }
+            dir = parent
+        }
+    }
+
     /// The environment agmux gives its memory server for this project.
     public func memoryEnv(home: String, sessionID: String) -> [String: String] {
-        let data = "\(home)/.agmux/projects/\(id)"
-        return [
+        memoryEnv(dataDir: "\(home)/.agmux/projects/\(id)", sessionID: sessionID)
+    }
+
+    /// The same, with the per-project stores in `dataDir` (agterm's own folder without agmux).
+    public func memoryEnv(dataDir data: String, sessionID: String) -> [String: String] {
+        [
             "AGMUX_PROJECT_ID": id,
             "AGMUX_MEMORY_STORE": "\(data)/memory.json",
             "AGMUX_HANDOFF_STORE": "\(data)/handoffs.json",
