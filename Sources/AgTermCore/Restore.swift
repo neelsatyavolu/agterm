@@ -42,11 +42,38 @@ public struct SavedTab: Codable, Equatable, Sendable {
     public var scrollback: String
     /// A command to type once the shell is up, e.g. `command claude --resume <id>`.
     public var resume: String?
+    /// The sessions helper's id for the tab's shell, if it ran there. Saves from before the
+    /// helper have none (decoded with `decodeIfPresent`, which optional properties get for free).
+    public var sessionID: String?
+    /// The tab's id, which its shell (and any agent started there) was given as AGTERM_TAB_ID;
+    /// a reattached tab keeps it.
+    public var tabID: String?
 
-    public init(cwd: String, scrollback: String, resume: String?) {
+    public init(cwd: String, scrollback: String, resume: String?, sessionID: String? = nil, tabID: String? = nil) {
         self.cwd = cwd
         self.scrollback = scrollback
         self.resume = resume
+        self.sessionID = sessionID
+        self.tabID = tabID
+    }
+}
+
+/// How each tab comes back at launch.
+public enum LaunchTab: Equatable {
+    /// The helper kept the shell: show it again.
+    case reattach(SessionInfo, saved: SavedTab?)
+    /// The shell is gone: a new one, with the saved history and agent.
+    case restore(SavedTab)
+
+    /// The saved tabs in their order, each reattached if the helper still lists its session, then
+    /// the helper's other sessions (a crash before the last save), oldest first.
+    public static func plan(saved: [SavedTab], live: [SessionInfo]) -> [LaunchTab] {
+        var unclaimed = live
+        let tabs: [LaunchTab] = saved.map { tab in
+            guard let index = unclaimed.firstIndex(where: { $0.id == tab.sessionID }) else { return .restore(tab) }
+            return .reattach(unclaimed.remove(at: index), saved: tab)
+        }
+        return tabs + unclaimed.map { .reattach($0, saved: nil) }
     }
 }
 

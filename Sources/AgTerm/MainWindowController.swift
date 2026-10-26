@@ -31,12 +31,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         super.init(window: window)
         configure(window)
         applyAppearance()
-        if let saved = WorkspaceStore.load(), !saved.tabs.isEmpty {
-            saved.tabs.forEach { addTab(cwd: $0.cwd, restoring: $0) }
-            select(saved.selected)
-        } else {
-            newTab()
-        }
+        restoreTabs()
         startTimers()
         configureCommandBar()
         NotificationCenter.default.addObserver(forName: .agtermOpenTab, object: nil, queue: .main) { [weak self] note in
@@ -180,6 +175,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     // MARK: Tabs
 
+    /// Brings back the last session's tabs, in order: shells the helper kept are shown again live,
+    /// the rest reopen from their saved history. Shells the helper has that weren't saved (agterm
+    /// crashed before saving them) are added at the end.
+    private func restoreTabs() {
+        let saved = WorkspaceStore.load()
+        let live = SessionHelper.shared()?.list() ?? []
+        let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live)
+        guard !plan.isEmpty else { return newTab() }
+        for tab in plan {
+            switch tab {
+            case .restore(let saved):
+                addTab(cwd: saved.cwd, restoring: saved)
+            case .reattach(let info, let saved):
+                install(TerminalSession(attaching: info, saved: saved))
+                // The tab now has its real size; a full-screen program redraws to fit it.
+                window?.layoutIfNeeded()
+                sessions.last?.pushSize()
+            }
+        }
+        select(saved?.selected ?? 0)
+    }
+
     /// New tabs open in the selected tab's folder, as in Terminal.app.
     private var currentFolder: String { sessions.indices.contains(selected) ? sessions[selected].cwd : NSHomeDirectory() }
 
@@ -213,7 +230,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     private func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) {
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
-        let session = TerminalSession(cwd: dir, restoring: saved, command: command)
+        install(TerminalSession(cwd: dir, restoring: saved, command: command))
+    }
+
+    private func install(_ session: TerminalSession) {
         session.onChange = { [weak self] in self?.render() }
         session.onStatusChange = { [weak session] status in
             // No banner for the tab you're already looking at.
@@ -249,16 +269,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     // MARK: Saving tabs
 
-    /// Writes the open tabs (folder, history, resumable agent) for the next launch.
-    func saveWorkspace() {
+    /// Writes the open tabs (folder, history, resumable agent, helper session) for the next launch.
+    /// `endingSessions` leaves the session out, so a quick relaunch can't attach to a dying shell.
+    func saveWorkspace(endingSessions: Bool = false) {
         guard !savedForQuit else { return }
-        WorkspaceStore.save(SavedWorkspace(selected: selected, tabs: sessions.map { $0.snapshot() }, savedAt: Date()))
+        let tabs = sessions.map { session in
+            let tab = session.snapshot()
+            return endingSessions ? SavedTab(cwd: tab.cwd, scrollback: tab.scrollback, resume: tab.resume, tabID: tab.tabID) : tab
+        }
+        WorkspaceStore.save(SavedWorkspace(selected: selected, tabs: tabs, savedAt: Date()))
     }
 
-    /// Saves one last time before quitting; later saves are ignored.
-    func saveWorkspaceForQuit() {
-        saveWorkspace()
+    /// Saves the tabs one last time (later saves are ignored), then lets go of their shells:
+    /// detached, so the helper keeps them for the next launch, or ended. Runs once.
+    func quit(endingSessions: Bool) {
+        guard !savedForQuit else { return }
+        timers.forEach { $0.invalidate() }
+        saveWorkspace(endingSessions: endingSessions)
         savedForQuit = true
+        // Empty the list first so the quit check doesn't ask about these tabs again.
+        let closing = sessions
+        sessions = []
+        closing.forEach { endingSessions ? $0.terminate() : $0.detach() }
     }
 
     // MARK: Reordering
@@ -332,6 +364,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     var runningPrograms: [String] {
         sessions.filter(\.isRunningProgram).map { "\($0.foregroundName ?? "?") in \($0.folder)" }
+    }
+
+    /// The running programs quitting would stop: all of them when ending sessions, else only
+    /// those in in-process shells, which die with the app.
+    func runningPrograms(endingSessions: Bool) -> [String] {
+        sessions.filter { $0.isRunningProgram && (endingSessions || !$0.isKeptByHelper) }
+            .map { "\($0.foregroundName ?? "?") in \($0.folder)" }
     }
 
     private func render() {
@@ -475,13 +514,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         return false
     }
 
+    /// Closing the window ends its tabs' shells, as closing a tab does, then quits.
     func windowWillClose(_ notification: Notification) {
-        timers.forEach { $0.invalidate() }
-        // Empty the list first so the quit check below doesn't ask a second time.
-        saveWorkspaceForQuit()
-        let closing = sessions
-        sessions = []
-        closing.forEach { $0.terminate() }
+        quit(endingSessions: true)
         NSApp.terminate(nil)
     }
 }

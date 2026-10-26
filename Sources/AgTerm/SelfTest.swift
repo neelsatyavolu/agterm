@@ -7,6 +7,8 @@ import AppKit
 enum SelfTest {
     static func run(_ controller: MainWindowController, outDir: String) {
         NSApp.setActivationPolicy(.accessory)
+        // Quitting leaves shells running in the helper; a test run must not leave any behind.
+        atexit { SelfTest.endHelperSessions() }
         guard let window = controller.window else { exit(1) }
         if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "1" { return measure(controller) }
         if ProcessInfo.processInfo.environment["AGTERM_MEASURE"] == "output" {
@@ -52,6 +54,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_PERSIST_CHECK"] == "1" { return persistCheck(controller) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true
@@ -739,7 +742,7 @@ enum SelfTest {
         }
     }
 
-    private static func screenLine(_ session: TerminalSession, containing text: String) -> String? {
+    static func screenLine(_ session: TerminalSession, containing text: String) -> String? {
         let terminal = session.view.getTerminal()
         return (0..<terminal.rows).compactMap { terminal.getLine(row: $0)?.translateToString(trimRight: true) }
             .first { $0.contains(text) }
@@ -750,7 +753,7 @@ enum SelfTest {
         after(0.6) { view.send(txt: line + "\r") }
     }
 
-    private static func after(_ seconds: Double, _ work: @escaping () -> Void) {
+    static func after(_ seconds: Double, _ work: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 

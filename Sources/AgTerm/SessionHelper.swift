@@ -2,29 +2,31 @@ import AgTermCore
 import AgTermSessionKit
 import Foundation
 
-/// Finds, starts and talks to `agterm-sessions`, the helper that owns tab shells. The first tab
-/// connects (launching the helper if nothing answers) and the answer is kept: nil, so tabs run
-/// in-process, when the helper binary is missing, doesn't answer within 2 s, or speaks another
-/// protocol version.
+/// Finds, starts and talks to `agterm-sessions`, the helper that owns tab shells and keeps them
+/// running while the app is quit. The first call connects (launching the helper if nothing
+/// answers) and the client is kept. Without one (the helper binary is missing, doesn't answer
+/// within 2 s, or speaks another protocol version) tabs run in-process; that, or a helper that
+/// has since died, is tried again at most every 30 s.
 enum SessionHelper {
     private static let startTimeout: TimeInterval = 2
-    /// Main queue only, except the exit handler's read.
-    private static var answer: Client??
+    private static let retryInterval: TimeInterval = 30
+    /// Main queue only.
+    private static var client: Client?
+    private static var lastStart: Date?
     private static var reapers: [pid_t: DispatchSourceProcess] = [:]
 
     static func shared() -> Client? {
         dispatchPrecondition(condition: .onQueue(.main))
-        if let answer { return answer }
-        let client = start()
-        answer = .some(client)
-        // Quitting ends shells for now; the helper can keep them once the app reattaches on launch.
-        if client != nil { atexit { SessionHelper.answer??.endAllAtExit() } }
+        if let client, client.isAlive { return client }
+        if let lastStart, Date().timeIntervalSince(lastStart) < retryInterval { return nil }
+        lastStart = Date()
+        client = start()
         return client
     }
 
     /// The helper's process, if this app is using one (the self-test counts its shells).
     static var runningPID: pid_t? {
-        answer??.pid
+        client?.pid
     }
 
     /// Next to the app's executable: `Contents/MacOS` in the bundle, `.build/debug` in development.
@@ -34,10 +36,19 @@ enum SessionHelper {
         return url.path
     }
 
+    /// Derived from the state folder, so `AGTERM_STATE_DIR` and debug builds get their own helper.
+    static var socketPath: String {
+        SessionPaths.socket(stateDir: WorkspaceStore.fileURL.deletingLastPathComponent().path)
+    }
+
+    static var buildID: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
+    }
+
     private static func start() -> Client? {
         guard let binary else { return nil }
-        let socket = SessionPaths.socket(stateDir: WorkspaceStore.fileURL.deletingLastPathComponent().path)
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
+        let socket = socketPath
+        let build = buildID
         var launched = false
         var replaced = false
         var deadline = Date().addingTimeInterval(startTimeout)
@@ -127,7 +138,6 @@ enum SessionHelper {
         let pid: pid_t?
         private let control: WireConnection
         private let lock = NSLock()
-        private let links = NSHashTable<HelperLink>.weakObjects()
 
         fileprivate init(control: WireConnection, socket: String, build: String) {
             self.control = control
@@ -172,31 +182,19 @@ enum SessionHelper {
             }
         }
 
-        func forget(_ link: HelperLink) {
-            lock.lock()
-            links.remove(link)
-            lock.unlock()
+        /// False once the helper process is gone (it crashed or was killed).
+        var isAlive: Bool {
+            pid.map { kill($0, 0) == 0 } ?? true
         }
 
         private func link(_ request: WireMessage, showReplay: Bool) throws -> HelperLink {
             let (connection, info, fd) = try open(request)
-            let link = HelperLink(client: self, connection: connection, info: info, ptyFd: fd, showReplay: showReplay)
-            lock.lock()
-            links.add(link)
-            lock.unlock()
-            return link
+            return HelperLink(client: self, connection: connection, info: info, ptyFd: fd, showReplay: showReplay)
         }
 
         fileprivate func shutDown() {
             try? control.send(.shutdownIfIdle)
             control.close()
-        }
-
-        fileprivate func endAllAtExit() {
-            lock.lock()
-            let live = links.allObjects
-            lock.unlock()
-            live.forEach { $0.endAtExit() }
         }
     }
 }

@@ -27,7 +27,8 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Publish a release | `scripts/release.sh` (maintainer only) |
 
 ## Self-tests
-- `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines.
+- `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`.
+- Quitting leaves tab shells running in the `agterm-sessions` helper, so self-tests end the helper's sessions when they exit.
 - PNG snapshots land in the `AGTERM_SELFTEST` directory; look at them after UI changes.
 - Add a check there for any UI change you can't cover with a unit test.
 - Debug builds keep their own state (`agterm-dev`); `AGTERM_STATE_DIR` overrides it, so tests never touch the installed app's tabs.

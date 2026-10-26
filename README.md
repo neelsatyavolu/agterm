@@ -63,6 +63,8 @@ Neither needs agmux installed: Teams is agmux's hosted service, and the phone co
 
 Quit with tabs open and the next launch reopens them: folder, history with colors, and the selected tab. A tab that was running Claude Code or Codex types `claude --resume <its session>` or `codex resume <its session>` with the original flags, so you're back in the same conversation. Other agents come back on their latest conversation in that folder, with each CLI's own option (`grok --continue`, `gemini --resume latest`, `opencode --continue`, and so on for Antigravity, Cursor, Kimi, Aider, Droid, Kilo, Auggie, Pi, Copilot and Goose). Other programs aren't rerun. Saved state lives in `~/Library/Application Support/co.xanom.agterm/workspace.json`, readable only by you.
 
+Tabs also keep running when agterm quits, updates or crashes. Each tab's shell runs in a small helper, `agterm-sessions`, and the next launch reconnects to it: an agent that was mid-task is still working, on the same screen. A tab whose shell ended while agterm was closed reopens from its saved history as above. agterm → Quit and End Sessions (⌥⌘Q) ends every tab's shell and quits; closing a tab or the window ends its shells too.
+
 ## How status works
 
 agterm reads signals the terminal already has, so it needs no hooks or plugins:
@@ -81,13 +83,14 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | ⌘T / ⌘W | New tab (in the current tab's folder) / close tab |
 | ⌥⌘T, ⌥⌘1–3 | New tab running your usual agent, or Claude Code, Codex, Grok |
 | ⌘K | Describe a command and have a fast model write it |
+| ⌘Q / ⌥⌘Q | Quit, leaving tabs running for next time / quit and end every tab's shell |
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |
 | ⌘= ⌘- ⌘0 | Font size |
 | ⌘, | Settings: General, Appearance, Agents, Permissions, Accounts, Command (⌘K), Teams & Phone |
 | Drag onto a tab | Files and folders type their escaped paths, as in Terminal.app. Images from a browser or screenshot tool are saved to a temp file first, so Claude Code can attach them. |
 
-Closing a tab or quitting asks first if a program is still running. When an agent finishes or needs you in a tab you aren't looking at, agterm can post a notification and play a sound; clicking it opens that tab.
+Closing a tab or the window, or Quit and End Sessions, asks first if a program is still running. When an agent finishes or needs you in a tab you aren't looking at, agterm can post a notification and play a sound; clicking it opens that tab.
 
 A see-through background blurs what's behind it, more strongly the more transparent it is, so text in other windows doesn't show through sharp. Full screen is always solid.
 

@@ -43,6 +43,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// `restoring` brings back a tab saved at the last quit: its history, then its agent.
     /// `command` is typed at the first prompt (starting an agent from the Shell menu).
     init(cwd: String, restoring saved: SavedTab? = nil, command: String? = nil) {
+        tabID = UUID().uuidString
         self.cwd = cwd
         FolderIndex.shared.visit(cwd)
         shellPath = ProcInfo.loginShell()
@@ -56,8 +57,12 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
 
     /// Reconnects to a shell the helper kept. The helper's replay is the tab's history, so the saved
     /// one isn't shown and nothing is typed. If the shell is gone, opens a new one restoring `saved`.
+    /// The tab keeps the id its shell was started with (from the save; a shell nobody saved gets a
+    /// new one), since agents launched there report under it.
     init(attaching info: SessionInfo, saved: SavedTab?) {
-        cwd = saved?.cwd ?? info.cwd
+        tabID = saved?.tabID ?? UUID().uuidString
+        // The shell's folder now; the helper's is where it started.
+        cwd = ProcInfo.cwd(pid: info.pid) ?? info.cwd
         FolderIndex.shared.visit(cwd)
         shellPath = ProcInfo.loginShell()
         shellName = (shellPath as NSString).lastPathComponent
@@ -135,7 +140,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
                 ?? codexResume(argv: argv)
                 ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: argv) }
         }
-        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand)
+        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand,
+                        sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID)
     }
 
     /// `codex resume <id>` for the conversation this tab's Codex has open (it keeps its rollout
@@ -205,8 +211,9 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         }
     }
 
-    /// Stable for the tab's life; agmux memory uses it to tell this tab's sessions apart.
-    let tabID = UUID().uuidString
+    /// Stable for the tab's life (and across a reattach); agmux memory uses it to tell this tab's
+    /// sessions apart.
+    let tabID: String
 
     private func environment() -> [String] {
         var env = ProcessInfo.processInfo.environment
@@ -361,6 +368,20 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     func terminate() {
         guard !signals.exited else { return }
         view.link.end()
+    }
+
+    /// The shell lives in the helper, so quitting agterm leaves it running.
+    var isKeptByHelper: Bool { view.link.sessionID != nil }
+
+    /// Leaves the shell running in the helper for the next launch (a local shell ends).
+    func detach() {
+        view.link.detach()
+    }
+
+    /// Tells the shell the screen's size, e.g. once a reattached tab is laid out, so a full-screen
+    /// program redraws to fit.
+    func pushSize() {
+        view.link.resize(view.windowSize())
     }
 
     // MARK: AgentTerminalViewDelegate

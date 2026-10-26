@@ -86,15 +86,6 @@ final class HelperLink: PtyLink {
         release()?.close()
     }
 
-    /// `end()` from any thread, for the app's exit (quitting ends shells until it detaches them).
-    func endAtExit() {
-        lock.lock()
-        let live = !released && !exited
-        let current = connection
-        lock.unlock()
-        if live { try? current.send(.kill(id: id, signal: SIGHUP)) }
-    }
-
     // MARK: Read queue
 
     private func listen(to connection: WireConnection, showReplay: Bool) {
@@ -242,7 +233,6 @@ final class HelperLink: PtyLink {
         closed = true
         writer.close()
         ptyFd = -1
-        client.forget(self)
         onExit?(status)
     }
 
@@ -261,7 +251,6 @@ final class HelperLink: PtyLink {
         ptyFd = -1
         onData = nil
         onExit = nil
-        client.forget(self)
         return current
     }
 }

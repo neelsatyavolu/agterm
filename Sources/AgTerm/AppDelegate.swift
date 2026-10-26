@@ -4,6 +4,10 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: MainWindowController?
     private var shortcutObserver: NSObjectProtocol?
+    /// Set by Quit and End Sessions: this quit ends the tabs' shells instead of leaving them running.
+    private var endSessionsOnQuit = false
+    private weak var quitAndEndItem: NSMenuItem?
+    private static let quitAndEndShortcut = KeyShortcut(key: "q", modifiers: [.command, .option])
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Read before anything this run could save tabs, so a first launch never looks like an update.
@@ -78,14 +82,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Quitting (⌘Q, an update's relaunch) leaves the tabs' shells running in the helper for the
+    /// next launch; Quit and End Sessions ends them.
     func applicationWillTerminate(_ notification: Notification) {
-        controller?.saveWorkspaceForQuit()
+        controller?.quit(endingSessions: endSessionsOnQuit)
         TeamAccounts.shared.giveBackAll()
     }
 
+    @objc func quitAndEndSessions() {
+        endSessionsOnQuit = true
+        NSApp.terminate(nil)
+    }
+
+    /// Asks only about programs the quit would stop: those in in-process tabs, or every one when
+    /// ending sessions.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let reply = shouldTerminate()
+        if reply == .terminateCancel { endSessionsOnQuit = false }
+        return reply
+    }
+
+    private func shouldTerminate() -> NSApplication.TerminateReply {
         if controller?.window?.attachedSheet != nil { return .terminateCancel }
-        let running = controller?.runningPrograms ?? []
+        let running = controller?.runningPrograms(endingSessions: endSessionsOnQuit) ?? []
         guard !running.isEmpty else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Quit agterm?"
@@ -106,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Hide agterm", #selector(NSApplication.hide(_:)), "h"),
             item("Quit agterm", #selector(NSApplication.terminate(_:)), "q"),
+            quitAndEndSessionsItem(),
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
@@ -176,10 +196,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func newAgentTabItem() -> NSMenuItem {
         let item = item("New Agent Tab", #selector(MainWindowController.newDefaultAgentTab))
         item.setShortcut(AgentIntegration.newAgentTabShortcut)
-        shortcutObserver = NotificationCenter.default.addObserver(forName: .agtermShortcutChanged, object: nil, queue: .main) { [weak item] _ in
+        shortcutObserver = NotificationCenter.default.addObserver(forName: .agtermShortcutChanged, object: nil, queue: .main) { [weak self, weak item] _ in
             item?.setShortcut(AgentIntegration.newAgentTabShortcut)
+            self?.updateQuitAndEndShortcut()
         }
         return item
+    }
+
+    /// ⌥⌘Q, unless New Agent Tab was given ⌥⌘Q before this item existed: then it has none, so
+    /// that key never ends every session by surprise.
+    private func quitAndEndSessionsItem() -> NSMenuItem {
+        let item = item("Quit and End Sessions", #selector(AppDelegate.quitAndEndSessions))
+        quitAndEndItem = item
+        updateQuitAndEndShortcut()
+        return item
+    }
+
+    private func updateQuitAndEndShortcut() {
+        let taken = AgentIntegration.newAgentTabShortcut == Self.quitAndEndShortcut
+        quitAndEndItem?.setShortcut(Self.quitAndEndShortcut)
+        if taken { quitAndEndItem?.keyEquivalent = "" }
     }
 
     private func item(_ title: String, _ action: Selector, _ key: String = "",

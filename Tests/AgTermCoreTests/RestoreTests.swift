@@ -100,6 +100,42 @@ final class SavedWorkspaceTests: XCTestCase {
                        "command codex resume 0199-abc -m gpt-x --yolo")
     }
 
+    func testOldSaveWithoutSessionIDDecodes() throws {
+        let data = Data(#"{"version": 1, "selected": 0, "savedAt": 0, "tabs": [{"cwd": "/a", "scrollback": "x", "resume": "command claude --continue"}]}"#.utf8)
+        let tab = try XCTUnwrap(try SavedWorkspace.decode(data).tabs.first)
+        XCTAssertEqual(tab.cwd, "/a")
+        XCTAssertEqual(tab.resume, "command claude --continue")
+        XCTAssertNil(tab.sessionID)
+        XCTAssertNil(tab.tabID)
+    }
+
+    func testSessionIDRoundTrips() throws {
+        let workspace = SavedWorkspace(selected: 0, tabs: [
+            SavedTab(cwd: "/a", scrollback: "", resume: nil, sessionID: "5F0C2A1E-0000-4000-8000-000000000001", tabID: "T1"),
+            SavedTab(cwd: "/b", scrollback: "", resume: nil),
+        ])
+        let decoded = try SavedWorkspace.decode(workspace.encoded())
+        XCTAssertEqual(decoded.tabs.map(\.sessionID), ["5F0C2A1E-0000-4000-8000-000000000001", nil])
+        XCTAssertEqual(decoded.tabs.map(\.tabID), ["T1", nil])
+    }
+
+    func testLaunchReattachesListedTabsRestoresOthersAndAppendsOrphans() {
+        let date = Date(timeIntervalSince1970: 0)
+        let a = SessionInfo(id: "A", pid: 10, cwd: "/a", startedAt: date)
+        let orphan = SessionInfo(id: "O", pid: 30, cwd: "/o", startedAt: date)
+        let kept = SavedTab(cwd: "/a", scrollback: "", resume: nil, sessionID: "A")
+        let gone = SavedTab(cwd: "/b", scrollback: "old", resume: "command claude --continue", sessionID: "B")
+        let old = SavedTab(cwd: "/c", scrollback: "", resume: nil)
+        XCTAssertEqual(LaunchTab.plan(saved: [gone, kept, old], live: [orphan, a]),
+                       [.restore(gone), .reattach(a, saved: kept), .restore(old), .reattach(orphan, saved: nil)])
+    }
+
+    func testLaunchReattachesASessionOnlyOnce() {
+        let a = SessionInfo(id: "A", pid: 10, cwd: "/a", startedAt: Date(timeIntervalSince1970: 0))
+        let tab = SavedTab(cwd: "/a", scrollback: "", resume: nil, sessionID: "A")
+        XCTAssertEqual(LaunchTab.plan(saved: [tab, tab], live: [a]), [.reattach(a, saved: tab), .restore(tab)])
+    }
+
     func testSelectionIsClampedToTabs() throws {
         let data = Data(#"{"version": 1, "selected": 7, "savedAt": 0, "tabs": [{"cwd": "/a", "scrollback": ""}]}"#.utf8)
         XCTAssertEqual(try SavedWorkspace.decode(data).selected, 0)
