@@ -8100,3 +8100,35 @@ public extension TerminalDelegate {
     func createImage (source: Terminal, data: Data, width: ImageSizeRequest, height: ImageSizeRequest, preserveAspectRatio: Bool) {
     }    
 }
+
+// agterm: read-only views of state SwiftTerm keeps internal, so agterm's session helper can replay
+// a terminal into a new one (Sources/AgTermSessionKit/ScreenReplay.swift). See README.md.
+extension Terminal {
+    /// The DECSET mode that selected the mouse encoding (1005, 1006, 1015 or 1016), or nil for X10.
+    public var mouseEncodingMode: Int? {
+        switch mouseProtocol {
+        case .x10: nil
+        case .utf8: 1005
+        case .sgr: 1006
+        case .urxvt: 1015
+        case .sgrPixel: 1016
+        }
+    }
+    public var isCursorHidden: Bool { cursorHidden }
+    public var isApplicationKeypad: Bool { applicationKeypad }
+    public var isFocusReporting: Bool { sendFocus }
+    public var isOriginMode: Bool { originMode }
+    public var isInsertMode: Bool { insertMode }
+    public var isWraparound: Bool { wraparound }
+    /// The title set with OSC 0 or OSC 2.
+    public var windowTitle: String { terminalTitle }
+    public func buffer(kind: BufferKind) -> Buffer { bufferFromKind(kind: kind) }
+}
+
+// agterm: see the Terminal extension above.
+extension Buffer {
+    /// Rows held, scrollback included; `line(at: screenTop)` is the screen's top row.
+    public var lineCount: Int { lines.count }
+    public var screenTop: Int { yBase }
+    public func line(at index: Int) -> BufferLine { lines[index] }
+}

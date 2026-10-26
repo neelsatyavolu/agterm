@@ -7,6 +7,7 @@
 - Fixed: The cd folder list shows Tab to pick and takes clicks.
 - Fixed: ⌘K opens under the line you're typing on and no longer shrinks the window.
 - Added: The New Agent Tab shortcut can be changed in Settings → Agents.
+- Fixed: Tabs restored after a quit keep their emoji and the spacing of text drawn with gaps.
 
 ## 1.0.1 — 2026-10-25
 - Added: Memory and consult work without agmux installed.

@@ -31,6 +31,9 @@ let package = Package(
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "AgTermCoreTests", dependencies: ["AgTermCore"]),
-        .testTarget(name: "AgTermSessionKitTests", dependencies: ["AgTermCore", "AgTermSessionKit"]),
+        .testTarget(
+            name: "AgTermSessionKitTests",
+            dependencies: ["AgTermCore", "AgTermSessionKit", .product(name: "SwiftTerm", package: "SwiftTerm")]
+        ),
     ]
 )
