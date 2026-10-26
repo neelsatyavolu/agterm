@@ -8,7 +8,8 @@ public enum ChangelogRender {
     private static let esc = "\u{1B}["
     private static let reset = "\u{1B}[0m"
 
-    /// `note` is a dim row inside the header box; nil leaves the box without one.
+    /// `note` is a dim row in a box under the title; without one (or when it doesn't fit) the
+    /// title is a single rule.
     public static func lines(_ releases: [Release], columns: Int, note: String? = nil) -> [String] {
         let width = max(1, min(columns, maxWidth))
         var out = header(width: width, note: note)
@@ -31,28 +32,27 @@ public enum ChangelogRender {
 
     private static func sgr(_ code: String, _ text: String) -> String { esc + code + "m" + text + reset }
 
+    /// A box with the note inside when it fits; otherwise one titled rule.
     private static func header(width: Int, note: String?) -> [String] {
         let name = "agterm · what's new"
-        let top: String
-        if width >= name.count + 6 {
-            // ╭─ name ─…╮ with the name in bold and the frame dim.
-            let rule = String(repeating: "─", count: width - name.count - 6)
-            top = sgr("2", "╭─ ") + sgr("1", name) + sgr("2", " ─" + rule + "╮")
-        } else {
-            top = sgr("2", "╭" + String(repeating: "─", count: max(0, width - 2)) + "╮")
-        }
-        let bottom = sgr("2", "╰" + String(repeating: "─", count: max(0, width - 2)) + "╯")
-        guard let note, width >= 4 else { return [top, bottom] }
-        let inner = width - 4
-        let text = String(note.prefix(inner))
-        let pad = String(repeating: " ", count: inner - text.count)
-        return [top, sgr("2", "│ " + text + pad + " │"), bottom]
+        guard let note, note.count <= width - 4, width >= name.count + 6 else { return [titledRule(name, width: width)] }
+        // ╭─ name ─…╮ with the name in bold and the frame dim.
+        let top = sgr("2", "╭─ ") + sgr("1", name) + sgr("2", " ─" + String(repeating: "─", count: width - name.count - 6) + "╮")
+        let pad = String(repeating: " ", count: width - 4 - note.count)
+        let bottom = sgr("2", "╰" + String(repeating: "─", count: width - 2) + "╯")
+        return [top, sgr("2", "│ " + note + pad + " │"), bottom]
+    }
+
+    /// `── name ───…` across the width, the name bold; a plain rule when the name doesn't fit.
+    private static func titledRule(_ name: String, width: Int) -> String {
+        guard width >= name.count + 4 else { return sgr("2", String(repeating: "─", count: width)) }
+        return sgr("2", "── ") + sgr("1", name) + sgr("2", " " + String(repeating: "─", count: width - name.count - 4))
     }
 
     private static func versionLine(_ release: Release, width: Int) -> String {
         let badgeText = " v\(release.version) "
         var used = badgeText.count
-        var line = sgr("44;97", badgeText)
+        var line = sgr("7;34", badgeText)
         if let date = release.date, !date.isEmpty {
             line += " " + sgr("2", date)
             used += 1 + date.count

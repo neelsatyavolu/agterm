@@ -14,13 +14,15 @@ final class ChangelogRenderTests: XCTestCase {
 
     func testHeaderFitsWidth() {
         for columns in [20, 40, 78, 120] {
-            let lines = ChangelogRender.lines(releases, columns: columns, note: "what changed since your last version")
-            XCTAssertFalse(lines.isEmpty)
-            for line in lines {
-                XCTAssertLessThanOrEqual(ChangelogRender.visibleWidth(line), columns, line)
+            for note in [nil, "what changed since your last version"] {
+                let lines = ChangelogRender.lines(releases, columns: columns, note: note)
+                XCTAssertFalse(lines.isEmpty)
+                for line in lines {
+                    XCTAssertLessThanOrEqual(ChangelogRender.visibleWidth(line), columns, line)
+                }
             }
         }
-        let wide = ChangelogRender.lines(releases, columns: 120)
+        let wide = ChangelogRender.lines(releases, columns: 120, note: "what changed since your last version")
         XCTAssertEqual(ChangelogRender.visibleWidth(wide[0]), 78)
         XCTAssertTrue(ChangelogRender.stripSGR(wide[0]).hasPrefix("╭─ agterm · what's new ─"))
         XCTAssertTrue(ChangelogRender.stripSGR(wide[0]).hasSuffix("╮"))
@@ -28,13 +30,32 @@ final class ChangelogRenderTests: XCTestCase {
     }
 
     func testNoteRowOnlyWhenGiven() {
-        let plain = ChangelogRender.lines(releases, columns: 78).map(ChangelogRender.stripSGR)
-        XCTAssertTrue(plain[1].hasPrefix("╰"))
-        XCTAssertFalse(plain.contains { $0.contains("what changed") })
+        // Without a note the header is one titled rule, as wide as the lines.
+        let lines = ChangelogRender.lines(releases, columns: 78)
+        let plain = lines.map(ChangelogRender.stripSGR)
+        XCTAssertTrue(plain[0].hasPrefix("── agterm · what's new ─"))
+        XCTAssertEqual(ChangelogRender.visibleWidth(lines[0]), 78)
+        XCTAssertEqual(plain[1], "")
+        XCTAssertFalse(plain.contains { $0.contains("what changed") || $0.hasPrefix("╰") })
+        XCTAssertTrue(lines[0].contains("\u{1B}[1magterm · what's new"))
         let noted = ChangelogRender.lines(releases, columns: 78, note: "what changed since your last version")
             .map(ChangelogRender.stripSGR)
         XCTAssertEqual(noted[1], "│ what changed since your last version" + String(repeating: " ", count: 38) + " │")
         XCTAssertTrue(noted[2].hasPrefix("╰"))
+    }
+
+    func testNoteDroppedWhenItDoesNotFit() {
+        let note = "what changed since your last version"
+        let narrow = ChangelogRender.lines(releases, columns: note.count + 3, note: note).map(ChangelogRender.stripSGR)
+        XCTAssertFalse(narrow.contains { $0.contains("what changed") || $0.hasPrefix("╰") })
+        XCTAssertEqual(narrow[1], "")
+        let fits = ChangelogRender.lines(releases, columns: note.count + 4, note: note).map(ChangelogRender.stripSGR)
+        XCTAssertEqual(fits[1], "│ " + note + " │")
+    }
+
+    func testBadgeIsReverseVideoBlue() {
+        let badge = ChangelogRender.lines(releases, columns: 78).first { $0.contains(" v1.0.2 ") }!
+        XCTAssertTrue(badge.hasPrefix("\u{1B}[7;34m v1.0.2 "))
     }
 
     func testWrapsWithHangingIndent() {

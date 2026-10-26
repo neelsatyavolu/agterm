@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.0.2 — 2026-10-25
+- Added: After an update, a new tab shows what changed since your last version; agterm → What's New… shows every release.
 - Fixed: The Settings toolbar now fits all seven panes.
 - Fixed: Picking a theme such as Paper applies right away.
 - Fixed: The cd folder list shows Tab to pick and takes clicks.

@@ -37,10 +37,7 @@ public enum Changelog {
         for raw in markdown.split(whereSeparator: \.isNewline) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("## ") {
-                let heading = line.dropFirst(3).components(separatedBy: " — ")
-                let version = heading[0].trimmingCharacters(in: .whitespaces)
-                let date = heading.count > 1 ? heading[1].trimmingCharacters(in: .whitespaces) : nil
-                releases.append(Release(version: version, date: date, items: []))
+                releases.append(release(heading: line.dropFirst(3)))
             } else if line.hasPrefix("- "), !releases.isEmpty {
                 releases[releases.count - 1].items.append(item(String(line.dropFirst(2))))
             }
@@ -76,6 +73,15 @@ public enum Changelog {
             if l != r { return l < r ? .orderedAscending : .orderedDescending }
         }
         return .orderedSame
+    }
+
+    /// `1.0.3 — date`, `1.0.3 - date` or `1.0.3`: the first word is the version (as release.sh reads it).
+    private static func release(heading: Substring) -> Release {
+        let words = heading.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+        let version = words.first.map(String.init) ?? ""
+        let rest = words.count > 1 ? words[1].trimmingCharacters(in: .whitespaces) : ""
+        let date = rest.drop { $0 == "—" || $0 == "-" }.trimmingCharacters(in: .whitespaces)
+        return Release(version: version, date: date.isEmpty ? nil : date, items: [])
     }
 
     private static func item(_ text: String) -> Item {

@@ -33,6 +33,13 @@ final class ChangelogTests: XCTestCase {
         ])
     }
 
+    func testHeadingWithHyphenOrNoDate() {
+        let releases = Changelog.parse("## 1.0.3 - 2026-11-01\n- Added: a.\n## 1.0.2\n- Fixed: b.")
+        XCTAssertEqual(releases.map(\.version), ["1.0.3", "1.0.2"])
+        XCTAssertEqual(releases[0].date, "2026-11-01")
+        XCTAssertNil(releases[1].date)
+    }
+
     func testUnseenSpansSkippedVersions() {
         let releases = Changelog.parse(sample)
         let unseen = Changelog.unseen(releases, lastSeen: "1.0.0", current: "1.0.2")
