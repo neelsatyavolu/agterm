@@ -101,8 +101,8 @@ private struct GeneralPane: View {
 
     private static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     private static let oldHelperNote = "Your tabs are running in a session helper from another version of agterm. "
-        + "To update it, choose agterm > Quit and End Sessions."
-    /// Read when the pane is built; the helper in use doesn't change while agterm runs.
+        + "To update it, choose agterm → Quit and End Sessions."
+    /// Read when Settings is built; the helper in use changes only if it dies and another starts.
     private let helperIsOld = SessionHelper.runsOtherBuild
 
     var body: some View {
