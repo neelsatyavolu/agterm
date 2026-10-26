@@ -1,13 +1,13 @@
 # Changelog
 
-## 1.0.2 — 2026-10-25
+## 1.0.2 — 2026-10-26
 - Added: Tabs keep running when agterm quits (⌘Q), updates or crashes, and come back live next time. Closing the window ends its tabs, and agterm → Quit and End Sessions ends them all and quits. Tabs stay running through updates from this version on; this update still restarts them.
 - Added: After an update, a new tab shows what changed since your last version; agterm → What's New… shows every release.
+- Added: The New Agent Tab shortcut can be changed in Settings → Agents.
 - Fixed: The Settings toolbar now fits all seven panes.
 - Fixed: Picking a theme such as Paper applies right away.
 - Fixed: The cd folder list shows Tab to pick and takes clicks.
 - Fixed: ⌘K opens under the line you're typing on and no longer shrinks the window.
-- Added: The New Agent Tab shortcut can be changed in Settings → Agents.
 - Fixed: Tabs restored after a quit keep their emoji and the spacing of text drawn with gaps.
 
 ## 1.0.1 — 2026-10-25
