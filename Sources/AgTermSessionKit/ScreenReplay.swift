@@ -16,7 +16,7 @@ public enum ScreenReplay {
     /// full-screen program (vim, less) has the alternate screen, this is the shell history beneath.
     public static func history(_ terminal: Terminal) -> String {
         var lines = rows(terminal.buffer(kind: .normal))
-        while let last = lines.last, lastVisibleColumn(last) < 0 { lines.removeLast() }
+        while let last = lines.last, lastVisibleColumn(last, terminal) < 0 { lines.removeLast() }
         return text(Array(lines.suffix(maxLines)), terminal, keepSpaces: false)
     }
 
@@ -51,7 +51,7 @@ public enum ScreenReplay {
             if i > 0, !line.isWrapped { out += "\r\n" }
             // A row that wraps into the next keeps its trailing blanks so the wrap point holds.
             let wraps = i + 1 < lines.count && lines[i + 1].isWrapped
-            let end = wraps ? line.count - 1 : lastVisibleColumn(line, keepSpaces: keepSpaces)
+            let end = wraps ? line.count - 1 : lastVisibleColumn(line, terminal, keepSpaces: keepSpaces)
             out += cells(line, through: end, terminal)
         }
         return out
@@ -62,7 +62,7 @@ public enum ScreenReplay {
         var out = ""
         for row in 0..<terminal.rows where buffer.screenTop + row < buffer.lineCount {
             let line = buffer.line(at: buffer.screenTop + row)
-            let end = lastVisibleColumn(line, keepSpaces: true)
+            let end = lastVisibleColumn(line, terminal, keepSpaces: true)
             if end >= 0 { out += "\(esc)[\(row + 1);1H" + cells(line, through: end, terminal) }
         }
         return out
@@ -99,11 +99,12 @@ public enum ScreenReplay {
 
     /// Index of the last cell with a character (a space counts only with `keepSpaces`) or a
     /// non-default background, or -1.
-    private static func lastVisibleColumn(_ line: BufferLine, keepSpaces: Bool = false) -> Int {
+    private static func lastVisibleColumn(_ line: BufferLine, _ terminal: Terminal,
+                                          keepSpaces: Bool = false) -> Int {
         var col = line.count - 1
         while col >= 0 {
             let cell = line[col]
-            let ch = cell.getCharacter()
+            let ch = terminal.getCharacter(for: cell)
             if ((keepSpaces || ch != " ") && ch != "\u{0}") || !isDefault(cell.attribute.bg) { return col }
             col -= 1
         }
@@ -113,13 +114,14 @@ public enum ScreenReplay {
     // MARK: State
 
     /// The buffer's scroll region (DECSTBM homes the cursor, so it goes first), then its saved
-    /// cursor and colors, stored with DECSC.
+    /// cursor and colors, stored with DECSC. Ends at default colors, which `cells` starts from.
     private static func regionAndSavedCursor(_ buffer: Buffer, _ terminal: Terminal) -> String {
         var out = ""
         if buffer.scrollTop != 0 || buffer.scrollBottom != terminal.rows - 1 {
             out += "\(esc)[\(buffer.scrollTop + 1);\(buffer.scrollBottom + 1)r"
         }
         return out + "\(esc)[\(buffer.savedY + 1);\(buffer.savedX + 1)H" + sgr(buffer.savedAttr) + esc + "7"
+            + "\(esc)[0m"
     }
 
     /// Modes that differ from a reset terminal's.

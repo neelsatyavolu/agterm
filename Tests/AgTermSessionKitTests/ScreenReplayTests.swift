@@ -205,6 +205,33 @@ final class ScreenReplayTests: XCTestCase {
         XCTAssertEqual(ScreenReplay.history(terminal), "\u{1b}[0;31mred\u{1b}[0m\r\nplain")
     }
 
+    func testHistoryKeepsEmojiAtRowEnd() {
+        let terminal = source("done 🙂\r\nnext")
+        XCTAssertEqual(ScreenReplay.history(terminal), "done 🙂\r\nnext")
+    }
+
+    func testHistoryKeepsRowOfOnlyEmoji() {
+        let terminal = source("first\r\n🙂🎉")
+        XCTAssertEqual(ScreenReplay.history(terminal), "first\r\n🙂🎉")
+    }
+
+    func testSavedCursorColorDoesNotLeakIntoAltScreen() {
+        let original = source("shell\u{1b}[31m\u{1b}[?1049h\u{1b}[0m\u{1b}[2;1Hplain\u{1b}[3;1H\u{1b}[32m\u{1b}7\u{1b}[0mmore")
+        let copy = replay(original)
+        assertSameScreen(original, copy)
+        for (col, row) in [(0, 1), (4, 1), (0, 2), (3, 2)] {
+            XCTAssertEqual(copy.getCharData(col: col, row: row)?.attribute,
+                           original.getCharData(col: col, row: row)?.attribute, "col \(col) row \(row)")
+        }
+    }
+
+    func testPendingWrapReprintOfDefaultCellDoesNotTakeSavedColor() {
+        let original = source("\u{1b}[31m\u{1b}7\u{1b}[0m$ " + String(repeating: "x", count: 18))
+        let copy = replay(original)
+        XCTAssertEqual(copy.getCharData(col: 19, row: 0)?.attribute, original.getCharData(col: 19, row: 0)?.attribute)
+        assertSameScreen(original, copy)
+    }
+
     func testHistoryOfAltScreenIsTheShellBeneath() {
         let terminal = source("shell\u{1b}[?1049hfull screen app")
         XCTAssertEqual(ScreenReplay.history(terminal), "shell")
