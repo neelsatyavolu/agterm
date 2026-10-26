@@ -16,6 +16,9 @@ final class HelperLink: PtyLink {
     private static let lowWater = 1 * 1024 * 1024
     /// Small frames are merged into the newest waiting chunk up to this size.
     private static let mergeLimit = 64 * 1024
+    /// Largest waiting chunk: a big replay or frame is split, so feeding one chunk stays well
+    /// inside the time slice.
+    private static let chunkLimit = 256 * 1024
     /// Longest the main queue feeds the view in one go, in nanoseconds.
     private static let timeSlice: UInt64 = 4_000_000
     private static let compactAfter = 32
@@ -109,10 +112,16 @@ final class HelperLink: PtyLink {
         lock.lock()
         guard !released else { return lock.unlock() }
         // Fast output arrives as many small frames; merged, the view parses big runs.
+        var offset = bytes.startIndex
         if pending.count > head, pending[pending.count - 1].count < Self.mergeLimit {
-            pending[pending.count - 1].append(contentsOf: bytes)
-        } else {
-            pending.append([UInt8](bytes))
+            let take = min(bytes.count, Self.chunkLimit - pending[pending.count - 1].count)
+            pending[pending.count - 1].append(contentsOf: bytes[offset..<offset + take])
+            offset += take
+        }
+        while offset < bytes.endIndex {
+            let end = min(offset + Self.chunkLimit, bytes.endIndex)
+            pending.append([UInt8](bytes[offset..<end]))
+            offset = end
         }
         pendingBytes += bytes.count
         let pause = !paused && pendingBytes >= Self.highWater

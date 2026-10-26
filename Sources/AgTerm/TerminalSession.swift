@@ -73,6 +73,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
             view.attach(link)
         } else {
             restore(saved, command: nil)
+            // The agent may still be running in the helper's shell; don't start a second one.
+            pendingCommand = nil
             view.attach(spawnShell())
         }
     }

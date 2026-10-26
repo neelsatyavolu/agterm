@@ -47,7 +47,7 @@ Add more Claude Code or Codex logins in Settings → Accounts. Each one signs in
 - **Picks a login that has room.** It checks every login's usage through its own CLI (Claude Code's `get_usage`, Codex's app-server `account/rateLimits/read`; no Keychain reads, no model calls) and takes the one with the most left.
 - **Resumes the same conversation.** It stops the agent, runs `claude --resume <id>` or `codex resume <id>` with your original options on the new login in the same tab, and tells it to continue, so the turn that hit the limit finishes. You get a notification saying which account it moved to.
 - **New sessions** start on your own login while it has usage, and on the login with the most left while it doesn't. At most 3 switches per tab in 30 minutes, so two empty logins can't loop.
-- **Team accounts.** If you're signed in to agmux Teams and your team shares Codex logins there, agterm borrows one once every Codex login of yours is out, for a running session or a new one. It works like agmux: the login is lent to one tab at a time, renewed every minute with the tokens Codex refreshed, and handed back (tokens included) as soon as Codex exits, or when you quit. A login that runs out is reported to the team so nobody else gets it, and the tab moves to another. The borrowed copy lives only in its own folder and is deleted on return. Settings → Accounts lists the team's logins with their usage and who is using them. Your team adds and manages them in agmux. Claude logins can't be shared, as in agmux.
+- **Team accounts.** If you're signed in to agmux Teams and your team shares Codex logins there, agterm borrows one once every Codex login of yours is out, for a running session or a new one. It works like agmux: the login is lent to one tab at a time, renewed every minute with the tokens Codex refreshed, and handed back (tokens included) as soon as Codex exits, or when you quit. Quitting stops Codex on a borrowed login even in a tab that keeps running; an update's relaunch leaves it running. A login that runs out is reported to the team so nobody else gets it, and the tab moves to another. The borrowed copy lives only in its own folder and is deleted on return. Settings → Accounts lists the team's logins with their usage and who is using them. Your team adds and manages them in agmux. Claude logins can't be shared, as in agmux.
 
 Grok isn't supported yet.
 
@@ -63,7 +63,7 @@ Neither needs agmux installed: Teams is agmux's hosted service, and the phone co
 
 Quit with tabs open and the next launch reopens them: folder, history with colors, and the selected tab. A tab that was running Claude Code or Codex types `claude --resume <its session>` or `codex resume <its session>` with the original flags, so you're back in the same conversation. Other agents come back on their latest conversation in that folder, with each CLI's own option (`grok --continue`, `gemini --resume latest`, `opencode --continue`, and so on for Antigravity, Cursor, Kimi, Aider, Droid, Kilo, Auggie, Pi, Copilot and Goose). Other programs aren't rerun. Saved state lives in `~/Library/Application Support/co.xanom.agterm/workspace.json`, readable only by you.
 
-Tabs also keep running when agterm quits, updates or crashes. Each tab's shell runs in a small helper, `agterm-sessions`, and the next launch reconnects to it: an agent that was mid-task is still working, on the same screen. A tab whose shell ended while agterm was closed reopens from its saved history as above. agterm → Quit and End Sessions (⌥⌘Q) ends every tab's shell and quits; closing a tab or the window ends its shells too.
+Tabs also keep running when agterm quits (⌘Q), updates or crashes. Each tab's shell runs in a small helper, `agterm-sessions`, and the next launch reconnects to it: an agent that was mid-task is still working, on the same screen. A tab whose shell ended while agterm was closed reopens from its saved history as above. Closing a tab or the window ends its shells; agterm → Quit and End Sessions ends every tab's shell and quits. Tabs kept across updates start with updates from 1.0.2; the update to 1.0.2 itself restarts them as before. Before going back to an older version of agterm, choose agterm → Quit and End Sessions, or its tabs keep running out of sight.
 
 ## How status works
 
@@ -83,7 +83,7 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | ⌘T / ⌘W | New tab (in the current tab's folder) / close tab |
 | ⌥⌘T, ⌥⌘1–3 | New tab running your usual agent, or Claude Code, Codex, Grok |
 | ⌘K | Describe a command and have a fast model write it |
-| ⌘Q / ⌥⌘Q | Quit, leaving tabs running for next time / quit and end every tab's shell |
+| ⌘Q | Quit, leaving tabs running for next time (agterm → Quit and End Sessions ends them instead) |
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |
 | ⌘= ⌘- ⌘0 | Font size |

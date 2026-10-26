@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.0.2 — 2026-10-25
-- Added: Tabs keep running when agterm quits, updates or crashes, and come back live next time. agterm → Quit and End Sessions (⌥⌘Q) ends them.
+- Added: Tabs keep running when agterm quits (⌘Q), updates or crashes, and come back live next time. Closing the window ends its tabs, and agterm → Quit and End Sessions ends them all and quits. Tabs stay running through updates from this version on; this update still restarts them.
 - Added: After an update, a new tab shows what changed since your last version; agterm → What's New… shows every release.
 - Fixed: The Settings toolbar now fits all seven panes.
 - Fixed: Picking a theme such as Paper applies right away.
