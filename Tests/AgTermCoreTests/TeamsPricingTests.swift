@@ -67,6 +67,8 @@ final class TeamsPricingTests: XCTestCase {
             ("gpt-6-astra", Rates(input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5)),
             ("gpt-6.1-sol", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
             ("openai/gpt-6.1-sol", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
+            ("gpt-6.1-terra", Rates(input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25)),
+            ("openai/gpt-6.1-terra", Rates(input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25)),
             ("gpt-6-sol", Rates(input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5)),
             ("gpt-6-luna", Rates(input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125)),
             ("openai/gpt-6-sol", Rates(input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5)),
@@ -113,7 +115,7 @@ final class TeamsPricingTests: XCTestCase {
                                                             cacheWrite: 40_000, cacheWrite1h: 50_000))
         XCTAssertEqual(claude, 0.1 + 1.0 + 0.0075 + 0.5 + 1.0, accuracy: 1e-9)
         for (model, input, read, write) in [("gpt-6-astra", 10.0, 1.0, 12.5), ("gpt-6.1-sol", 2.0, 0.1, 2.5),
-                                             ("gpt-6-sol", 2.0, 0.2, 2.5), ("gpt-6-luna", 0.1, 0.01, 0.125)] {
+                                             ("gpt-6.1-terra", 1.0, 0.05, 1.25), ("gpt-6-sol", 2.0, 0.2, 2.5), ("gpt-6-luna", 0.1, 0.01, 0.125)] {
             for prompt in [271_999, 272_000, 272_001] {
                 let multiplier = prompt > 272_000 ? 2.0 : 1.0
                 let actual = cost(model, TokenCostSpec(pureInput: prompt - 2000, cacheRead: 1000, cacheWrite: 1000))
@@ -137,7 +139,7 @@ final class TeamsPricingTests: XCTestCase {
 
     func testCacheWriteUsageRequirementUsesOnlyKnownDistinctTariffs() {
         for model in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-                      "openai/gpt-5.6", "claude-sonnet-5", "gpt-6.1-sol", "claude-sonnet-5-5"] {
+                      "openai/gpt-5.6", "claude-sonnet-5", "gpt-6.1-sol", "gpt-6.1-terra", "claude-sonnet-5-5"] {
             XCTAssertTrue(builtIn.requiresCacheWriteUsage(model: model), model)
         }
         for model in ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "grok-4.6", "gpt-6-unknown", "codex-auto-review", ""] {

@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.5 — 2026-10-26
+- Added: agmux Teams cost estimates price GPT-6.1 Terra at OpenAI's list rates.
+
 ## 1.0.4 — 2026-10-26
 - Fixed: Text stays readable in light themes such as Paper when a program colors it for a dark background. Claude Code's default theme wrote white and pale gray text that was hard to see.
 - Added: Programs that follow the terminal's light or dark mode, like Claude Code with its theme set to Auto (`/theme`), switch along with agterm's theme.
