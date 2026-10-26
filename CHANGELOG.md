@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+- Fixed: Text stays readable in light themes such as Paper when a program colors it for a dark background. Claude Code's default theme wrote white and pale gray text that was hard to see.
+- Added: Programs that follow the terminal's light or dark mode, like Claude Code with its theme set to Auto (`/theme`), switch along with agterm's theme.
+
 ## 1.0.3 — 2026-10-26
 - Changed: ⌘K sends the model the tab's last 150 lines, scrollback included, so requests like "fix that error" or "run that again" work on commands that have scrolled off the screen.
 - Fixed: The cd folder list also shows up for names of several words, like `cd show resources` for a folder named Show Resources.

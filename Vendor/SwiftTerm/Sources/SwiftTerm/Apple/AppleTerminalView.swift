@@ -903,6 +903,10 @@ extension TerminalView {
         if flags.contains (.dim) {
             fgColor = fgColor.dimmedColor (towards: bgColor)
         }
+        // agterm: see `minimumContrast`.
+        if minimumContrast > 1 {
+            fgColor = fgColor.withMinimumContrast (minimumContrast, against: bgColor)
+        }
         var nsattr: [NSAttributedString.Key:Any] = [
             .font: tf,
             .foregroundColor: fgColor,

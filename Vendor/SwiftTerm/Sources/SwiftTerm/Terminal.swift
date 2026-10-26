@@ -481,6 +481,34 @@ open class Terminal {
     /// the terminal, the content will be wrapped in "ESC [ 200 ~" to start, and "ESC [ 201 ~" to end.
     public private(set) var bracketedPasteMode: Bool = false
 
+    /// agterm: DECSET 2031 (color palette update notifications, https://contour-terminal.org/vt-extensions/color-palette-update-notifications/).
+    /// While set, `colorSchemeChanged()` tells the program when the background turns from dark to light
+    /// or back, so programs such as Claude Code with an "auto" theme can follow it.
+    public private(set) var colorSchemeReports: Bool = false
+    /// The scheme last reported to the program, so a palette change that keeps it dark (or light) sends nothing.
+    private var reportedDarkScheme: Bool?
+
+    /// agterm: whether the background reported for OSC 11 is dark.
+    private var isDarkScheme: Bool {
+        let background = tdel?.getColors(source: self).background ?? backgroundColor
+        let luminance = (0.2126 * Double(background.red) + 0.7152 * Double(background.green) + 0.0722 * Double(background.blue)) / 65535
+        return luminance < 0.5
+    }
+
+    /// agterm: CSI ? 997 ; 1 n for a dark background, 2 for a light one.
+    private func reportColorScheme() {
+        let dark = isDarkScheme
+        reportedDarkScheme = dark
+        sendResponse(cc.CSI, "?997;\(dark ? 1 : 2)n")
+    }
+
+    /// agterm: call after the colors change; reports a switch between dark and light to a program
+    /// that turned on mode 2031.
+    public func colorSchemeChanged() {
+        guard colorSchemeReports, reportedDarkScheme != isDarkScheme else { return }
+        reportColorScheme()
+    }
+
     /// Tracks DECSET/DECRST private mode 1007 (Alternate Scroll Mode, xterm's "alternateScroll" resource).
     /// When true and the alternate screen buffer is active without an application mouse-tracking mode enabled,
     /// hosts are expected to translate scroll wheel input into cursor up/down key sequences instead of scrolling,
@@ -968,6 +996,7 @@ open class Terminal {
         setInsertMode(false)
         setWraparound(true)
         bracketedPasteMode = false
+        colorSchemeReports = false
         alternateScrollMode = true
 
         keyboardModeNormal = KeyboardModeState()
@@ -4467,6 +4496,8 @@ open class Terminal {
                 // keyboard emulation mode: 1050, 1051, 1052, 1053, 1060, 1061
             case 2004:
                 res = bracketedPasteMode ? modeSet : modeReset
+            case 2031: // agterm: color scheme reports
+                res = colorSchemeReports ? modeSet : modeReset
             case 2026:
                 res = synchronizedOutputActive ? modeSet : modeReset
             case 2500: // box drawing mirroring (terminal-wg)
@@ -4684,6 +4715,9 @@ open class Terminal {
                 // Need the max, because the cursor could be before the leftMargin
                 let x = max (1, buffer.x + 1  - (usingMargins () ? buffer.marginLeft : 0))
                 sendResponse (cc.CSI, "?\(y);\(x);1R")
+            case 996:
+                // agterm: color scheme query (dark or light), answered whether or not mode 2031 is set
+                reportColorScheme()
             case 15:
                 // Request printer status report, we respond "We are ready"
                 sendResponse(cc.CSI, "?10n")
@@ -5331,6 +5365,8 @@ open class Terminal {
             case 2004: // bracketed paste mode (https://cirw.in/blog/bracketed-paste)
                 bracketedPasteMode = false
                 break
+            case 2031: // agterm: color scheme reports
+                colorSchemeReports = false
             case 2026: // synchronized output (https://github.com/contour-terminal/vt-extensions)
                 endSynchronizedOutput ()
             default:
@@ -5585,6 +5621,9 @@ open class Terminal {
                 bracketedPasteMode = true
             case 2026: // synchronized output (https://github.com/contour-terminal/vt-extensions)
                 beginSynchronizedOutput ()
+            case 2031: // agterm: color scheme reports
+                colorSchemeReports = true
+                reportedDarkScheme = isDarkScheme
             default:
                 log ("Unhandled DEC Private Mode Set (DECSET) with \(par)")
                 break;

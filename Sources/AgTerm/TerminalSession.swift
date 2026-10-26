@@ -186,9 +186,12 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         view.nativeForegroundColor = Theme.fg
         view.caretColor = Theme.accent
         view.selectedTextBackgroundColor = Theme.accentMuted
+        view.minimumContrast = Theme.minimumContrast
         view.installColors(Theme.palette.ansi.map {
             SwiftTerm.Color(red: UInt16($0.r) * 257, green: UInt16($0.g) * 257, blue: UInt16($0.b) * 257)
         })
+        // Programs that asked (mode 2031), like Claude Code with its theme on "auto", follow light and dark.
+        view.getTerminal().colorSchemeChanged()
         view.needsDisplay = true
     }
 

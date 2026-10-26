@@ -130,6 +130,7 @@ public enum ScreenReplay {
         if terminal.applicationCursor { set.append("?1") }
         if terminal.isApplicationKeypad { set.append("?66") }
         if terminal.bracketedPasteMode { set.append("?2004") }
+        if terminal.colorSchemeReports { set.append("?2031") }
         if terminal.isFocusReporting { set.append("?1004") }
         if let mouse = mouseMode(terminal.mouseMode) { set.append("?\(mouse)") }
         if let encoding = terminal.mouseEncodingMode { set.append("?\(encoding)") }

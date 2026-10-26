@@ -272,6 +272,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     // Cache for the colors in the 0..255 range
     var colors: [UIColor?] = Array(repeating: nil, count: 256)
     var trueColors: [Attribute.Color:UIColor] = [:]
+    /// agterm: the least WCAG contrast (1...21) text keeps against its cell's background; 1 is off.
+    /// Text a program colored for a dark background stays readable on a light theme, and the
+    /// other way round.
+    public var minimumContrast: CGFloat = 1 {
+        didSet { if minimumContrast != oldValue { colorsChanged() } }
+    }
     var transparent = TTColor.transparent ()
     private var lastLayoutBounds: CGRect = .zero
     

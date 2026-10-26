@@ -20,3 +20,11 @@ Differences from upstream 1.20.0:
   used the main queue. agterm's session helper never drains its main queue, so each toggle left
   ~0.6 KB behind (~118 MB per 200k toggles, and Claude Code and Codex toggle on every redraw);
   its headless terminals set this to nil.
+- `TerminalView.minimumContrast` (default 1, off) moves a cell's text toward black or white until it
+  has that WCAG contrast with the cell's background (`Apple/MinimumContrast.swift`, applied in
+  `getAttributes`). agterm sets 3 on light themes, where programs that pick colors for a dark
+  background (Claude Code's default theme) drew white and pale gray text.
+- `Terminal` supports mode 2031 (color palette update notifications) and the `CSI ? 996 n` query:
+  it answers `CSI ? 997 ; 1 n` (dark) or `2 n` (light) from the OSC 11 background, and
+  `colorSchemeChanged()` sends the report when the host switches between dark and light. Claude
+  Code with its theme on "auto" uses these to follow the terminal.

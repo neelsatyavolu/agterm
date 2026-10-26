@@ -34,6 +34,9 @@ enum Theme {
     static var ok: NSColor { color(palette.ok) }
     static var danger: NSColor { color(palette.danger) }
     static var appearance: NSAppearance? { NSAppearance(named: palette.isDark ? .darkAqua : .aqua) }
+    /// Light themes keep text at 3:1 contrast or more, because most terminal programs (Claude Code's
+    /// default theme among them) pick colors for a dark background. Dark themes draw colors as sent.
+    static var minimumContrast: CGFloat { palette.isDark ? 1 : 3 }
 
     static var terminalFont: NSFont { terminalFont(family: settings.fontFamily, size: CGFloat(settings.fontSize)) }
 

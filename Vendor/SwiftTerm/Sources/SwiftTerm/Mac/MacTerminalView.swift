@@ -326,6 +326,12 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     // Cache for the colors in the 0..255 range
     var colors: [NSColor?] = Array(repeating: nil, count: 256)
     var trueColors: [Attribute.Color:NSColor] = [:]
+    /// agterm: the least WCAG contrast (1...21) text keeps against its cell's background; 1 is off.
+    /// Text a program colored for a dark background stays readable on a light theme, and the
+    /// other way round.
+    public var minimumContrast: CGFloat = 1 {
+        didSet { if minimumContrast != oldValue { colorsChanged() } }
+    }
     var transparent = TTColor.transparent ()
     var isBigSur = true
     
