@@ -9,8 +9,8 @@ import Foundation
 /// A borrowed login's folder holds `lease.json` (which loan and tab, never tokens), so a loan left
 /// by a crash can still be returned, and `owner.pid`, written by the wrapper as the agent starts:
 /// the loan lasts exactly as long as that process, in the foreground or not. That includes an
-/// agent in a tab the sessions helper kept running across a quit: the next launch takes its loan
-/// back up.
+/// agent in a tab the sessions helper kept running across an update's relaunch (or a crash): the
+/// next launch takes its loan back up. A plain quit stops such agents and returns their loans.
 final class TeamAccounts: ObservableObject {
     static let shared = TeamAccounts()
     static let renewEvery: TimeInterval = {
@@ -80,7 +80,7 @@ final class TeamAccounts: ObservableObject {
         try? fm.removeItem(at: AccountStore.requestsDir)
         let token = token
         let leftovers = ((try? fm.contentsOfDirectory(atPath: AccountStore.dir.path)) ?? []).filter(TeamPool.isLocalID).map { id in
-            TeamPool.HeldLoan(id: id, owner: Self.owner(AccountStore.home(id)), tabID: Self.savedTabID(AccountStore.home(id)))
+            TeamPool.HeldLoan(id: id, owner: Self.liveOwner(AccountStore.home(id))?.pid, tabID: Self.savedTabID(AccountStore.home(id)))
         }
         let running = TeamPool.leftoverLoansToKeep(leftovers, alive: Self.alive)
         for loan in leftovers {
@@ -205,7 +205,7 @@ final class TeamAccounts: ObservableObject {
         let now = Date()
         for (id, loan) in held {
             let owner = Self.owner(AccountStore.home(id))
-            let running = owner.map(Self.alive) ?? false
+            let running = Self.liveOwner(AccountStore.home(id)) != nil
             let starting = !loan.started && owner == nil && tabs[loan.tabID] != nil && now.timeIntervalSince(loan.since) < Self.startGrace
             guard running || starting else {
                 giveBack(id)
@@ -269,7 +269,7 @@ final class TeamAccounts: ObservableObject {
         guard let loan = held.removeValue(forKey: id) else { return }
         inFlight[id] = loan.lease
         let home = AccountStore.home(id)
-        let owner = Self.owner(home)
+        let owner = Self.liveOwner(home)
         let token = token
         Notifier.shared.post(title: "Team account \(loan.lease.label) was taken back",
                              body: reason + " Codex was stopped; resume it with codex resume.", tabID: loan.tabID)
@@ -302,20 +302,27 @@ final class TeamAccounts: ObservableObject {
         }
     }
 
+    /// The agents running on a team login now: their tab's ID and the agent's name.
+    var teamAgentsByTab: [String: String] {
+        Dictionary(held.compactMap { id, loan in Self.liveOwner(AccountStore.home(id)).map { _ in (loan.tabID, loan.lease.provider.title) } },
+                   uniquingKeysWith: { a, _ in a })
+    }
+
     /// Quitting or signing out: stop every agent on a team login, then return all loans now,
-    /// so teammates don't wait 5 minutes for them. A quit that leaves tabs running passes those
-    /// tabs as `keptTabs`: an agent still running in one keeps its loan (and its login folder)
-    /// for the next launch to take back up.
+    /// so teammates don't wait 5 minutes for them. An update's relaunch, which leaves tabs
+    /// running, passes them as `keptTabs`: an agent still running in one keeps its loan (and its
+    /// login folder) for the relaunched app to take back up. A plain quit doesn't: nothing
+    /// renews a loan while agterm is closed, and a lapsed loan is taken back from the agent.
     func giveBackAll(keepingAgentsIn keptTabs: Set<String>? = nil) {
         generation += 1
-        let kept = TeamPool.loansToKeep(held.map { TeamPool.HeldLoan(id: $0.key, owner: Self.owner(AccountStore.home($0.key)), tabID: $0.value.tabID) },
+        let kept = TeamPool.loansToKeep(held.map { TeamPool.HeldLoan(id: $0.key, owner: Self.liveOwner(AccountStore.home($0.key))?.pid, tabID: $0.value.tabID) },
                                         keptTabs: keptTabs ?? [], detaching: keptTabs != nil, alive: Self.alive)
         let loans = held.filter { !kept.contains($0.key) }.mapValues(\.lease)
             .merging(inFlight.filter { !settingUp.contains($0.key) }) { current, _ in current }
         held = [:]
         guard !loans.isEmpty else { return }
         inFlight = inFlight.filter { settingUp.contains($0.key) }
-        let owners = loans.keys.compactMap { Self.owner(AccountStore.home($0)) }
+        let owners = loans.keys.compactMap { Self.liveOwner(AccountStore.home($0)) }
         let pending = Array(queues.values)
         queues = [:]
         guard let token else { return }
@@ -446,13 +453,30 @@ final class TeamAccounts: ObservableObject {
 
     private static func alive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 || errno == EPERM }
 
-    /// SIGTERM, then SIGKILL for whatever is still there after 3 seconds.
-    private static func stop(_ pids: [pid_t]) async {
-        let running = pids.filter(alive)
+    /// An agent process: its pid, and when it started, which tells it apart from a later
+    /// process that got the same pid after it exited.
+    struct Owner: Equatable {
+        let pid: pid_t
+        let startedAt: Date
+
+        var isRunning: Bool { ProcInfo.startTime(pid: pid) == startedAt }
+    }
+
+    /// The process recorded in owner.pid, if it is still the one that wrote the file.
+    static func liveOwner(_ home: URL) -> Owner? {
+        guard let pid = owner(home), let started = ProcInfo.startTime(pid: pid) else { return nil }
+        let written = (try? FileManager.default.attributesOfItem(atPath: home.appendingPathComponent("owner.pid").path))?[.modificationDate] as? Date
+        return TeamPool.isOwner(processStartedAt: started, pidFileWrittenAt: written) ? Owner(pid: pid, startedAt: started) : nil
+    }
+
+    /// SIGTERM, then SIGKILL for whatever is still there after 3 seconds. Each signal goes only
+    /// to the same process, never to a later one that got its pid.
+    private static func stop(_ owners: [Owner]) async {
+        let running = owners.filter(\.isRunning)
         guard !running.isEmpty else { return }
-        running.forEach { kill($0, SIGTERM) }
-        for _ in 0..<30 where running.contains(where: alive) { try? await Task.sleep(nanoseconds: 100_000_000) }
-        running.filter(alive).forEach { kill($0, SIGKILL) }
+        running.forEach { kill($0.pid, SIGTERM) }
+        for _ in 0..<30 where running.contains(where: \.isRunning) { try? await Task.sleep(nanoseconds: 100_000_000) }
+        running.filter(\.isRunning).forEach { kill($0.pid, SIGKILL) }
     }
 
     // MARK: HTTP

@@ -114,6 +114,19 @@ final class TeamPoolTests: XCTestCase {
         XCTAssertFalse(TeamPool.isLocalID("native"))
     }
 
+    /// owner.pid names the agent only if that process started before the file was written; a
+    /// process that started later got the pid after the agent exited.
+    func testOwnerMustHaveStartedBeforeThePidFileWasWritten() {
+        let written = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(TeamPool.isOwner(processStartedAt: written.addingTimeInterval(-30), pidFileWrittenAt: written))
+        XCTAssertTrue(TeamPool.isOwner(processStartedAt: written.addingTimeInterval(1), pidFileWrittenAt: written),
+                      "clock granularity is allowed for")
+        XCTAssertFalse(TeamPool.isOwner(processStartedAt: written.addingTimeInterval(TeamPool.ownerClockSlack + 0.5), pidFileWrittenAt: written))
+        XCTAssertFalse(TeamPool.isOwner(processStartedAt: written.addingTimeInterval(3_600), pidFileWrittenAt: written))
+        XCTAssertFalse(TeamPool.isOwner(processStartedAt: nil, pidFileWrittenAt: written), "no such process")
+        XCTAssertFalse(TeamPool.isOwner(processStartedAt: written, pidFileWrittenAt: nil), "no pid file")
+    }
+
     func testDetachingKeepsLoansWhoseAgentRunsInAKeptTab() {
         let loans = [
             TeamPool.HeldLoan(id: "kept", owner: 10, tabID: "A"),

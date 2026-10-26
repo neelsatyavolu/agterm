@@ -83,10 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Quitting (⌘Q, an update's relaunch) leaves the tabs' shells running in the helper for the
-    /// next launch; Quit and End Sessions ends them.
+    /// next launch; Quit and End Sessions ends them. Agents on a team login keep it only across
+    /// an update's relaunch: nothing renews the loan while agterm is closed.
     func applicationWillTerminate(_ notification: Notification) {
-        // Agents left running keep their team logins; read the tabs before the quit lets go of them.
-        let keptTabs = endSessionsOnQuit ? nil : controller?.keptTabIDs
+        // Read the tabs before the quit lets go of them.
+        let keptTabs = endSessionsOnQuit || !Updater.shared.isRelaunchingForUpdate ? nil : controller?.keptTabIDs
         controller?.quit(endingSessions: endSessionsOnQuit)
         TeamAccounts.shared.giveBackAll(keepingAgentsIn: keptTabs)
     }
@@ -97,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Asks only about programs the quit would stop: those in in-process tabs, or every one when
-    /// ending sessions.
+    /// ending sessions, and agents on a team login unless an update is relaunching agterm.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let reply = shouldTerminate()
         if reply == .terminateCancel { endSessionsOnQuit = false }
@@ -107,10 +108,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func shouldTerminate() -> NSApplication.TerminateReply {
         if controller?.window?.attachedSheet != nil { return .terminateCancel }
         let running = controller?.runningPrograms(endingSessions: endSessionsOnQuit) ?? []
-        guard !running.isEmpty else { return .terminateNow }
+        // Ending sessions lists every program already; an update's relaunch keeps team logins.
+        let stopsKeptTeamAgents = !endSessionsOnQuit && !Updater.shared.isRelaunchingForUpdate
+        let teamAgents = stopsKeptTeamAgents ? controller?.teamAgentsStopping(TeamAccounts.shared.teamAgentsByTab) ?? [] : []
+        guard !running.isEmpty || !teamAgents.isEmpty else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Quit agterm?"
-        alert.informativeText = "Still running:\n" + running.joined(separator: "\n")
+        alert.informativeText = [running.isEmpty ? nil : "Still running:\n" + running.joined(separator: "\n"),
+                                 teamAgents.isEmpty ? nil : teamAgents.joined(separator: "\n")]
+            .compactMap { $0 }.joined(separator: "\n\n")
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel

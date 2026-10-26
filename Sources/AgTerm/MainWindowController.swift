@@ -372,6 +372,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         Set(sessions.filter(\.isKeptByHelper).map(\.tabID))
     }
 
+    /// For each tab a quit keeps running whose agent is on a team login (`agents`: tab ID to
+    /// agent name), the line saying a plain quit stops that agent.
+    func teamAgentsStopping(_ agents: [String: String]) -> [String] {
+        sessions.filter(\.isKeptByHelper).compactMap { session in
+            agents[session.tabID].map { "\($0) on a team login in \(session.folder) will stop." }
+        }
+    }
+
     /// The running programs quitting would stop: all of them when ending sessions, else only
     /// those in in-process shells, which die with the app.
     func runningPrograms(endingSessions: Bool) -> [String] {

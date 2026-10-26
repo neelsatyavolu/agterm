@@ -186,10 +186,8 @@ enum AgentIntegration {
                let home = try? AccountStore.prepareHome(id, provider: provider) {
                 // The app keeps a team login lent exactly as long as this process (it becomes the
                 // agent). A Codex started from inside that one inherits the folder but not the loan.
-                let owner = home.appendingPathComponent("owner.pid")
-                let current = (try? String(contentsOf: owner, encoding: .utf8)).flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                if borrowed, current.map({ $0 <= 1 || (kill($0, 0) != 0 && errno != EPERM) }) ?? true {
-                    try? String(getpid()).write(to: owner, atomically: true, encoding: .utf8)
+                if borrowed, TeamAccounts.liveOwner(home) == nil {
+                    try? String(getpid()).write(to: home.appendingPathComponent("owner.pid"), atomically: true, encoding: .utf8)
                 }
                 setenv(provider.homeVariable, home.path, 1)
                 for key in provider == .claude ? ClaudeAuthEnv.keys : ClaudeAuthEnv.codexKeys { unsetenv(key) }

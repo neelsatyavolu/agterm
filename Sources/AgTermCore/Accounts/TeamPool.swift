@@ -112,6 +112,18 @@ public enum TeamPool {
         }
     }
 
+    /// Allowed between a process's start time and a file's modification time, which come from
+    /// different clocks and resolutions.
+    public static let ownerClockSlack: TimeInterval = 2
+
+    /// Whether the process now holding owner.pid's pid is the agent that wrote the file: it must
+    /// have started before the file was written. One that started later got the pid after the
+    /// agent exited, and must be neither kept for nor signalled.
+    public static func isOwner(processStartedAt: Date?, pidFileWrittenAt: Date?) -> Bool {
+        guard let processStartedAt, let pidFileWrittenAt else { return false }
+        return processStartedAt <= pidFileWrittenAt.addingTimeInterval(ownerClockSlack)
+    }
+
     /// At quit: the loans to keep out. A quit that leaves tabs running (`detaching`) keeps a loan
     /// whose agent is alive in a tab the sessions helper keeps; it would die with any other tab.
     /// Ending every session keeps none.
