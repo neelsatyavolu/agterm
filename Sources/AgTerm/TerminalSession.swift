@@ -7,7 +7,9 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     let view: AgentTerminalView
     private(set) var rawTitle = ""
     private(set) var parsedTitle = ParsedTitle(topic: "", activity: .unknown)
-    private(set) var cwd: String
+    private(set) var cwd: String {
+        didSet { if cwd != oldValue { FolderIndex.shared.visit(cwd) } }
+    }
     private(set) var foregroundName: String?
     private var foregroundPid: pid_t?
     private(set) var git: GitSummary?
@@ -30,6 +32,8 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     var onChange: (() -> Void)?
     /// Called when the status changes (for notifications).
     var onStatusChange: ((TabStatus) -> Void)?
+    /// Called when the screen changes right after a keystroke (the shell echoing what you type).
+    var onTyped: (() -> Void)?
     /// Called when the shell exits on its own with status 0.
     var onCleanExit: (() -> Void)?
     /// Typed into the shell once its first prompt appears (resuming a restored agent).
@@ -39,6 +43,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     /// `command` is typed at the first prompt (starting an agent from the Shell menu).
     init(cwd: String, restoring saved: SavedTab? = nil, command: String? = nil) {
         self.cwd = cwd
+        FolderIndex.shared.visit(cwd)
         let shell = ProcInfo.loginShell()
         shellName = (shell as NSString).lastPathComponent
         var options = TerminalOptions.default
@@ -128,6 +133,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
             guard let self else { return }
             self.signals.lastOutput = Date()
             self.runPendingCommand()
+            if let input = self.signals.lastInput, Date().timeIntervalSince(input) < 1 { self.onTyped?() }
         }
         view.onInput = { [weak self] bytes in
             guard let self else { return }

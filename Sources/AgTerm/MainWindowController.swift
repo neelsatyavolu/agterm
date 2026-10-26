@@ -17,6 +17,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private let git = GitPoller()
     private let transcripts = TranscriptDiff()
     private let commandBar = CommandBar()
+    private let cdSuggestions = CdSuggestions()
     /// The tab the open command bar answers for; its command only ever goes there.
     private weak var commandBarTarget: TerminalSession?
     private var timers: [Timer] = []
@@ -205,6 +206,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             guard let session, !(session.signals.focused && NSApp.isActive) else { return }
             Notifier.shared.post(status: status, tabID: session.tabID, topic: session.topic, folder: session.folder)
         }
+        session.onTyped = { [weak self, weak session] in
+            guard let self, let session, self.sessions.indices.contains(self.selected),
+                  self.sessions[self.selected] === session else { return }
+            self.cdSuggestions.typed(in: session)
+        }
         session.onCleanExit = { [weak self, weak session] in
             guard let self, let session, let index = self.sessions.firstIndex(of: session) else { return }
             self.removeTab(at: index)
@@ -267,6 +273,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func select(_ index: Int) {
         guard sessions.indices.contains(index) else { return }
         selected = index
+        cdSuggestions.hide()
         if commandBar.superview != nil, sessions[index] !== commandBarTarget { hideCommandBar(refocus: false) }
         let now = Date()
         for (i, session) in sessions.enumerated() {
@@ -297,6 +304,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     private func removeTab(at index: Int) {
         let session = sessions.remove(at: index)
+        cdSuggestions.hide()
         if session === commandBarTarget { hideCommandBar(refocus: false) }
         session.onChange = nil
         session.terminate()
@@ -379,6 +387,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     #if DEBUG
     var commandBarForTest: CommandBar { commandBar }
+    var cdSuggestionsForTest: CdSuggestions { cdSuggestions }
     #endif
 
     private func hideCommandBar(refocus: Bool = true) {

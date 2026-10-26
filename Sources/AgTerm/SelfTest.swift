@@ -44,6 +44,7 @@ enum SelfTest {
         }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_SWITCH_CHECK"] { return switchCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_DRAG_CHECK"] == "1" { return dragCheck(controller) }
+        if ProcessInfo.processInfo.environment["AGTERM_CD_CHECK"] == "1" { return cdCheck(controller, outDir: outDir) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
@@ -563,6 +564,30 @@ enum SelfTest {
             $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
         }
         return result == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
+
+    /// `cd agter` lists ~/…/agterm under the cursor, and ⇥ (a real key event) puts its path on the line.
+    private static func cdCheck(_ controller: MainWindowController, outDir: String) {
+        guard let window = controller.window else { exit(1) }
+        window.setContentSize(NSSize(width: 900, height: 520))
+        window.contentView?.superview?.wantsLayer = true
+        let session = controller.sessions[0]
+        send(controller, 0, "cd ~ && clear")
+        after(2.5) { session.view.send(txt: "cd agter") }
+        after(3.5) {
+            print("selftest: cd shown:", controller.cdSuggestionsForTest.shownForTest)
+            snapshot(window, "\(outDir)/cd-suggestions.png")
+            let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                       windowNumber: window.windowNumber, context: nil, characters: "\t",
+                                       charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)
+            tab.map { NSApp.postEvent($0, atStart: false) }
+        }
+        after(4.5) {
+            print("selftest: cd line:", screenLine(session, containing: "cd ") ?? "none")
+            print("selftest: cd hidden after accept:", controller.cdSuggestionsForTest.shownForTest.isEmpty)
+            session.view.send(txt: "\u{15}")
+        }
+        after(5) { exit(0) }
     }
 
     private static func screenLine(_ session: TerminalSession, containing text: String) -> String? {
