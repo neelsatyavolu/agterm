@@ -2,11 +2,12 @@ import AgTermCore
 import AgTermSessionKit
 import Foundation
 
-/// Finds, starts and talks to `agterm-sessions`, the helper that owns tab shells and keeps them
-/// running while the app is quit. The first call connects (launching the helper if nothing
-/// answers) and the client is kept. Without one (the helper binary is missing, doesn't answer
-/// within 2 s, or speaks another protocol version) tabs run in-process; that, or a helper that
-/// has since died, is tried again at most every 30 s.
+/// Finds, starts and talks to the sessions helper, which owns tab shells and keeps them running
+/// while the app is quit. The helper is this executable run as `agterm --sessions-helper`, so it
+/// has agterm's code identity and privacy permissions. The first call connects (launching the
+/// helper if nothing answers) and the client is kept. Without one (the helper can't start,
+/// doesn't answer within 2 s, or speaks another protocol version) tabs run in-process; that, or
+/// a helper that has since died, is tried again at most every 30 s.
 enum SessionHelper {
     private static let startTimeout: TimeInterval = 2
     private static let retryInterval: TimeInterval = 30
@@ -35,11 +36,9 @@ enum SessionHelper {
         client.map { $0.helperBuild != $0.build } ?? false
     }
 
-    /// Next to the app's executable: `Contents/MacOS` in the bundle, `.build/debug` in development.
+    /// The app's own executable: `Contents/MacOS/agterm` in the bundle, `.build/debug/AgTerm` in development.
     private static var binary: String? {
-        guard let url = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("agterm-sessions"),
-              FileManager.default.isExecutableFile(atPath: url.path) else { return nil }
-        return url.path
+        Bundle.main.executableURL?.path
     }
 
     /// Derived from the state folder, so `AGTERM_STATE_DIR` and debug builds get their own helper.
@@ -107,7 +106,7 @@ enum SessionHelper {
         posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDWR, 0)
         posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO)
         posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO)
-        let argv = [binary, "--socket", socket, "--build", build].map { strdup($0) } + [nil]
+        let argv = [binary, SessionHelperMain.flag, "--socket", socket, "--build", build].map { strdup($0) } + [nil]
         defer { argv.forEach { free($0) } }
         var pid: pid_t = 0
         let result = posix_spawn(&pid, binary, &actions, &attributes, argv, environ)

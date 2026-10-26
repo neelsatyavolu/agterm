@@ -7,8 +7,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 |------|------|
 | `Sources/AgTerm/` | The Mac app (AppKit, SwiftTerm) |
 | `Sources/AgTermCore/` | Logic shared with the iPhone app: no AppKit, no SwiftTerm imports |
-| `Sources/AgTermSessionKit/` | The session helper's server and socket code (shells live here, not in the app) |
-| `Sources/AgTermSessions/` | `agterm-sessions`, the helper executable |
+| `Sources/AgTermSessionKit/` | The session helper's server, socket code and entry point (shells live here, not in the app). The helper is the app's own executable run as `agterm --sessions-helper`, so it keeps agterm's code identity and privacy permissions; don't split it back into a separate binary |
 | `Vendor/SwiftTerm/` | SwiftTerm with local changes; edit in place, keep the comments explaining each change |
 | `Mobile/` | agterm Remote (iOS); see `Mobile/README.md` |
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
@@ -28,13 +27,13 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 
 ## Self-tests
 - `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`.
-- Quitting leaves tab shells running in the `agterm-sessions` helper, so self-tests end the helper's sessions when they exit.
+- Quitting leaves tab shells running in the sessions helper (`agterm --sessions-helper`), so self-tests end the helper's sessions when they exit.
 - PNG snapshots land in the `AGTERM_SELFTEST` directory; look at them after UI changes.
 - Add a check there for any UI change you can't cover with a unit test.
 - Debug builds keep their own state (`agterm-dev`); `AGTERM_STATE_DIR` overrides it, so tests never touch the installed app's tabs.
 
 ## Session helper compatibility
-`agterm-sessions` outlives app updates: someone who keeps tabs open keeps the helper from the version they started it with, possibly several releases back, and a helper bug can't be fixed by an update until they choose Quit and End Sessions. So:
+The sessions helper outlives app updates: someone who keeps tabs open keeps the helper from the version they started it with, possibly several releases back, and a helper bug can't be fixed by an update until they choose Quit and End Sessions. So:
 - Every app version must keep working with every helper version already shipped, and every helper with newer apps.
 - Wire changes (`Sources/AgTermCore/SessionWire.swift`) only add: new tags and new optional JSON fields (`decodeIfPresent` with a default). Never renumber or reuse a tag, rename or retype a field, or change what an existing message means.
 - Receivers skip frames with unknown tags, so an old peer ignores a new message: never rely on it being answered without checking the helper's build first. A new message that passes a descriptor goes only to a peer that asked for it.

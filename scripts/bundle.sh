@@ -20,9 +20,9 @@ APP=dist/agterm.app
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+# Also the sessions helper (`agterm --sessions-helper`), which keeps tabs' shells running while
+# agterm is quit; one executable, so the helper has the app's code identity and privacy permissions.
 cp "$BIN/AgTerm" "$APP/Contents/MacOS/agterm"
-# The helper that keeps tabs' shells running while agterm is quit; the app finds it beside itself.
-cp "$BIN/agterm-sessions" "$APP/Contents/MacOS/agterm-sessions"
 cp -R "$BIN"/*.bundle "$APP/Contents/Resources/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -X Resources/agterm-notify.wav "$APP/Contents/Resources/"
@@ -58,7 +58,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Sign inside out: Sparkle's helpers, the framework, the sessions helper, then the app (no --deep).
+# Sign inside out: Sparkle's helpers, the framework, then the app (no --deep).
 ID="${APPLE_SIGNING_IDENTITY:--}"
 sign() {
   if [ "$ID" = "-" ]; then
@@ -74,7 +74,9 @@ sign --preserve-metadata=entitlements "$SP/XPCServices/Downloader.xpc"
 sign "$SP/Autoupdate"
 sign "$SP/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
-sign "$APP/Contents/MacOS/agterm-sessions"
 sign "$APP"
 codesign --verify --deep --strict "$APP"
+# The sessions helper runs this executable, so it must carry the app's identifier.
+codesign -dv "$APP/Contents/MacOS/agterm" 2>&1 | grep -qx "Identifier=co.xanom.agterm" \
+  || { echo "error: $APP/Contents/MacOS/agterm isn't signed as co.xanom.agterm" >&2; exit 1; }
 echo "built $APP ($VERSION)"

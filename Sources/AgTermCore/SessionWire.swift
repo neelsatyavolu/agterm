@@ -1,6 +1,6 @@
 import Foundation
 
-/// The protocol between the app and `agterm-sessions`, the helper that owns every tab's shell.
+/// The protocol between the app and the sessions helper (`agterm --sessions-helper`), which owns every tab's shell.
 /// Frames travel over a Unix socket: 4-byte big-endian length, 1-byte tag, payload.
 public enum SessionWire {
     public static let protocolVersion = 1

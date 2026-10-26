@@ -7,7 +7,6 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "AgTermCore", targets: ["AgTermCore"]),
-        .executable(name: "agterm-sessions", targets: ["AgTermSessions"]),
     ],
     dependencies: [
         .package(path: "Vendor/SwiftTerm"),
@@ -19,7 +18,6 @@ let package = Package(
             name: "AgTermSessionKit",
             dependencies: ["AgTermCore", .product(name: "SwiftTerm", package: "SwiftTerm")]
         ),
-        .executableTarget(name: "AgTermSessions", dependencies: ["AgTermSessionKit"]),
         .executableTarget(
             name: "AgTerm",
             dependencies: [

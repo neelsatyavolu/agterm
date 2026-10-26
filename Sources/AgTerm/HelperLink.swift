@@ -3,7 +3,7 @@ import AgTermSessionKit
 import Foundation
 import SwiftTerm
 
-/// A shell kept by the `agterm-sessions` helper, so it can outlive the app. Output arrives as
+/// A shell kept by the sessions helper, so it can outlive the app. Output arrives as
 /// `replay` and `output` frames, read off the socket on a background queue and handed to the view
 /// on the main queue in order, with LocalProcess's backpressure: past 4 MiB waiting, the socket
 /// isn't read until the backlog is under 1 MiB, and the helper in turn stops reading the shell's

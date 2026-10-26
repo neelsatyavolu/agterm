@@ -2,7 +2,7 @@ import AgTermCore
 import Foundation
 import SwiftTerm
 
-/// A tab's connection to its shell: in the `agterm-sessions` helper (`HelperLink`), or a child
+/// A tab's connection to its shell: in the sessions helper (`HelperLink`), or a child
 /// of the app (`LocalLink`) when the helper can't be used. Main queue only.
 protocol PtyLink: AnyObject {
     var shellPid: pid_t { get }

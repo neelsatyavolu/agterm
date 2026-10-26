@@ -8,7 +8,7 @@ public enum SessionServerError: Error, Equatable {
     case pathInUse
 }
 
-/// The `agterm-sessions` helper: owns every tab's shell and serves the app over a Unix socket,
+/// The sessions helper (`agterm --sessions-helper`): owns every tab's shell and serves the app over a Unix socket,
 /// so shells outlive app updates, quits and crashes. All state lives on one serial queue.
 public final class SessionServer {
     /// With no sessions and no clients for this long, the server stops.
