@@ -3,7 +3,9 @@ import PackageDescription
 
 let package = Package(
     name: "agterm",
-    platforms: [.macOS(.v14)],
+    // iOS is for agterm Remote (Mobile/), which uses AgTermCore only.
+    platforms: [.macOS(.v14), .iOS(.v17)],
+    products: [.library(name: "AgTermCore", targets: ["AgTermCore"])],
     dependencies: [
         .package(path: "Vendor/SwiftTerm"),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),

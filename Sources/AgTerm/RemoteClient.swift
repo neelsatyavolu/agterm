@@ -3,21 +3,23 @@ import AppKit
 import CryptoKit
 import Foundation
 
-/// Connects agterm to the agmux remote relay so the agmux phone app can watch and drive its tabs.
-/// agterm is its own desktop on the relay (own id and secret, never agmux's, which would knock agmux
-/// off). The phone has no terminal emulator, so each tab is a "terminal" thread whose timeline is
-/// the tab's screen as a code block; replies are typed into the tab the way agmux does it.
+/// Connects agterm to the agmux remote relay so agterm Remote (iPhone) and the agmux phone app can
+/// watch and drive its tabs. agterm is its own desktop on the relay (own id and secret, never agmux's,
+/// which would knock agmux off). Each tab is a "terminal" thread: agmux shows its transcript or its
+/// screen as a code block; agterm Remote also leases the live colored screen and presses keys
+/// (see `AgTermWire`). Replies are typed into the tab the way agmux does it.
 @MainActor
 final class RemoteClient: ObservableObject {
     static let shared = RemoteClient()
 
-    static let relayURL = ProcessInfo.processInfo.environment["AGTERM_RELAY_URL"]
-        ?? "wss://agmux-remote-relay.xanom.workers.dev/ws"
+    static let relayURL = relayOverride ?? AgTermWire.defaultRelay
+    static let relayOverride = ProcessInfo.processInfo.environment["AGTERM_RELAY_URL"]
     static let phoneURL = "https://remote.agmux.dev"
     static let enabledKey = "remoteEnabled"
 
     enum Connection: Equatable { case off, connecting, online }
-    struct Pairing: Equatable { let code: String; let url: String; let expires: Date }
+    /// `url` opens agterm Remote; `agmuxURL` pairs the agmux phone app instead.
+    struct Pairing: Equatable { let code: String; let url: String; let agmuxURL: String; let expires: Date }
 
     @Published private(set) var connection: Connection = .off
     @Published private(set) var pairing: Pairing?
@@ -26,6 +28,11 @@ final class RemoteClient: ObservableObject {
 
     /// The window's tabs; set by MainWindowController.
     var tabs: () -> [TerminalSession] = { [] }
+    /// Opens a tab in a folder, typing a command at its first prompt; returns the new tab's id.
+    /// Set by MainWindowController.
+    var openTab: (_ folder: String, _ command: String?) -> String? = { _, _ in nil }
+    /// agmux's projects, re-read at most once a minute for the phone's New Tab folders.
+    private var projects: (read: Date, paths: [String]) = (.distantPast, [])
 
     private var socket: URLSessionWebSocketTask?
     private var timers: [Timer] = []
@@ -36,6 +43,11 @@ final class RemoteClient: ObservableObject {
     private var lastThreads = ""
     private var approvals: [String: String] = [:] // tab id → request id
     private var lastProcessing: [String: Bool] = [:]
+    /// Tabs whose live screen agterm Remote is watching, until when; and the last frame sent.
+    private var screenLeases: [String: Date] = [:]
+    private var sentScreen: [String: String] = [:]
+    /// Conversations agterm Remote is reading, until when. agmux's subscriptions never lapse.
+    private var chatLeases: [String: Date] = [:]
     /// Agent tabs render from the agent's transcript (like agmux), rebuilt off the main thread
     /// only when the file changes.
     private struct Transcript { var path: URL; var modified: Date; var entries: [MobileTimelineEntry]; var model: String? }
@@ -92,6 +104,7 @@ final class RemoteClient: ObservableObject {
             repeatEvery(15) { [weak self] in self?.send(["type": "ping"]) },
             repeatEvery(5) { [weak self] in self?.checkAlive() },
             repeatEvery(2) { [weak self] in self?.pushUpdates() },
+            repeatEvery(0.3) { [weak self] in self?.pushScreens() },
             repeatEvery(60) { [weak self] in self?.send(["type": "devices.list"]) },
         ]
     }
@@ -187,7 +200,9 @@ final class RemoteClient: ObservableObject {
         case "pair.created":
             if let code = m["code"] as? String {
                 let expires = (m["expiresAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date().addingTimeInterval(600)
-                pairing = Pairing(code: code, url: "\(Self.phoneURL)#pair=\(code)&desktopId=\(credentials.desktopId)", expires: expires)
+                let link = PairLink(code: code, desktopId: credentials.desktopId, relay: Self.relayOverride)
+                pairing = Pairing(code: code, url: link.url.absoluteString,
+                                  agmuxURL: "\(Self.phoneURL)#pair=\(code)&desktopId=\(credentials.desktopId)", expires: expires)
             }
         case "pair.ok", "phone.paired":
             pairing = nil
@@ -195,6 +210,19 @@ final class RemoteClient: ObservableObject {
         case "threads.list":
             lastThreads = ""
             pushUpdates()
+        case "thread.subscribe" where m["screen"] as? Bool == true:
+            if let thread {
+                screenLeases[thread] = Date().addingTimeInterval(AgTermWire.screenLease)
+                // Any other phone may be the one asking, so only a renewal skips the full frame.
+                if m["renew"] as? Bool != true { sentScreen[thread] = nil }
+                sendScreen(thread)
+            }
+        case "thread.subscribe" where m["lease"] as? Bool == true:
+            if let thread {
+                chatLeases[thread] = Date().addingTimeInterval(AgTermWire.screenLease)
+                if m["renew"] as? Bool != true { sentTimeline[thread] = nil }
+                sendTimeline(thread)
+            }
         case "thread.subscribe":
             if let thread {
                 subscribed.insert(thread)
@@ -204,10 +232,17 @@ final class RemoteClient: ObservableObject {
         case "thread.unsubscribe":
             if let thread { subscribed.remove(thread) }
         case "message.send":
-            if let thread, let text = m["text"] as? String { type(text, into: thread) }
+            if let thread, m["raw"] as? Bool == true {
+                press(m["text"] as? String ?? "", keys: m["keys"] as? [String] ?? [], into: thread)
+            } else if let thread, let text = m["text"] as? String {
+                type(text, into: thread)
+            }
             if let thread, let request = m["requestId"] as? String {
                 send(["type": "message.accepted", "threadId": thread, "requestId": request])
             }
+        case "thread.create":
+            createTab(provider: m["provider"] as? String ?? "", folder: m["projectId"] as? String ?? "",
+                      request: m["requestId"] as? String)
         case "turn.interrupt":
             if let thread, let tab = tab(thread) { tab.view.send(txt: tab.agentName == "grok" ? "\u{3}" : "\u{1b}") }
         case "approval.respond":
@@ -236,20 +271,66 @@ final class RemoteClient: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { tab.view.send(txt: "\r") }
     }
 
+    /// agterm Remote's New Tab: an agent agterm knows (or a shell) in an existing folder.
+    private func createTab(provider: String, folder: String, request: String?) {
+        func fail(_ message: String) {
+            var error: [String: Any] = ["type": "error", "message": message]
+            error["requestId"] = request
+            send(error)
+        }
+        guard let command = NewTabOptions.command(provider: provider) else { return fail("agterm doesn't know that agent.") }
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder, isDirectory: &isFolder), isFolder.boolValue else {
+            return fail("That folder isn't on the Mac any more.")
+        }
+        guard let id = openTab(folder, command), let session = tab(id) else { return fail("agterm couldn't open a tab.") }
+        lastThreads = ""
+        pushUpdates()
+        var created: [String: Any] = ["type": "thread.created", "thread": row(session)]
+        created["requestId"] = request
+        send(created)
+    }
+
+    private func newTabOptions(_ sessions: [TerminalSession]) -> [String: Any] {
+        if Date().timeIntervalSince(projects.read) > 60 {
+            projects = (Date(), AgentIntegration.agmuxProjects().map(\.repoPath))
+        }
+        let agents = (AgentIntegration.installedAgents() ?? []).map { NewTabOptions.Agent(id: $0.id, title: $0.title) }
+        let folders = NewTabOptions.folders(tabs: sessions.map(\.cwd), projects: projects.paths, home: NSHomeDirectory()) {
+            var isFolder: ObjCBool = false
+            return FileManager.default.fileExists(atPath: $0, isDirectory: &isFolder) && isFolder.boolValue
+        }
+        let options = NewTabOptions(agents: agents, folders: folders, home: NSHomeDirectory())
+        guard let data = try? JSONEncoder().encode(options),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    /// agterm Remote's keys: `text` exactly as given, then each named key, with no Enter of our own.
+    private func press(_ text: String, keys: [String], into thread: String) {
+        guard let tab = tab(thread) else {
+            return send(["type": "error", "threadId": thread, "message": "That agterm tab is closed."])
+        }
+        let cursorKeys = tab.view.getTerminal().applicationCursor
+        let bytes = text + keys.compactMap { TerminalKey(rawValue: $0)?.bytes(applicationCursor: cursorKeys) }.joined()
+        if !bytes.isEmpty { tab.view.send(txt: bytes) }
+    }
+
     private static let iso = ISO8601DateFormatter()
 
     private func row(_ s: TerminalSession) -> [String: Any] {
-        var row: [String: Any] = [
-            "id": s.tabID, "title": s.topic, "provider": Self.provider(s.agentName), "interactionMode": "pty",
-            "surface": "terminal", "projectName": s.folder, "processing": s.status == .working,
-            "unread": s.status == .done, "needsApproval": s.status == .waiting,
-            "lastActive": Self.iso.string(from: s.signals.lastOutput ?? Date()),
-            "status": s.status == .working ? "Running" : (s.status == .done ? "Done" : "Idle"),
-        ]
-        if let diff = s.agentDiff { row["linesAdded"] = diff.added; row["linesRemoved"] = diff.removed }
-        // The raw model id, as agmux sends it; the phone shortens it ("Opus 5.5").
-        if let model = transcripts[s.tabID]?.model { row["model"] = model }
-        return row
+        let prompt = s.status == .waiting ? PermissionPrompt.read(s.screenText().components(separatedBy: "\n")) : nil
+        let row = RemoteTabRow(
+            id: s.tabID, title: s.topic, provider: Self.provider(s.agentName), projectName: s.folder,
+            processing: s.status == .working, unread: s.status == .done, needsApproval: s.status == .waiting,
+            lastActive: Self.iso.string(from: s.signals.lastOutput ?? Date()),
+            status: s.status == .working ? "Running" : (s.status == .done ? "Done" : "Idle"),
+            // The raw model id, as agmux sends it; the phone shortens it ("Opus 5.5").
+            model: transcripts[s.tabID]?.model, linesAdded: s.agentDiff?.added, linesRemoved: s.agentDiff?.removed,
+            agterm: TabInfo(status: s.status, agent: s.agentName, folder: s.folder, branch: s.git?.branch, prompt: prompt))
+        guard let data = try? JSONEncoder().encode(row),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
     }
 
     static func provider(_ agent: String?) -> String {
@@ -269,10 +350,11 @@ final class RemoteClient: ObservableObject {
         let sessions = tabs()
         sessions.forEach(refreshTranscript)
         let rows = sessions.map(row)
-        if let data = try? JSONSerialization.data(withJSONObject: rows, options: .sortedKeys),
+        let options = newTabOptions(sessions)
+        if let data = try? JSONSerialization.data(withJSONObject: [rows, options], options: .sortedKeys),
            let key = String(data: data, encoding: .utf8), key != lastThreads {
             lastThreads = key
-            send(["type": "threads.snapshot", "threads": rows])
+            send(["type": "threads.snapshot", "threads": rows, "agterm": options])
         }
         for (s, row) in zip(sessions, rows) {
             let processing = s.status == .working
@@ -287,7 +369,9 @@ final class RemoteClient: ObservableObject {
                 send(["type": "approval.resolved", "threadId": s.tabID, "requestId": request])
             }
         }
-        subscribed.forEach(sendTimeline)
+        let now = Date()
+        chatLeases = chatLeases.filter { $0.value > now }
+        subscribed.union(chatLeases.keys).forEach(sendTimeline)
     }
 
     /// Finds the tab's transcript and rebuilds its entries in the background when it changed.
@@ -310,7 +394,8 @@ final class RemoteClient: ObservableObject {
                 return nil
             }()
             var result: Transcript?
-            if let path, let modified = (try? path.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
+            // Not URL.resourceValues: it caches on the URL, and `known` is reused, so the date never moved.
+            if let path, let modified = (try? FileManager.default.attributesOfItem(atPath: path.path))?[.modificationDate] as? Date {
                 if let cached, cached.path == path, cached.modified == modified {
                     result = cached
                 } else if let text = try? String(contentsOf: path, encoding: .utf8) {
@@ -327,7 +412,7 @@ final class RemoteClient: ObservableObject {
                 self.transcripts[id] = result
                 if changed {
                     self.lastThreads = ""
-                    if self.subscribed.contains(id) { self.sendTimeline(id) }
+                    if self.subscribed.contains(id) || self.chatLeases[id] != nil { self.sendTimeline(id) }
                 }
             }
         }
@@ -355,6 +440,26 @@ final class RemoteClient: ObservableObject {
         let entry: [String: Any] = ["id": "screen-" + thread, "kind": "assistant",
                                     "text": fence + "\n" + screen + "\n" + fence, "ts": Int(Date().timeIntervalSince1970 * 1000)]
         send(["type": "timeline.snapshot", "threadId": thread, "entries": [entry]])
+    }
+
+    /// Live screens for agterm Remote: frames only when the screen changed, until the lease runs out.
+    private func pushScreens() {
+        guard connection == .online, !screenLeases.isEmpty else { return }
+        let now = Date()
+        for (thread, expiry) in screenLeases where expiry < now {
+            screenLeases[thread] = nil
+            sentScreen[thread] = nil
+        }
+        screenLeases.keys.forEach(sendScreen)
+    }
+
+    private func sendScreen(_ thread: String) {
+        guard let s = tab(thread), let data = try? JSONEncoder().encode(s.screenSnapshot()),
+              let screen = try? JSONSerialization.jsonObject(with: data) else { return }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        guard sentScreen[thread] != digest else { return }
+        sentScreen[thread] = digest
+        send(["type": "timeline.snapshot", "threadId": AgTermWire.screenThread(thread), "entries": [], "screen": screen])
     }
 
     private static func tail(_ text: String, lines: Int) -> String {

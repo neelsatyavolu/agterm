@@ -162,7 +162,9 @@ enum PriceList {
 
     /// The cached catalog (refreshed in the background when older than a day), or built-in prices.
     static func current() -> PriceCatalog {
-        let modified = (try? cacheURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        // Not URL.resourceValues: the static URL would keep its first date off the main thread,
+        // and the list would be fetched on every sync once a day old.
+        let modified = (try? FileManager.default.attributesOfItem(atPath: cacheURL.path))?[.modificationDate] as? Date
         if modified.map({ Date().timeIntervalSince($0) > 86400 }) ?? true { refresh() }
         if let data = try? Data(contentsOf: cacheURL), let catalog = try? PriceCatalog(openRouterJSON: data) { return catalog }
         return PriceCatalog.builtIn

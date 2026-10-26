@@ -84,13 +84,13 @@ struct TeamsSection: View {
     }
 }
 
-/// Pair the agmux phone app with this Mac's agterm tabs.
+/// Pair agterm Remote (or the agmux phone app) with this Mac's agterm tabs.
 struct PhoneSection: View {
     @ObservedObject var remote: RemoteClient
 
     var body: some View {
         Section {
-            Toggle("Allow the agmux phone app to see and type into agterm tabs", isOn: Binding(
+            Toggle("Allow your phone to see and type into agterm tabs", isOn: Binding(
                 get: { remote.isEnabled }, set: { remote.setEnabled($0) }))
             if remote.isEnabled {
                 LabeledContent(status) {
@@ -102,11 +102,16 @@ struct PhoneSection: View {
                             Image(nsImage: qr).interpolation(.none).resizable().frame(width: 132, height: 132)
                         }
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Scan with your phone's camera, or open remote.agmux.dev and enter:")
+                            Text("Scan with your iPhone's camera to open agterm Remote. Pair code:")
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(pairing.code).font(.system(.title2, design: .monospaced).weight(.semibold))
                             Text("Expires \(pairing.expires.formatted(date: .omitted, time: .shortened)).")
                                 .foregroundStyle(.secondary)
+                            Button("Copy Link for the agmux Phone App") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(pairing.agmuxURL, forType: .string)
+                            }
+                            .buttonStyle(.link)
                         }
                     }
                     .padding(.vertical, 4)
@@ -116,7 +121,8 @@ struct PhoneSection: View {
             Text("Phone")
         } footer: {
             Text("Uses the agmux remote relay over an encrypted connection (TLS; the relay can read what passes through it). "
-                 + "The agmux phone app keeps one paired Mac at a time, so pairing agterm replaces agmux on that phone.")
+                 + "agterm Remote shows each tab's live screen and can press keys in it. The agmux phone app works too, "
+                 + "but keeps one paired Mac at a time, so pairing agterm replaces agmux on that phone.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)

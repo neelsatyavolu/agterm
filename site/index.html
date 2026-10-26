@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=0.6.0">
+  <link rel="stylesheet" href="/styles.css?v=1.0.0">
   <script defer src="https://analytics.n3el.dev/p.js"></script>
 </head>
 <body>
@@ -53,11 +53,11 @@
         <a class="btn btn-primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
         <a class="btn btn-ghost" href="https://github.com/neelsatyavolu/agterm">Source on GitHub</a>
       </div>
-      <p class="meta hero-meta">v0.6.0 · 3.5 MB · macOS 14+ · Apple silicon and Intel · signed and notarized · updates itself</p>
+      <p class="meta hero-meta">v1.0.0 · 3.5 MB · macOS 14+ · Apple silicon and Intel · signed and notarized · updates itself</p>
     </section>
 
     <figure class="shot wrap">
-      <a class="shot-link" href="/agterm-window.png?v=0.6.0" aria-label="Open the full-size screenshot"><img src="/agterm-window.png?v=0.6.0" width="1240" height="550"
+      <a class="shot-link" href="/agterm-window.png?v=1.0.0" aria-label="Open the full-size screenshot"><img src="/agterm-window.png?v=1.0.0" width="1240" height="550"
            alt="The agterm window with four tabs. Fix login redirect loop is working in web, +4 −1 on main. Rename env vars in workers needs you in api, +18 −18 on env-rename. Add dark mode tokens is done in design, +142 −9 on tokens. The fourth tab is a zsh shell in docs. The selected tab shows a Claude Code session fixing a redirect and running its tests."></a>
       <figcaption>The real app, rendered off screen by its debug self-test with stand-in agents. agterm measured each diff itself, with git, from the moment that agent started.</figcaption>
     </figure>
@@ -74,17 +74,17 @@
 
         <ul class="cells cells-3 states">
           <li>
-            <img src="/tab-working.png?v=0.6.0" width="272" height="50" alt="Tab card: Fix login redirect loop, WORKING, web, +4 −1, main.">
+            <img src="/tab-working.png?v=1.0.0" width="272" height="50" alt="Tab card: Fix login redirect loop, WORKING, web, +4 −1, main.">
             <h3><span class="dot dot-working" aria-hidden="true"></span><span class="s-working">Working</span></h3>
             <p>The agent is running. For Claude Code that's the spinner in its title; for other programs, it's output that isn't an echo of your typing.</p>
           </li>
           <li>
-            <img src="/tab-needs.png?v=0.6.0" width="272" height="50" alt="Tab card: Rename env vars in workers, NEEDS YOU, api, +18 −18, env-rename.">
+            <img src="/tab-needs.png?v=1.0.0" width="272" height="50" alt="Tab card: Rename env vars in workers, NEEDS YOU, api, +18 −18, env-rename.">
             <h3><span class="dot dot-needs" aria-hidden="true"></span><span class="s-needs">Needs you</span></h3>
             <p>A permission prompt is on screen, in any tab (the one you're looking at too), or the bell rang in a tab you aren't watching.</p>
           </li>
           <li>
-            <img src="/tab-done.png?v=0.6.0" width="272" height="50" alt="Tab card: Add dark mode tokens, DONE, design, +142 −9, tokens.">
+            <img src="/tab-done.png?v=1.0.0" width="272" height="50" alt="Tab card: Add dark mode tokens, DONE, design, +142 −9, tokens.">
             <h3><span class="dot dot-done" aria-hidden="true"></span><span class="s-done">Done</span></h3>
             <p>It finished while you were in another tab. agterm can post a notification and play a sound; clicking the notification opens that tab.</p>
           </li>
@@ -171,7 +171,7 @@
         <div class="cells cells-2 prompt-pair">
           <article>
             <figure class="pane">
-              <img src="/cd-suggestions.png?v=0.6.0" width="495" height="89" alt="A shell line reading cd agter, with a suggestion list under the cursor: agterm in ~/Documents/GitHub, and the hints tab to go, arrows to choose, esc to hide.">
+              <img src="/cd-suggestions.png?v=1.0.0" width="495" height="89" alt="A shell line reading cd agter, with a suggestion list under the cursor: agterm in ~/Documents/GitHub, and the hints tab to go, arrows to choose, esc to hide.">
             </figure>
             <h3><code class="plain">cd</code> by folder name</h3>
             <p>Type <code>cd</code> and part of a folder's name. agterm lists matching folders from your home folder (three levels down) and the folders your tabs have visited. <kbd>⇥</kbd> fills in the full path.</p>
@@ -195,7 +195,7 @@
           <p class="label"><span class="num">05</span>With agmux</p>
           <div>
             <h2 id="agmux-title">Shared with agmux</h2>
-            <p class="sec-lede">With <a class="inline" href="https://agmux.dev">agmux</a> installed, agents in agterm use the same project memory and second opinions as agents in agmux, and the agmux phone app can follow your tabs.</p>
+            <p class="sec-lede">With <a class="inline" href="https://agmux.dev">agmux</a> installed, agents in agterm use the same project memory and second opinions as agents in agmux, and your tabs reach your phone through agmux's relay.</p>
           </div>
         </header>
 
@@ -210,14 +210,14 @@
           </li>
           <li>
             <h3>Your phone</h3>
-            <p>Pair the agmux phone app with a QR code or an 8-letter code. Claude Code and Codex tabs read as the conversation itself, message by message and tool call by tool call. Reply, stop an agent, or allow and deny a permission prompt, and get a notification when one finishes or needs you.</p>
+            <p>agterm Remote, agterm's own iPhone app (in testing), pairs with a QR code. Watch any tab's live screen, answer an agent's prompt with a tap, type a reply, press Esc or the arrows, stop it, or open a new tab with any agent in one of your folders. Claude Code and Codex tabs also read as the conversation. A notification arrives when an agent finishes or needs you.</p>
           </li>
           <li>
             <h3>agmux Teams</h3>
             <p>Sign in and agterm reports hourly totals for sessions started in it: tokens, estimated cost, active time, turns and tool calls. Prompts, replies, code, diffs, file paths and terminal output stay on your Mac.</p>
           </li>
         </ul>
-        <p class="footnote">agterm adds the memory and consult servers when you type <code>claude</code> or <code>codex</code> in its tabs, skips any you configured yourself and edits no config files. <code>AGTERM_MCP=0</code> turns them off for one run. The phone app keeps one paired Mac, so pairing agterm replaces agmux on that phone.</p>
+        <p class="footnote">agterm adds the memory and consult servers when you type <code>claude</code> or <code>codex</code> in its tabs, skips any you configured yourself and edits no config files. <code>AGTERM_MCP=0</code> turns them off for one run. The agmux phone app works with agterm too, but keeps one paired Mac, so pairing agterm replaces agmux on that phone.</p>
       </div>
     </section>
 
@@ -294,7 +294,7 @@
   <footer class="foot">
     <div class="wrap foot-row">
       <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
-      <p class="meta">v0.6.0 · MIT licensed · <a href="https://github.com/neelsatyavolu/agterm">Source</a> · <a href="https://github.com/neelsatyavolu/agterm/releases">Releases</a> · <a href="https://xanom.co">Xanom</a></p>
+      <p class="meta">v1.0.0 · MIT licensed · <a href="https://github.com/neelsatyavolu/agterm">Source</a> · <a href="https://github.com/neelsatyavolu/agterm/releases">Releases</a> · <a href="https://xanom.co">Xanom</a></p>
     </div>
   </footer>
 </body>

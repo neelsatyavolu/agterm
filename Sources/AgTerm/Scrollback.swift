@@ -74,7 +74,7 @@ enum Scrollback {
                      style: CellStyle(rawValue: attribute.style.rawValue))
     }
 
-    private static func cellColor(_ color: Attribute.Color) -> CellColor {
+    static func cellColor(_ color: Attribute.Color) -> CellColor {
         switch color {
         case .ansi256(let code): .ansi(code)
         case let .trueColor(r, g, b): .rgb(r, g, b)

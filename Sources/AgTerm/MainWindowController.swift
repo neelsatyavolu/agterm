@@ -45,6 +45,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             self.window?.makeKeyAndOrderFront(nil)
         }
         RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
+        RemoteClient.shared.openTab = { [weak self] folder, command in
+            guard let self else { return nil }
+            self.addTab(cwd: folder, restoring: nil, command: command)
+            return self.sessions.last?.tabID
+        }
         Notifier.shared.onOpen = { [weak self] tabID in
             guard let self, let index = self.sessions.firstIndex(where: { $0.tabID == tabID }) else { return }
             self.window?.makeKeyAndOrderFront(nil)
