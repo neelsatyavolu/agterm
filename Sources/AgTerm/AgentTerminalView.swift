@@ -2,23 +2,62 @@ import AgTermCore
 import AppKit
 import SwiftTerm
 
-/// A local-process terminal that timestamps output, keystrokes and bells so tabs can tell
-/// whether the program inside is working.
-final class AgentTerminalView: LocalProcessTerminalView {
+/// What a tab hears from its terminal, as SwiftTerm's LocalProcessTerminalViewDelegate told it.
+protocol AgentTerminalViewDelegate: AnyObject {
+    func sizeChanged(source: AgentTerminalView, newCols: Int, newRows: Int)
+    func setTerminalTitle(source: AgentTerminalView, title: String)
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?)
+    func processTerminated(source: TerminalView, exitCode: Int32?)
+}
+
+/// A terminal showing a shell through a `PtyLink` (in the sessions helper, or in-process) that
+/// timestamps output, keystrokes and bells so tabs can tell whether the program inside is working.
+final class AgentTerminalView: TerminalView, TerminalViewDelegate {
     var onOutput: (() -> Void)?
     /// Bytes sent to the program: your keystrokes, pastes, and replies from the phone.
     var onInput: (([UInt8]) -> Void)?
     var onBell: (() -> Void)?
+    weak var processDelegate: AgentTerminalViewDelegate?
+    /// The shell shown here; set once with `attach`.
+    private(set) var link: PtyLink!
 
     /// While set, the program's output waits here instead of reaching the screen.
     private var heldOutput: [UInt8]?
 
-    override func dataReceived(slice: ArraySlice<UInt8>) {
+    override init(frame: CGRect, font: NSFont?, options: TerminalOptions) {
+        super.init(frame: frame, font: font, options: options)
+        terminalDelegate = self
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        terminalDelegate = self
+    }
+
+    /// Shows `link`'s shell. Call in the main-queue turn that made the link, before its output arrives.
+    func attach(_ link: PtyLink) {
+        self.link = link
+        link.onData = { [weak self] bytes in self?.dataReceived(slice: bytes[...]) }
+        link.onExit = { [weak self] status in
+            guard let self else { return }
+            self.processDelegate?.processTerminated(source: self, exitCode: status)
+        }
+    }
+
+    /// The pty size for the current grid, with its pixel size.
+    func windowSize() -> winsize {
+        let terminal = getTerminal()
+        let cell = cellSizeInPixels(source: terminal) ?? (width: 0, height: 0)
+        return winsize(ws_row: UInt16(terminal.rows), ws_col: UInt16(terminal.cols),
+                       ws_xpixel: UInt16(clamping: cell.width * terminal.cols), ws_ypixel: UInt16(clamping: cell.height * terminal.rows))
+    }
+
+    func dataReceived(slice: ArraySlice<UInt8>) {
         if heldOutput != nil {
             heldOutput?.append(contentsOf: slice)
             return
         }
-        super.dataReceived(slice: slice)
+        feed(byteArray: slice)
         onOutput?()
     }
 
@@ -33,11 +72,39 @@ final class AgentTerminalView: LocalProcessTerminalView {
         if !held.isEmpty { dataReceived(slice: held[...]) }
     }
 
-    override func send(source: TerminalView, data: ArraySlice<UInt8>) {
+    // MARK: TerminalViewDelegate
+
+    func send(source: TerminalView, data: ArraySlice<UInt8>) {
         onInput?(Array(data))
-        super.send(source: source, data: data)
+        link?.write(data)
     }
 
+    func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+        link?.resize(windowSize())
+        processDelegate?.sizeChanged(source: self, newCols: newCols, newRows: newRows)
+    }
+
+    func setTerminalTitle(source: TerminalView, title: String) {
+        processDelegate?.setTerminalTitle(source: self, title: title)
+    }
+
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        processDelegate?.hostCurrentDirectoryUpdate(source: source, directory: directory)
+    }
+
+    func scrolled(source: TerminalView, position: Double) {}
+
+    func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+
+    func clipboardCopy(source: TerminalView, content: Data) {
+        guard let text = String(bytes: content, encoding: .utf8) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([text as NSString])
+    }
+
+    func clipboardRead(source: TerminalView) -> Data? {
+        NSPasteboard.general.string(forType: .string)?.data(using: .utf8)
+    }
 
     // MARK: Smooth wheel scrolling
 

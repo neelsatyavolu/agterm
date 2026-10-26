@@ -3,7 +3,7 @@ import AppKit
 import SwiftTerm
 
 /// One tab: a shell in a pty plus what we know about the program running in it.
-final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
+final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     let view: AgentTerminalView
     private(set) var rawTitle = ""
     private(set) var parsedTitle = ParsedTitle(topic: "", activity: .unknown)
@@ -27,6 +27,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     private(set) var signals = StatusSignals()
     private(set) var status: TabStatus = .idle
     let shellName: String
+    private let shellPath: String
 
     /// Called when anything shown on the tab may have changed.
     var onChange: (() -> Void)?
@@ -44,15 +45,46 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     init(cwd: String, restoring saved: SavedTab? = nil, command: String? = nil) {
         self.cwd = cwd
         FolderIndex.shared.visit(cwd)
-        let shell = ProcInfo.loginShell()
-        shellName = (shell as NSString).lastPathComponent
+        shellPath = ProcInfo.loginShell()
+        shellName = (shellPath as NSString).lastPathComponent
+        view = Self.makeView()
+        super.init()
+        setUpView()
+        restore(saved, command: command)
+        view.attach(spawnShell())
+    }
+
+    /// Reconnects to a shell the helper kept. The helper's replay is the tab's history, so the saved
+    /// one isn't shown and nothing is typed. If the shell is gone, opens a new one restoring `saved`.
+    init(attaching info: SessionInfo, saved: SavedTab?) {
+        cwd = saved?.cwd ?? info.cwd
+        FolderIndex.shared.visit(cwd)
+        shellPath = ProcInfo.loginShell()
+        shellName = (shellPath as NSString).lastPathComponent
+        view = Self.makeView()
+        super.init()
+        setUpView()
+        if let link = try? SessionHelper.shared()?.attach(id: info.id) {
+            view.attach(link)
+        } else {
+            restore(saved, command: nil)
+            view.attach(spawnShell())
+        }
+    }
+
+    private static func makeView() -> AgentTerminalView {
         var options = TerminalOptions.default
         options.scrollback = Scrollback.maxLines
-        view = AgentTerminalView(frame: .zero, font: nil, options: options)
-        super.init()
+        return AgentTerminalView(frame: .zero, font: nil, options: options)
+    }
+
+    private func setUpView() {
         configure()
         applyAppearance()
         view.processDelegate = self
+    }
+
+    private func restore(_ saved: SavedTab?, command: String?) {
         if let saved {
             if !saved.scrollback.isEmpty {
                 view.feed(text: saved.scrollback + "\r\n\u{1b}[0;2m— restored \(Self.restoredStamp()) —\u{1b}[0m\r\n")
@@ -60,8 +92,21 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
             pendingCommand = saved.resume
         }
         if let command { pendingCommand = command }
-        view.startProcess(executable: shell, args: [], environment: environment(),
-                          execName: "-" + shellName, currentDirectory: cwd)
+    }
+
+    /// A login shell in the sessions helper, or in-process if the helper can't be used.
+    private func spawnShell() -> PtyLink {
+        let terminal = view.getTerminal()
+        let request = SpawnRequest(executable: shellPath, argv: ["-" + shellName], env: environment(), cwd: cwd,
+                                   cols: UInt16(terminal.cols), rows: UInt16(terminal.rows))
+        if let helper = SessionHelper.shared() {
+            do {
+                return try helper.spawn(request)
+            } catch {
+                NSLog("agterm: the sessions helper couldn't start a shell (%@); running it in-process", String(describing: error))
+            }
+        }
+        return LocalLink(request, size: view.windowSize())
     }
 
     private static func restoredStamp() -> String {
@@ -84,7 +129,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     func snapshot() -> SavedTab {
         pollProcess()
         var resume: String?
-        if let fg = foregroundPid, fg != view.process.shellPid, !signals.exited {
+        if let fg = foregroundPid, fg != view.link.shellPid, !signals.exited {
             let argv = ProcInfo.arguments(pid: fg)
             resume = AgentResume.commandLine(argv: argv, claudeSessionID: ProcInfo.claudeSessionID(pid: fg))
                 ?? codexResume(argv: argv)
@@ -189,7 +234,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     var isRunningProgram: Bool {
         pollProcess()
         guard !signals.exited, let fg = foregroundPid else { return false }
-        return fg != view.process.shellPid
+        return fg != view.link.shellPid
     }
 
     // MARK: Polling
@@ -213,9 +258,9 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
 
     /// Reads the foreground process and its folder from the kernel.
     func pollProcess() {
-        let shellPid = view.process.shellPid
+        let shellPid = view.link.shellPid
         guard !signals.exited, shellPid > 0 else { return }
-        let fg = ProcInfo.foregroundPid(ptyFd: view.process.childfd) ?? shellPid
+        let fg = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd) ?? shellPid
         foregroundPid = fg
         let name = ProcInfo.name(pid: fg)
         updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
@@ -299,48 +344,32 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
 
     /// The process group in the foreground, if it isn't the shell (an agent, say).
     var foregroundGroup: pid_t? {
-        guard !signals.exited, let group = ProcInfo.foregroundPid(ptyFd: view.process.childfd),
-              group != view.process.shellPid else { return nil }
+        guard !signals.exited, let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd),
+              group != view.link.shellPid else { return nil }
         return group
     }
 
     /// Signals the job in the foreground (an agent), leaving the shell running.
     func signalForeground(_ signal: Int32) {
-        let shell = view.process.shellPid
-        guard let group = ProcInfo.foregroundPid(ptyFd: view.process.childfd), group != shell, group > 0 else { return }
+        let shell = view.link.shellPid
+        guard let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd), group != shell, group > 0 else { return }
         killpg(group, signal)
     }
 
     /// Ends the shell the way Terminal.app does: SIGHUP to the shell and to the foreground job
-    /// (so an agent running in the tab exits too), SIGKILL if the shell is still there after
-    /// 2 s, then reap it. SwiftTerm stops watching the child on terminate, so without the wait
-    /// every closed tab would leave a zombie.
+    /// (so an agent running in the tab exits too), SIGKILL if the shell is still there after 2 s.
     func terminate() {
         guard !signals.exited else { return }
-        let pid = view.process.shellPid
-        let fg = ProcInfo.foregroundPid(ptyFd: view.process.childfd)
-        if pid > 0 { kill(pid, SIGHUP) }
-        if let fg, fg != pid { killpg(fg, SIGHUP) }
-        view.terminate()
-        guard pid > 0 else { return }
-        DispatchQueue.global(qos: .utility).async {
-            var status: Int32 = 0
-            for _ in 0..<20 {
-                if waitpid(pid, &status, WNOHANG) != 0 { return }
-                usleep(100_000)
-            }
-            kill(pid, SIGKILL)
-            waitpid(pid, &status, 0)
-        }
+        view.link.end()
     }
 
-    // MARK: LocalProcessTerminalViewDelegate
+    // MARK: AgentTerminalViewDelegate
 
-    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+    func sizeChanged(source: AgentTerminalView, newCols: Int, newRows: Int) {
         signals.lastResize = Date()
     }
 
-    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
+    func setTerminalTitle(source: AgentTerminalView, title: String) {
         guard title != rawTitle else { return }
         rawTitle = title
         signals.lastTitleChange = Date()
