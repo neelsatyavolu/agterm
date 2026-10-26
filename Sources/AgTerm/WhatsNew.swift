@@ -10,11 +10,15 @@ enum WhatsNew {
     private static let notFound = "\u{1B}[2mThe changelog wasn't found.\u{1B}[0m"
 
     /// After an update, shows the releases since the last version seen, then remembers this one.
+    /// `previousInstall` (saved tabs existed at launch) covers updates from before What's New.
     /// Builds without a version (`swift build`) never show it on their own.
-    static func showIfUpdated(in controller: MainWindowController) {
+    static func showIfUpdated(in controller: MainWindowController, previousInstall: Bool) {
         guard let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return }
         let defaults = UserDefaults.standard
-        let unseen = Changelog.unseen(releases() ?? [], lastSeen: defaults.string(forKey: lastSeenKey), current: current)
+        let all = releases() ?? []
+        let lastSeen = Changelog.effectiveLastSeen(stored: defaults.string(forKey: lastSeenKey), previousInstall: previousInstall,
+                                                   releases: all, current: current)
+        let unseen = Changelog.unseen(all, lastSeen: lastSeen, current: current)
         defaults.set(current, forKey: lastSeenKey)
         guard !unseen.isEmpty else { return }
         controller.showWhatsNew { ChangelogRender.lines(unseen, columns: $0, note: updateNote) }

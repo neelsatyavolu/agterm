@@ -57,6 +57,15 @@ public enum Changelog {
         }
     }
 
+    /// The version to compare against. Without a stored one, an earlier install (saved tabs exist)
+    /// came from before What's New, so it counts as the newest release older than `current`.
+    public static func effectiveLastSeen(stored: String?, previousInstall: Bool, releases: [Release], current: String) -> String? {
+        if let stored { return stored }
+        guard previousInstall else { return nil }
+        return releases.filter { compare($0.version, current) == .orderedAscending }
+            .max { compare($0.version, $1.version) == .orderedAscending }?.version
+    }
+
     /// Numeric per dot-component; missing components count as 0.
     public static func compare(_ a: String, _ b: String) -> ComparisonResult {
         let x = a.split(separator: ".").map { Int($0) ?? 0 }

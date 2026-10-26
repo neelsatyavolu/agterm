@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shortcutObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Read before anything this run could save tabs, so a first launch never looks like an update.
+        let previousInstall = FileManager.default.fileExists(atPath: WorkspaceStore.fileURL.path)
         NSApp.mainMenu = buildMenu()
         AgentIntegration.installShellIntegration()
         AgentTerminalView.installScrollSmoothing()
@@ -21,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
-        WhatsNew.showIfUpdated(in: controller)
+        WhatsNew.showIfUpdated(in: controller, previousInstall: previousInstall)
         askForDiskAccessIfNeeded()
         TeamsSync.shared.start()
         TeamAccounts.shared.start()

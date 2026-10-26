@@ -55,4 +55,12 @@ final class ChangelogTests: XCTestCase {
         XCTAssertEqual(releases.flatMap(\.items).filter { $0.text.contains("stray") }.count, 0)
         XCTAssertEqual(Changelog.parse("just words\n- Added: nothing"), [])
     }
+
+    func testEffectiveLastSeen() {
+        let releases = Changelog.parse(sample)
+        XCTAssertEqual(Changelog.effectiveLastSeen(stored: "1.0.0", previousInstall: true, releases: releases, current: "1.0.2"), "1.0.0")
+        XCTAssertNil(Changelog.effectiveLastSeen(stored: nil, previousInstall: false, releases: releases, current: "1.0.2"))
+        XCTAssertEqual(Changelog.effectiveLastSeen(stored: nil, previousInstall: true, releases: releases, current: "1.0.2"), "1.0.1")
+        XCTAssertNil(Changelog.effectiveLastSeen(stored: nil, previousInstall: true, releases: releases, current: "1.0.0"))
+    }
 }
