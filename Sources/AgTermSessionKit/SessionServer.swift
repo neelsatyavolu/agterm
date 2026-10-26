@@ -82,9 +82,7 @@ public final class SessionServer {
             let fd = accept(listenFd, nil, nil)
             guard fd >= 0 else { return }
             UnixSocket.configure(fd)
-            var uid: uid_t = 0
-            var gid: gid_t = 0
-            guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else {
+            guard (try? UnixSocket.requirePeer(fd, uid: getuid())) != nil else {
                 close(fd)
                 continue
             }

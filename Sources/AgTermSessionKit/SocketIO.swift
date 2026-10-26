@@ -5,6 +5,8 @@ public enum WireError: Error, Equatable {
     case closed
     case timedOut
     case pathTooLong
+    /// The process serving the socket runs as another user.
+    case untrustedPeer
     /// The other side answered with `error`.
     case remote(String)
     case unexpectedReply
@@ -15,7 +17,8 @@ public enum WireError: Error, Equatable {
 ///
 /// Two ways to use it: blocking (`send` / `receive`, for clients and tests), or event-driven
 /// after `startReading(queue:)`, where messages arrive on `onMessage` and sends queue up
-/// instead of blocking. A queue that grows past `maxQueuedBytes` closes the connection: a
+/// instead of blocking. A backlog more than `maxQueuedBytes` beyond the largest message in it
+/// closes the connection (one big replay is fine; output piling up behind it is not): a
 /// client that far behind reattaches and gets a fresh replay.
 public final class WireConnection {
     public static let maxQueuedBytes = 8 * 1024 * 1024
@@ -32,6 +35,8 @@ public final class WireConnection {
 
     private struct Pending {
         let data: Data
+        /// Size of the whole message this frame belongs to.
+        let messageBytes: Int
         var offset = 0
         /// A dup of the descriptor to pass; closed once it has gone out.
         var fd: Int32?
@@ -64,8 +69,18 @@ public final class WireConnection {
         controlBuffer.deallocate()
     }
 
+    /// Connects to the helper at `path`, refusing a socket directory others could write to
+    /// (`SessionPathError`) or a server running as another user (`WireError.untrustedPeer`).
     public static func connect(path: String) throws -> WireConnection {
-        WireConnection(fd: try UnixSocket.connect(path: path))
+        try SessionPaths.verifyDirectory((path as NSString).deletingLastPathComponent)
+        let fd = try UnixSocket.connect(path: path)
+        do {
+            try UnixSocket.requirePeer(fd, uid: getuid())
+        } catch {
+            Darwin.close(fd)
+            throw error
+        }
+        return WireConnection(fd: fd)
     }
 
     /// Sends `hello` and returns the server's `hello`. The caller compares versions.
@@ -83,6 +98,7 @@ public final class WireConnection {
     /// with the first bytes of the message.
     public func send(_ m: WireMessage, fd passing: Int32? = nil) throws {
         let frames = Self.frames(for: m)
+        let messageBytes = frames.reduce(0) { $0 + $1.count }
         lock.lock()
         defer { lock.unlock() }
         guard !closed else { throw WireError.closed }
@@ -92,14 +108,16 @@ public final class WireConnection {
             guard dup! >= 0 else { throw POSIXError.current }
         }
         for (index, frame) in frames.enumerated() {
-            outbox.append(Pending(data: frame, fd: index == 0 ? dup : nil))
+            outbox.append(Pending(data: frame, messageBytes: messageBytes, fd: index == 0 ? dup : nil))
             queuedBytes += frame.count
         }
-        if queue != nil && queuedBytes > Self.maxQueuedBytes {
+        try flushLocked()
+        guard queue != nil, queuedBytes > Self.maxQueuedBytes else { return }
+        let largest = outbox.lazy.map(\.messageBytes).max() ?? 0
+        if queuedBytes - largest > Self.maxQueuedBytes {
             closeLocked()
             throw WireError.closed
         }
-        try flushLocked()
     }
 
     /// Closes once everything queued has been written (right away if nothing is).

@@ -8,9 +8,14 @@ final class SessionServerTests: XCTestCase {
     private var dir = ""
     private var server: SessionServer!
     private var pids: [pid_t] = []
+    private var savedHUP: sig_t?
+    private var savedPIPE: sig_t?
     private var socketPath: String { dir + "/s.sock" }
 
     override func setUpWithError() throws {
+        // Like the real daemon: shells must not inherit these.
+        savedHUP = signal(SIGHUP, SIG_IGN)
+        savedPIPE = signal(SIGPIPE, SIG_IGN)
         var template = Array("/tmp/agst.XXXXXX".utf8CString)
         guard let made = mkdtemp(&template) else { throw POSIXError(.EIO) }
         dir = String(cString: made)
@@ -23,6 +28,8 @@ final class SessionServerTests: XCTestCase {
         server.stop()
         for pid in pids { XCTAssertNotEqual(kill(pid, 0), 0, "child \(pid) outlived the server") }
         try? FileManager.default.removeItem(atPath: dir)
+        signal(SIGHUP, savedHUP)
+        signal(SIGPIPE, savedPIPE)
     }
 
     func testSpawnRunsCommandAndStreamsOutput() throws {
@@ -80,8 +87,11 @@ final class SessionServerTests: XCTestCase {
         let client = try connect()
         defer { client.close() }
         let info = try spawn(client, executable: "/bin/sleep", argv: ["sleep", "30"])
+        let sent = Date()
         try client.send(.kill(id: info.id, signal: SIGHUP))
-        XCTAssertNotNil(try waitForExit(client, id: info.id, timeout: 2))
+        // Well inside the 2 s SIGKILL escalation, so SIGHUP itself ended it.
+        XCTAssertEqual(try waitForExit(client, id: info.id, timeout: 1), 128 + SIGHUP)
+        XCTAssertLessThan(Date().timeIntervalSince(sent), 1)
         XCTAssertNotEqual(kill(info.pid, 0), 0)
     }
 

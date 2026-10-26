@@ -30,6 +30,14 @@ enum UnixSocket {
         }
     }
 
+    /// Throws `untrustedPeer` unless the process at the other end runs as `uid`.
+    static func requirePeer(_ fd: Int32, uid expected: uid_t) throws {
+        var uid: uid_t = 0
+        var gid: gid_t = 0
+        guard getpeereid(fd, &uid, &gid) == 0 else { throw POSIXError.current }
+        guard uid == expected else { throw WireError.untrustedPeer }
+    }
+
     /// Prepares a descriptor from `socket` or `accept`.
     static func configure(_ fd: Int32) {
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)

@@ -15,16 +15,26 @@ public enum SessionPaths {
         text.utf8.reduce(0x811c_9dc5 as UInt32) { ($0 ^ UInt32($1)) &* 0x0100_0193 }
     }
 
-    /// Creates `path` as a 0700 directory if missing, then refuses it unless it is a real
-    /// directory (not a symlink) owned by us with no group or other access.
+    /// Creates `path` as a 0700 directory if missing, then checks it with `verifyDirectory`.
     public static func prepareDirectory(_ path: String) throws {
         if mkdir(path, 0o700) != 0 && errno != EEXIST { throw POSIXError.current }
+        try verifyDirectory(path)
+    }
+
+    /// Refuses `path` unless it is a real directory (not a symlink) owned by us with no group
+    /// or other access: anyone else able to write there could stand in for the helper.
+    public static func verifyDirectory(_ path: String) throws {
         var info = stat()
         guard lstat(path, &info) == 0 else { throw POSIXError.current }
         guard info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid(), info.st_mode & 0o077 == 0 else {
-            throw POSIXError(.EPERM)
+            throw SessionPathError.untrustedDirectory(path)
         }
     }
+}
+
+public enum SessionPathError: Error, Equatable {
+    /// The socket's directory is a symlink, not ours, or open to group or others.
+    case untrustedDirectory(String)
 }
 
 extension POSIXError {
