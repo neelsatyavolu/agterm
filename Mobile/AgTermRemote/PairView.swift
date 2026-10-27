@@ -49,11 +49,21 @@ struct PairView: View {
                     Button("Paste Link", action: paste)
                         .buttonStyle(InkButtonStyle(kind: .ghost))
                 }
+                // App Review, and anyone without agterm yet, can look around with sample tabs.
+                Button("No Mac nearby? Try the demo") { problem = nil; remote.startDemo() }
+                    .font(.system(size: 15))
+                    .foregroundStyle(Ink.accent)
+                    .padding(.top, 20)
+                    .accessibilityIdentifier("try-demo")
             }
             Spacer()
             Text("Connects through the agmux relay over TLS. agterm on the Mac must be running.")
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.fg3)
+            Link("Privacy Policy", destination: privacyPolicyURL)
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.fg2)
+                .padding(.top, 6)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

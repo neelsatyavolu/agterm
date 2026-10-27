@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy · agterm</title>
+  <meta name="description" content="What agterm and the agterm Remote iPhone app collect, where your data goes, and how to reach us.">
+  <meta name="theme-color" content="#0E0E0D">
+  <link rel="canonical" href="https://agterm.xanom.co/privacy">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="/styles.css?v=1.0.6">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
+    </div>
+  </header>
+
+  <main id="main" class="block policy">
+    <div class="wrap">
+      <header class="sec-head">
+        <p class="label">Privacy</p>
+        <div>
+          <h1 class="policy-title">Privacy policy</h1>
+          <p class="sec-lede">This covers agterm for Mac and agterm Remote for iPhone, both made by Xanom. Neither app has ads, analytics or tracking, and agterm Remote has no accounts. Last updated October 26, 2026.</p>
+        </div>
+      </header>
+
+      <div class="prose">
+        <h2>agterm for Mac</h2>
+        <p>agterm runs on your Mac. Your terminal sessions, files, settings and agent sign-ins stay there. It contacts the network only to:</p>
+        <ul>
+          <li>check GitHub for agterm updates;</li>
+          <li>download OpenRouter's public list of AI model prices, to estimate what sessions cost;</li>
+          <li>read your usage limits from AI services you have signed in to, with those sign-ins;</li>
+          <li>if you sign in to agmux Teams in Settings → Teams &amp; Phone, send hourly usage totals for sessions started in agterm (tokens, estimated cost, active time, counts of turns, tool calls and lines changed). Never prompts, replies, code, file paths or terminal output;</li>
+          <li>connect to the relay, if you turn on the phone in the same settings.</li>
+        </ul>
+        <p>The programs you run in agterm, such as AI coding agents, make their own network connections under their own terms.</p>
+
+        <h2>agterm Remote for iPhone</h2>
+        <p>agterm Remote shows your Mac's agterm tabs and sends your replies and key presses back to them. It talks to your Mac through the agmux relay, a service Xanom runs on Cloudflare. All traffic is encrypted with TLS.</p>
+        <p>The relay keeps only what it needs to connect your phone to your Mac:</p>
+        <ul>
+          <li>a random ID and a hashed sign-in token for your phone, with when it was paired and last seen (tokens expire after 90 days);</li>
+          <li>your Mac's name, so the phone can show it;</li>
+          <li>your phone's push notification token, if you allow notifications.</li>
+        </ul>
+        <p>Tab screens, conversations and your replies pass through the relay as they happen and are not stored. Notifications carry a short alert such as "Approval needed" and the tab's title; Apple delivers them.</p>
+        <p>On the phone, the pairing is kept in the iOS Keychain and a few display choices (zoom, Screen or Chat) in the app's settings. The camera is used only to scan the pairing code; nothing it sees leaves the phone.</p>
+
+        <h2>AI services</h2>
+        <p>What you type in agterm Remote is typed into the tab on your Mac. If an AI coding agent runs there, such as Claude Code, Codex or Gemini CLI, the agent sends your reply to its AI provider. That provider handles it under its own privacy policy. The app asks before your first reply.</p>
+
+        <h2>Removing your data</h2>
+        <p>On the phone, choose ••• → Forget This Mac. On the Mac, remove the phone in Settings → Teams &amp; Phone; the relay then deletes its record of that phone. Deleting the app removes everything it kept on the phone.</p>
+
+        <h2>Children</h2>
+        <p>agterm is a developer tool and isn't directed at children.</p>
+
+        <h2>This website</h2>
+        <p>agterm.xanom.co counts page views with Cloudflare Web Analytics and Xanom's own page counter. It has no ads or sign-in.</p>
+
+        <h2>Changes and contact</h2>
+        <p>If this policy changes, the date above changes with it. Questions or requests: <a href="mailto:neel@xanom.co">neel@xanom.co</a>. Bugs and feature requests: <a href="https://github.com/neelsatyavolu/agterm/issues">GitHub issues</a>.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
+      <p class="meta">Xanom · <a href="mailto:neel@xanom.co">neel@xanom.co</a> · <a href="https://github.com/neelsatyavolu/agterm">Source</a></p>
+    </div>
+  </footer>
+</body>
+</html>

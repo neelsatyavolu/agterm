@@ -244,11 +244,26 @@ a.inline:hover { text-decoration-color: currentColor; }
 .foot-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 24px; }
 
 /* Responsive */
+/* Privacy policy */
+.policy-title {
+  max-width: 26ch;
+  font: 500 clamp(26px, 4.2vw, 40px)/1.08 var(--mono);
+  letter-spacing: -0.01em; text-transform: uppercase;
+}
+.prose { max-width: 68ch; margin-left: 232px; }
+.prose h2 { margin-top: 40px; font: 500 14px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.02em; }
+.prose h2:first-child { margin-top: 0; }
+.prose p, .prose ul { margin-top: 12px; color: var(--fg-2); }
+.prose ul { padding-left: 20px; list-style: square; }
+.prose li + li { margin-top: 6px; }
+.prose a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--fg-4); text-underline-offset: 3px; }
+
 @media (max-width: 960px) {
   .nav-links { display: none; }
   .cells-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sec-head, .aside { grid-template-columns: minmax(0, 1fr); }
   .sec-head .label { padding-top: 0; }
+  .prose { margin-left: 0; }
 }
 @media (max-width: 760px) {
   .cells-2, .cells-3 { grid-template-columns: minmax(0, 1fr); }

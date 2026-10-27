@@ -40,7 +40,12 @@ struct TabListView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button("Forget This Mac", role: .destructive) { confirmForget = true }
+                        if remote.isDemo {
+                            Button("Exit Demo") { remote.forget() }
+                        } else {
+                            Button("Forget This Mac", role: .destructive) { confirmForget = true }
+                        }
+                        Link("Privacy Policy", destination: privacyPolicyURL)
                     } label: {
                         Image(systemName: "ellipsis").foregroundStyle(Ink.fg2)
                     }
@@ -53,7 +58,7 @@ struct TabListView: View {
             }
             .navigationDestination(for: String.self) { TabDetailView(tabID: $0) }
             // Once paired: ask (iOS asks only once) so "needs you" and "finished" reach a closed app.
-            .task { await Push.shared.requestPermission() }
+            .task { if !remote.isDemo { await Push.shared.requestPermission() } }
             .sheet(isPresented: $newTab) {
                 if let options = remote.newTabOptions { NewTabSheet(options: options) }
             }

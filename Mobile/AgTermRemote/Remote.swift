@@ -9,6 +9,8 @@ final class Remote: ObservableObject {
     enum Link: Equatable { case unpaired, connecting, online, macOffline }
 
     @Published private(set) var pairing: Pairing?
+    /// Showing `Demo`'s sample tabs instead of a Mac's.
+    @Published private(set) var isDemo = false
     @Published private(set) var link: Link = .unpaired
     @Published private(set) var macName: String?
     @Published private(set) var tabs: [RemoteTabRow] = []
@@ -251,6 +253,7 @@ final class Remote: ObservableObject {
     /// Leases the open tab's live screen and, when `chat`, its conversation (Claude Code and
     /// Codex transcripts). The Mac stops sending once a lease lapses, so leaving needs no message.
     func watch(_ tab: String, chat: Bool) {
+        guard !isDemo else { return }
         watching = tab
         watchingChat = chat
         subscribe(renew: false)
@@ -282,6 +285,7 @@ final class Remote: ObservableObject {
     /// Types a reply and presses Enter, after clearing whatever was half-typed (as agmux does).
     /// False when the Mac can't be reached, so the caller keeps the draft.
     func reply(_ text: String, to tab: String) -> Bool {
+        if isDemo { return demoReply(text, to: tab) }
         guard link == .online else {
             notice = "Not connected to the Mac. Your reply wasn't sent."
             return false
@@ -301,12 +305,14 @@ final class Remote: ObservableObject {
 
     /// Presses keys in the tab exactly, without clearing the line or adding Enter.
     func press(_ keys: [TerminalKey] = [], text: String = "", in tab: String) {
+        if isDemo { return demoPress(keys, text: text, in: tab) }
         send(["type": "message.send", "requestId": UUID().uuidString, "threadId": tab, "text": text,
               "raw": true, "keys": keys.map(\.rawValue)])
     }
 
     /// Asks the Mac for a new tab running `provider` (an agent id, or `AgTermWire.shellProvider`) in `folder`.
     func openTab(provider: String, folder: String) {
+        if isDemo { return demoOpenTab(provider: provider, folder: folder) }
         guard link == .online else {
             notice = "Not connected to the Mac."
             return
@@ -333,6 +339,7 @@ final class Remote: ObservableObject {
     }
 
     func interrupt(_ tab: String) {
+        if isDemo { return demoSettle(tab, .idle, line: "Interrupted.") }
         send(["type": "turn.interrupt", "threadId": tab])
     }
 
@@ -416,6 +423,7 @@ final class Remote: ObservableObject {
 
     private func adopt(_ paired: Pairing) {
         closeSocket()
+        isDemo = false
         pairing = paired
         unpairedReason = nil
         tabs = []
@@ -428,6 +436,7 @@ final class Remote: ObservableObject {
 
     /// Forgets the Mac on this phone. The Mac still lists the phone until it's removed there.
     func forget() {
+        if isDemo { return unpair(nil) }
         guard let old = pairing else { return unpair(nil) }
         // The relay keeps pushing until it hears push.unregister, so keep the old credentials
         // until it has; retireForgotten() tries again on later launches.
@@ -470,6 +479,7 @@ final class Remote: ObservableObject {
 
     private func unpair(_ reason: String?) {
         closeSocket()
+        isDemo = false
         PairingStore.clear()
         pairing = nil
         link = .unpaired
@@ -481,5 +491,77 @@ final class Remote: ObservableObject {
         timelines = [:]
         watching = nil
         renewal?.cancel()
+    }
+
+    // MARK: Demo
+
+    /// Shows `Demo`'s sample tabs, answered on the phone. Pairing or Exit Demo leaves it.
+    func startDemo() {
+        isDemo = true
+        unpairedReason = nil
+        link = .online
+        macName = Demo.macName
+        tabs = Demo.tabs
+        newTabOptions = Demo.options
+        screens = Demo.screens
+        timelines = Demo.timelines
+    }
+
+    private func demoReply(_ text: String, to tab: String) -> Bool {
+        demoAppend(tab, line: [Demo.run("> ", 4), Demo.run(text)], entry: Demo.user(text))
+        demoSetStatus(tab, .working)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            self?.demoSettle(tab, .done, line: Demo.answer, entry: Demo.assistant(Demo.answer))
+        }
+        return true
+    }
+
+    /// A numbered answer to the sample approval runs the edit; Esc declines it.
+    private func demoPress(_ keys: [TerminalKey], text: String, in tab: String) {
+        guard tabs.first(where: { $0.id == tab })?.agterm?.prompt != nil else { return }
+        if keys == [.esc] || text == "3" { return demoSettle(tab, .idle, line: "Edit declined.") }
+        guard ["1", "2"].contains(text) else { return }
+        demoSetStatus(tab, .working)
+        // The approved edit ran.
+        timelines[tab] = timelines[tab]?.map { var entry = $0; if entry.status == "running" { entry.status = "done" }; return entry }
+        demoAppend(tab, line: [Demo.run("● ", 2), Demo.run("Run npm test -- checkout --repeat 50")], entry: Demo.tool("Run", "npm test -- checkout --repeat 50"))
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            let done = "The checkout test passed 50 runs in a row. The fix waits for the retry instead of a fixed delay."
+            self?.demoSettle(tab, .done, line: done, entry: Demo.assistant(done))
+        }
+    }
+
+    private func demoOpenTab(provider: String, folder: String) {
+        let id = "demo-\(UUID().uuidString)"
+        let agent = provider == AgTermWire.shellProvider ? nil : provider
+        let title = Demo.options.agents.first { $0.id == provider }?.title ?? "zsh"
+        tabs.append(Demo.row(id, title, .idle, agent: agent, folder: (folder as NSString).lastPathComponent, branch: nil))
+        screens[id] = Demo.shell
+        if agent != nil { timelines[id] = [] }
+        openedTab = id
+    }
+
+    private func demoSettle(_ tab: String, _ status: TabStatus, line: String, entry: MobileTimelineEntry? = nil) {
+        demoAppend(tab, line: [Demo.run(line)], entry: entry)
+        demoSetStatus(tab, status)
+    }
+
+    private func demoSetStatus(_ tab: String, _ status: TabStatus) {
+        guard let index = tabs.firstIndex(where: { $0.id == tab }) else { return }
+        tabs[index].agterm?.status = status.wireName
+        tabs[index].agterm?.prompt = nil
+        tabs[index].processing = status == .working
+        tabs[index].needsApproval = false
+    }
+
+    private func demoAppend(_ tab: String, line: [ScreenRun], entry: MobileTimelineEntry?) {
+        if var screen = screens[tab] {
+            screen.lines += [[], line]
+            screen.rows = screen.lines.count
+            screens[tab] = screen
+        }
+        if let entry, timelines[tab] != nil { timelines[tab]?.append(entry) }
     }
 }

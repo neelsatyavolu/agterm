@@ -10,7 +10,7 @@ struct AgTermRemoteApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if remote.pairing == nil { PairView() } else { TabListView() }
+                if remote.pairing == nil && !remote.isDemo { PairView() } else { TabListView() }
             }
             .environmentObject(remote)
             .preferredColorScheme(.dark)
@@ -26,3 +26,6 @@ struct AgTermRemoteApp: App {
         }
     }
 }
+
+/// The privacy policy the App Store listing links to, also linked in the app.
+let privacyPolicyURL = URL(string: "https://agterm.xanom.co/privacy")!

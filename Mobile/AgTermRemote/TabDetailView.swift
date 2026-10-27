@@ -10,6 +10,9 @@ struct TabDetailView: View {
     @AppStorage("detailMode") private var mode = Mode.screen
     @State private var draft = ""
     @FocusState private var typing: Bool
+    /// App Store 5.1.2(i): agreed that replies may reach a third-party AI through the Mac's agent.
+    @AppStorage("aiReplyConsent") private var aiConsent = false
+    @State private var askingConsent = false
 
     enum Mode: String { case screen, chat }
 
@@ -61,6 +64,12 @@ struct TabDetailView: View {
             }
         }
         .overlay(alignment: .top) { NoticeBanner() }
+        .alert("Replies go to your Mac", isPresented: $askingConsent) {
+            Button("Continue") { aiConsent = true; send() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("What you type here is typed into this tab on your Mac. If an AI coding agent runs there, it sends your reply to its AI provider (such as Anthropic, OpenAI or Google) under that provider's terms. agterm and its relay don't keep it.")
+        }
         .onAppear { remote.watch(tabID, chat: showsChat) }
         .onDisappear { remote.stopWatching(tabID) }
         .onChange(of: showsChat) { _, chat in remote.watch(tabID, chat: chat) }
@@ -112,6 +121,7 @@ struct TabDetailView: View {
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        guard aiConsent else { return askingConsent = true }
         if remote.reply(text, to: tabID) { draft = "" }
     }
 }
