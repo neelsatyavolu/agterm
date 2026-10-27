@@ -17,6 +17,13 @@ public enum SessionPaths {
         directory + "/grok-" + String(format: "%08x", fnv1a32(home)) + ".sock"
     }
 
+    /// `co.xanom.agterm.sessions.<fnv1a32 of the arguments as 8 lowercase hex>`: the launchd label of
+    /// a helper started with `arguments`. A loaded job's arguments never change, so a label that
+    /// is already loaded can simply be started again.
+    public static func helperJobLabel(arguments: [String]) -> String {
+        "co.xanom.agterm.sessions." + String(format: "%08x", fnv1a32(arguments.joined(separator: "\0")))
+    }
+
     static func fnv1a32(_ text: String) -> UInt32 {
         text.utf8.reduce(0x811c_9dc5 as UInt32) { ($0 ^ UInt32($1)) &* 0x0100_0193 }
     }

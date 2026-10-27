@@ -93,9 +93,49 @@ enum SessionHelper {
         while access(path, F_OK) == 0 && Date() < deadline { usleep(20_000) }
     }
 
-    /// Starts the helper in its own session with no terminal and none of our descriptors, so it
-    /// outlives the app. It exits at once if another helper already serves the socket.
+    /// Starts the helper; it exits at once if another helper already serves the socket.
     private static func launch(_ binary: String, socket: String, build: String) -> Bool {
+        let arguments = [binary, SessionHelperMain.flag, "--socket", socket, "--build", build]
+        return launchJob(arguments) || spawn(binary, arguments: arguments)
+    }
+
+    /// Starts the helper as a launchd job in the login session, so it is its own responsible
+    /// process in its own coalition. Spawned by the app it would share the app's coalition, which
+    /// macOS ends as a whole on Force Quit: force quitting agterm, or a browser an agent in a tab
+    /// started, would end every tab's shell. A label already loaded (its helper idled out, or is
+    /// running) is just started, which does nothing to a running one.
+    private static func launchJob(_ arguments: [String]) -> Bool {
+        let label = SessionPaths.helperJobLabel(arguments: arguments)
+        let job: [String: Any] = [
+            "Label": label,
+            "ProgramArguments": arguments,
+            "RunAtLoad": true,
+            // Not throttled like a background job: its shells run the user's agents.
+            "ProcessType": "Interactive",
+            "AbandonProcessGroup": true,
+        ]
+        let file = WorkspaceStore.fileURL.deletingLastPathComponent().appendingPathComponent("sessions-helper.plist")
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: job, format: .xml, options: 0),
+              (try? data.write(to: file, options: .atomic)) != nil else { return false }
+        let domain = "gui/\(getuid())"
+        if launchctl(["bootstrap", domain, file.path]) { return true }
+        return launchctl(["kickstart", "\(domain)/\(label)"])
+    }
+
+    private static func launchctl(_ arguments: [String]) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    /// The fallback when launchd won't start it: the helper as our child, in its own session
+    /// with no terminal and none of our descriptors, so it outlives a normal quit.
+    private static func spawn(_ binary: String, arguments: [String]) -> Bool {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
@@ -106,7 +146,7 @@ enum SessionHelper {
         posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDWR, 0)
         posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO)
         posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO)
-        let argv = [binary, SessionHelperMain.flag, "--socket", socket, "--build", build].map { strdup($0) } + [nil]
+        let argv = arguments.map { strdup($0) } + [nil]
         defer { argv.forEach { free($0) } }
         var pid: pid_t = 0
         let result = posix_spawn(&pid, binary, &actions, &attributes, argv, environ)
@@ -118,7 +158,7 @@ enum SessionHelper {
         return true
     }
 
-    /// The helper is our child until it exits (it may exit at once, or idle out later).
+    /// A spawned helper is our child until it exits (it may exit at once, or idle out later).
     private static func reapWhenDone(_ pid: pid_t) {
         let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)
         source.setEventHandler { reap(pid) }
