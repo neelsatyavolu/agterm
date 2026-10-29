@@ -24,6 +24,8 @@ protocol TabBarDelegate: AnyObject {
     /// Right-click on +: start an agent instead of a plain shell.
     func tabBarAgentMenu(_ bar: TabBarView) -> NSMenu
     func tabBar(_ bar: TabBarView, didMove from: Int, to: Int)
+    /// Right-click on a tab: rename it and the like.
+    func tabBar(_ bar: TabBarView, menuFor index: Int) -> NSMenu
 }
 
 /// Horizontal strip of two-line tab cards plus a new-tab button. Sits in the title bar.
@@ -109,6 +111,7 @@ final class TabBarView: NSView {
             let card = TabCardView()
             card.onSelect = { [weak self, weak card] in self?.cardAction(card, close: false) }
             card.onClose = { [weak self, weak card] in self?.cardAction(card, close: true) }
+            card.onMenu = { [weak self, weak card] event in self?.showMenu(for: card, event: event) }
             card.onDragBegan = { [weak self, weak card] in self?.beginDrag(card) }
             card.onDragMoved = { [weak self] dx in self?.moveDrag(dx) }
             card.onDragEnded = { [weak self] in self?.endDrag() }
@@ -134,6 +137,12 @@ final class TabBarView: NSView {
     private func cardAction(_ card: TabCardView?, close: Bool) {
         guard let card, let index = cards.firstIndex(where: { $0 === card }) else { return }
         if close { delegate?.tabBar(self, didClose: index) } else { delegate?.tabBar(self, didSelect: index) }
+    }
+
+    private func showMenu(for card: TabCardView?, event: NSEvent) {
+        guard let card, let index = cards.firstIndex(where: { $0 === card }),
+              let menu = delegate?.tabBar(self, menuFor: index) else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: card)
     }
 
     // MARK: Drag to reorder

@@ -52,6 +52,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_CD_CHECK"] == "1" { return cdCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_WHATSNEW_CHECK"] == "1" { return whatsNewCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_THEME_CHECK"] == "1" { return themeCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_TABMENU_CHECK"] == "1" { return tabMenuCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }

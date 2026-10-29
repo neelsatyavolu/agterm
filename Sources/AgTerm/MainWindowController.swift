@@ -268,6 +268,85 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     @objc func closeTab() { confirmClose(at: selected) }
 
+    // MARK: Tab menu
+
+    /// What right-clicking a tab offers. Each item carries its tab, so it acts on that tab
+    /// even if the tabs move while the menu is open.
+    private func menu(for session: TerminalSession) -> NSMenu {
+        let menu = NSMenu()
+        let entries: [(String, Selector)?] = [
+            ("Rename Tab…", #selector(renameTabFromMenu(_:))),
+            nil,
+            ("New Tab in This Folder", #selector(newTabInFolderFromMenu(_:))),
+            ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
+            ("Show in Finder", #selector(showInFinderFromMenu(_:))),
+            nil,
+            ("Close Tab", #selector(closeTabFromMenu(_:))),
+        ]
+        for entry in entries {
+            guard let (title, action) = entry else {
+                menu.addItem(.separator())
+                continue
+            }
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.representedObject = session
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc func renameTab() {
+        if sessions.indices.contains(selected) { rename(sessions[selected]) }
+    }
+
+    @objc private func renameTabFromMenu(_ sender: NSMenuItem) {
+        (sender.representedObject as? TerminalSession).map(rename)
+    }
+
+    @objc private func newTabInFolderFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        addTab(cwd: session.cwd, restoring: nil)
+    }
+
+    @objc private func copyFolderPathFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(session.cwd, forType: .string)
+    }
+
+    @objc private func showInFinderFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: session.cwd)])
+    }
+
+    @objc private func closeTabFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession,
+              let index = sessions.firstIndex(of: session) else { return }
+        confirmClose(at: index)
+    }
+
+    /// Asks for a name in a sheet; an empty name goes back to the program's own title.
+    private func rename(_ session: TerminalSession) {
+        guard let window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "Rename Tab"
+        alert.informativeText = "Leave it empty to show the program's title again."
+        let field = NSTextField(string: session.name ?? session.topic)
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 22)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self, weak session] response in
+            guard let self, let session else { return }
+            if response == .alertFirstButtonReturn { session.name = TabName.cleaned(field.stringValue) }
+            if let index = self.sessions.firstIndex(of: session), index == self.selected {
+                window.makeFirstResponder(session.view)
+            }
+        }
+    }
+
     // MARK: Saving tabs
 
     /// Writes the open tabs (folder, history, resumable agent, helper session) for the next launch.
@@ -276,7 +355,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         guard !savedForQuit else { return }
         let tabs = sessions.map { session in
             let tab = session.snapshot()
-            return endingSessions ? SavedTab(cwd: tab.cwd, scrollback: tab.scrollback, resume: tab.resume, tabID: tab.tabID) : tab
+            return endingSessions ? SavedTab(cwd: tab.cwd, scrollback: tab.scrollback, resume: tab.resume, tabID: tab.tabID, name: tab.name) : tab
         }
         WorkspaceStore.save(SavedWorkspace(selected: selected, tabs: tabs, savedAt: Date()))
     }
@@ -457,6 +536,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     var commandBarForTest: CommandBar { commandBar }
     var cdSuggestionsForTest: CdSuggestions { cdSuggestions }
     func renderForTest() { render() }
+    func tabMenuForTest(_ index: Int) -> NSMenu { menu(for: sessions[index]) }
     #endif
 
     /// Just under the line you're typing on, or just above it when the bottom of the window is too close.
@@ -496,6 +576,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         return menu
     }
     func tabBar(_ bar: TabBarView, didMove from: Int, to: Int) { moveTab(from: from, to: to) }
+    func tabBar(_ bar: TabBarView, menuFor index: Int) -> NSMenu { menu(for: sessions[index]) }
 
     // MARK: NSWindowDelegate
 

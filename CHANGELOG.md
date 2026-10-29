@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8 — 2026-10-29
+- Added: Right-click a tab (or Control-click it) to rename it, open a new tab in its folder, copy the folder's path, show the folder in Finder, or close the tab. Shell → Rename Tab… renames the current tab.
+- Added: A renamed tab keeps its name after agterm quits and reopens. Clear the name to go back to the program's own title.
+
 ## 1.0.7 — 2026-10-26
 - Fixed: Force quitting a browser or other app that an agent opened from a tab no longer ends every tab's shell. Force quitting agterm itself leaves them running too. Tabs already open keep the old behavior until you choose agterm → Quit and End Sessions.
 

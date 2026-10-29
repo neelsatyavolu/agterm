@@ -142,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Write a Command…", #selector(MainWindowController.toggleCommandBar), "k"),
             .separator(),
+            item("Rename Tab…", #selector(MainWindowController.renameTab)),
             item("Close Tab", #selector(MainWindowController.closeTab), "w"),
         ]))
         main.addItem(submenu("Edit", [

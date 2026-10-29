@@ -7,6 +7,8 @@ import AppKit
 final class TabCardView: NSView {
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
+    /// Right-click or control-click: the tab's menu.
+    var onMenu: ((NSEvent) -> Void)?
     /// Dragging sideways reorders tabs; the bar moves the card while the mouse is down.
     var onDragBegan: (() -> Void)?
     var onDragMoved: ((CGFloat) -> Void)?
@@ -42,6 +44,10 @@ final class TabCardView: NSView {
     override func mouseExited(with event: NSEvent) { hovering = false }
 
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) {
+            mouseDownX = nil
+            return rightMouseDown(with: event)
+        }
         let point = convert(event.locationInWindow, from: nil)
         if hovering, closeRect.insetBy(dx: -4, dy: -4).contains(point) {
             mouseDownX = nil
@@ -69,6 +75,8 @@ final class TabCardView: NSView {
             onDragEnded?()
         }
     }
+
+    override func rightMouseDown(with event: NSEvent) { onMenu?(event) }
 
     override func otherMouseDown(with event: NSEvent) {
         if event.buttonNumber == 2 { onClose?() }

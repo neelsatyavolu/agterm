@@ -84,6 +84,7 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | ⌘Q | Quit, leaving tabs running for next time (agterm → Quit and End Sessions ends them instead) |
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |
+| Right-click a tab | Rename it (also Shell → Rename Tab…), open a new tab in its folder, copy its folder path, show it in Finder, or close it |
 | ⌘= ⌘- ⌘0 | Font size |
 | ⌘, | Settings: General, Appearance, Agents, Permissions, Accounts, Command (⌘K), Teams & Phone |
 | Drag onto a tab | Files and folders type their escaped paths, as in Terminal.app. Images from a browser or screenshot tool are saved to a temp file first, so Claude Code can attach them. |

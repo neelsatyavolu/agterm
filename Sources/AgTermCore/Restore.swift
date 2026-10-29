@@ -48,13 +48,25 @@ public struct SavedTab: Codable, Equatable, Sendable {
     /// The tab's id, which its shell (and any agent started there) was given as AGTERM_TAB_ID;
     /// a reattached tab keeps it.
     public var tabID: String?
+    /// The name given with Rename Tab…, shown instead of the program's title.
+    public var name: String?
 
-    public init(cwd: String, scrollback: String, resume: String?, sessionID: String? = nil, tabID: String? = nil) {
+    public init(cwd: String, scrollback: String, resume: String?, sessionID: String? = nil, tabID: String? = nil, name: String? = nil) {
         self.cwd = cwd
         self.scrollback = scrollback
         self.resume = resume
         self.sessionID = sessionID
         self.tabID = tabID
+        self.name = name
+    }
+}
+
+/// A tab name typed in Rename Tab….
+public enum TabName {
+    /// One line, trimmed; nil (back to the automatic title) when nothing is left.
+    public static func cleaned(_ text: String) -> String? {
+        let line = text.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        return line.isEmpty ? nil : line
     }
 }
 

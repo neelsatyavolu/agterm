@@ -25,6 +25,10 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     private(set) var claudeSessionID: String?
     /// Claude's session name from its transcript, shown when its terminal title is generic.
     private var transcriptTitle: String?
+    /// The name given with Rename Tab…; when set it replaces the automatic title.
+    var name: String? {
+        didSet { if name != oldValue { onChange?() } }
+    }
     private(set) var signals = StatusSignals()
     private(set) var status: TabStatus = .idle
     let shellName: String
@@ -62,6 +66,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// new one), since agents launched there report under it.
     init(attaching info: SessionInfo, saved: SavedTab?) {
         tabID = saved?.tabID ?? UUID().uuidString
+        name = saved?.name
         // The shell's folder now; the helper's is where it started.
         cwd = ProcInfo.cwd(pid: info.pid) ?? info.cwd
         FolderIndex.shared.visit(cwd)
@@ -98,6 +103,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
                 view.feed(text: saved.scrollback + "\r\n\u{1b}[0;2m— restored \(Self.restoredStamp()) —\u{1b}[0m\r\n")
             }
             pendingCommand = saved.resume
+            name = saved.name
         }
         if let command { pendingCommand = command }
     }
@@ -156,7 +162,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
                 ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: argv) }
         }
         return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand,
-                        sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID)
+                        sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID, name: name)
     }
 
     /// `codex resume <id>` for the conversation this tab's Codex has open (it keeps its rollout
@@ -246,6 +252,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     // MARK: What the tab shows
 
     var topic: String {
+        if let name { return name }
         if needsTranscriptTitle, let transcriptTitle { return transcriptTitle }
         if !parsedTitle.topic.isEmpty { return parsedTitle.topic }
         if let name = foregroundName, name != shellName { return name }
