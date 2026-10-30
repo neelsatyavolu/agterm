@@ -194,6 +194,7 @@ final class TabBarView: NSView {
     private func beginDrag(_ card: TabCardView?) {
         guard let card, let index = cards.firstIndex(where: { $0 === card }) else { return }
         drag = Drag(from: index, startX: card.frame.minX, to: index)
+        cards.forEach { $0.reordering = true }
         strip.addSubview(card, positioned: .above, relativeTo: nil) // draw on top while moving
     }
 
@@ -219,13 +220,19 @@ final class TabBarView: NSView {
     private func endDrag() {
         guard let d = drag else { return }
         drag = nil
+        // Move the card itself to its new place, so the update that follows the move hands
+        // every card its own tab again instead of sliding them back and swapping contents.
+        cards = TabOrder.moved(cards, from: d.from, to: d.to)
+        cards.forEach { $0.reordering = false }
         if d.from != d.to {
             delegate?.tabBar(self, didMove: d.from, to: d.to)
         }
-        NSAnimationContext.runAnimationGroup { context in
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.15
             layoutCards(animated: true)
-        }
+        }, completionHandler: { [weak self] in
+            self?.cards.forEach { $0.syncHover() }
+        })
     }
 
     /// Normal positions, or during a drag: the dragged card under the mouse and the others

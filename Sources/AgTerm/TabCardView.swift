@@ -21,7 +21,11 @@ final class TabCardView: NSView {
     var blinkOn = true {
         didSet { if blinkOn != oldValue, model?.status == .working { needsDisplay = true } }
     }
-    private var hovering = false { didSet { needsDisplay = true } }
+    private var mouseInside = false { didSet { if mouseInside != oldValue { needsDisplay = true } } }
+    /// Set by the bar while any tab is being dragged, so cards passing under the mouse
+    /// don't light up as if hovered.
+    var reordering = false { didSet { if reordering != oldValue { needsDisplay = true } } }
+    private var hovering: Bool { mouseInside && !reordering }
 
     private static let padX: CGFloat = 14
     private static let textX: CGFloat = 30
@@ -40,8 +44,15 @@ final class TabCardView: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { mouseInside = true }
+    override func mouseExited(with event: NSEvent) { mouseInside = false }
+
+    /// Enter and exit events only come when the mouse moves, not when the card slides under
+    /// a still mouse, so the bar calls this once cards settle after a drag.
+    func syncHover() {
+        guard let window else { return }
+        mouseInside = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
 
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control) {

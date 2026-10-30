@@ -3,6 +3,8 @@
 ## 1.0.9 — 2026-10-30
 - Fixed: Grok tabs show only the conversation's topic, without Grok's status ("- Thinking -", "- Waiting for response... -") in front of it.
 - Fixed: A Grok tab no longer flips back to working after Grok finishes, such as when Grok names the conversation a few seconds later or while you type your next message. Its title also drops the trailing "- grok".
+- Fixed: Dropping a dragged tab leaves it where you dropped it, instead of the tabs appearing to swap a second time.
+- Fixed: While you drag a tab, the tabs it passes over no longer light up as if the mouse were over them.
 
 ## 1.0.8 — 2026-10-29
 - Added: Right-click a tab (or Control-click it) to rename it, open a new tab in its folder, copy the folder's path, show the folder in Finder, or close the tab. Shell → Rename Tab… renames the current tab.

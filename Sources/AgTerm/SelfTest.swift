@@ -381,6 +381,8 @@ enum SelfTest {
             window.sendEvent(event(.leftMouseDown, 0))
             after(1.5) {
                 print("selftest: drag: window moved:", window.frame.origin != origin, "| dragged tab moved from", before, "to", controller.sessions.firstIndex { $0.tabID == first } ?? -1)
+                // The card dropped should stay the moved tab's card, not swap contents with another.
+                print("selftest: drag: dropped card kept its tab:", card === controller.selectedTabCardForTest)
                 exit(0)
             }
         }
