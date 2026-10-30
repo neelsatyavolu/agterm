@@ -14,10 +14,16 @@ final class HostedSession {
     /// rather than growing the helper's memory (or getting dropped).
     private static let pauseAbove = 4 * 1024 * 1024
     private static let resumeAt = 1 * 1024 * 1024
+    /// The same for input from a client without the pty: past this much the program hasn't
+    /// taken, the client isn't read until it is down to `inputResumeAt`.
+    private static let inputPauseAbove = 1024 * 1024
+    private static let inputResumeAt = 64 * 1024
     #if canImport(Darwin)
     private static let getWindowSize = TIOCGWINSZ
+    private static let setWindowSize = TIOCSWINSZ
     #else
     private static let getWindowSize = UInt(TIOCGWINSZ)
+    private static let setWindowSize = UInt(TIOCSWINSZ)
     #endif
 
     let id = UUID().uuidString
@@ -39,6 +45,8 @@ final class HostedSession {
     /// The client whose backlog has the reader suspended.
     private var throttledBy: WireConnection?
     private var exited = false
+    /// Input from a client without the pty (`input`); made on first use.
+    private var writer: PtyWriter?
     private let readBuffer = UnsafeMutableRawPointer.allocate(byteCount: readSize, alignment: 8)
 
     var info: SessionInfo { SessionInfo(id: id, pid: pid, cwd: cwd, startedAt: startedAt, attached: client != nil) }
@@ -92,6 +100,35 @@ final class HostedSession {
         syncSize()
         try? connection.send(.attached(info), fd: masterFd)
         try? connection.send(.replay(ScreenReplay.bytes(terminal)))
+    }
+
+    func isAttached(_ connection: WireConnection) -> Bool {
+        client === connection
+    }
+
+    /// Input from `connection`, a client that has no pty descriptor. Written on the writer's own
+    /// queue, so a shell that isn't reading its input never blocks the server; past a limit the
+    /// client isn't read until the program catches up, so the backlog can't grow without end.
+    func write(_ bytes: Data, from connection: WireConnection) {
+        guard !exited, !bytes.isEmpty else { return }
+        if writer == nil {
+            let fd = fcntl(masterFd, F_DUPFD_CLOEXEC, 0)
+            guard fd >= 0 else { return }
+            writer = PtyWriter(fd: fd)
+        }
+        guard let writer else { return }
+        writer.write([UInt8](bytes)[...])
+        guard writer.pendingBytes > Self.inputPauseAbove else { return }
+        connection.pauseReading()
+        writer.whenPending(atMost: Self.inputResumeAt, on: queue) { [weak connection] in connection?.resumeReading() }
+    }
+
+    /// A new size from a client that has no pty descriptor; the kernel tells the foreground job.
+    func resize(_ size: WindowSize) {
+        guard !exited, size.cols > 0, size.rows > 0 else { return }
+        var window = winsize(ws_row: size.rows, ws_col: size.cols, ws_xpixel: size.width, ws_ypixel: size.height)
+        guard ioctl(masterFd, Self.setWindowSize, &window) == 0 else { return }
+        syncSize()
     }
 
     func detach(_ connection: WireConnection) {
@@ -200,6 +237,8 @@ final class HostedSession {
         exited = true
         exitWatcher?.cancel()
         exitWatcher = nil
+        writer?.close()
+        writer = nil
         // A suspended source never runs its cancel handler, which closes the master.
         unthrottle()
         if readerSuspended { readSource?.resume() }

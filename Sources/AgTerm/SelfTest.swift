@@ -57,6 +57,7 @@ enum SelfTest {
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PERSIST_CHECK"] == "1" { return persistCheck(controller) }
+        if ProcessInfo.processInfo.environment["AGTERM_CLOUD_CHECK"] == "1" { return cloudCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true

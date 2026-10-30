@@ -3,11 +3,20 @@ import AgTermSessionKit
 import Foundation
 import SwiftTerm
 
+/// Where a `HelperLink` reconnects after losing its connection: this Mac's sessions helper, or
+/// a cloud machine's gateway.
+protocol SessionEndpoint: AnyObject {
+    /// A new connection attached to session `id`, with the pty master if this end passes one.
+    func reattach(id: String) throws -> (WireConnection, Int32?)
+}
+
 /// A shell kept by the sessions helper, so it can outlive the app. Output arrives as
 /// `replay` and `output` frames, read off the socket on a background queue and handed to the view
 /// on the main queue in order, with LocalProcess's backpressure: past 4 MiB waiting, the socket
 /// isn't read until the backlog is under 1 MiB, and the helper in turn stops reading the shell's
-/// pty. Input and resizes go straight to the pty master the helper passed with `attached`.
+/// pty. Input and resizes go straight to the pty master the helper passed with `attached`; a
+/// shell on a cloud machine has none here, so they go as `input` and `resize` frames, and the
+/// link reports no shell pid (the helper's pid means nothing on this Mac).
 ///
 /// A lost connection reattaches (see `lost`); a link another client superseded stops for good.
 /// Either way, when it can't go on the tab is told the shell exited, status unknown.
@@ -30,9 +39,10 @@ final class HelperLink: PtyLink {
     var onExit: ((Int32?) -> Void)?
 
     private let id: String
-    private let client: SessionHelper.Client
+    private let endpoint: SessionEndpoint
     private let readQueue = DispatchQueue(label: "agterm.helper-link")
-    private var writer: PtyWriter
+    /// Nil for a cloud shell, whose input goes over the connection.
+    private var writer: PtyWriter?
     /// Main queue: ended, detached, or the exit was delivered.
     private var closed = false
 
@@ -48,6 +58,8 @@ final class HelperLink: PtyLink {
     private var pendingBytes = 0
     private var paused = false
     private var drainScheduled = false
+    /// A cloud shell's latest size, sent again after a reattach (one made meanwhile was lost).
+    private var window: WindowSize?
 
     // Read queue only.
     private var policy = ReattachPolicy()
@@ -56,26 +68,42 @@ final class HelperLink: PtyLink {
 
     /// `showReplay` is false for a new shell: its replay is of an empty screen, and would wipe
     /// what the tab already shows (restored history, What's New).
-    init(client: SessionHelper.Client, connection: WireConnection, info: SessionInfo, ptyFd: Int32, showReplay: Bool) {
-        self.client = client
+    init(endpoint: SessionEndpoint, connection: WireConnection, info: SessionInfo, ptyFd: Int32?, showReplay: Bool) {
+        self.endpoint = endpoint
         self.connection = connection
         id = info.id
         sessionID = info.id
-        shellPid = info.pid
-        self.ptyFd = ptyFd
-        writer = PtyWriter(fd: ptyFd)
+        shellPid = ptyFd == nil ? 0 : info.pid
+        self.ptyFd = ptyFd ?? -1
+        writer = ptyFd.map(PtyWriter.init)
         listen(to: connection, showReplay: showReplay)
     }
 
     func write(_ bytes: ArraySlice<UInt8>) {
         guard !closed, !bytes.isEmpty else { return }
-        writer.write(bytes)
+        if let writer { return writer.write(bytes) }
+        try? currentConnection.send(.input(Data(bytes)))
     }
 
     func resize(_ size: winsize) {
         guard !closed else { return }
+        guard writer != nil else {
+            let window = WindowSize(cols: size.ws_col, rows: size.ws_row, width: size.ws_xpixel, height: size.ws_ypixel)
+            lock.lock()
+            self.window = window
+            let current = connection
+            lock.unlock()
+            try? current.send(.resize(window))
+            return
+        }
         var size = size
         _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: ptyFd, windowSize: &size)
+    }
+
+    private var currentConnection: WireConnection {
+        lock.lock()
+        defer { lock.unlock() }
+        return connection
     }
 
     /// The helper sends SIGHUP to the shell and its foreground job, and SIGKILL 2 s later.
@@ -157,7 +185,7 @@ final class HelperLink: PtyLink {
         while let delay = policy.delay(after: superseded ? .superseded : .dropped) {
             Thread.sleep(forTimeInterval: delay)
             guard isCurrent(dropped) else { return }
-            if let (fresh, _, fd) = try? client.open(.attach(id: id)) {
+            if let (fresh, fd) = try? endpoint.reattach(id: id) {
                 policy.connected()
                 return adopt(fresh, ptyFd: fd)
             }
@@ -171,23 +199,30 @@ final class HelperLink: PtyLink {
         return connection === self.connection && !released && !exited
     }
 
-    private func adopt(_ fresh: WireConnection, ptyFd fd: Int32) {
+    /// Runs on the read queue, so `fresh` delivers nothing until this returns. It is reading
+    /// (and non-blocking) before the main queue can send on it.
+    private func adopt(_ fresh: WireConnection, ptyFd fd: Int32?) {
+        listen(to: fresh, showReplay: true)
         lock.lock()
         let keep = !released
         if keep {
             connection = fresh
             paused = false
         }
+        let window = self.window
         lock.unlock()
         guard keep else {
             fresh.close()
-            Darwin.close(fd)
+            fd.map { _ = Darwin.close($0) }
             return
         }
-        DispatchQueue.main.async { [weak self] in
-            if let self { self.replacePty(fd) } else { Darwin.close(fd) }
+        if let fd {
+            DispatchQueue.main.async { [weak self] in
+                if let self { self.replacePty(fd) } else { Darwin.close(fd) }
+            }
+        } else if let window {
+            try? fresh.send(.resize(window))
         }
-        listen(to: fresh, showReplay: true)
     }
 
     // MARK: Main queue
@@ -197,7 +232,7 @@ final class HelperLink: PtyLink {
             Darwin.close(fd)
             return
         }
-        writer.close()
+        writer?.close()
         writer = PtyWriter(fd: fd)
         ptyFd = fd
     }
@@ -240,7 +275,7 @@ final class HelperLink: PtyLink {
     private func deliverExit(_ status: Int32?) {
         guard !closed else { return }
         closed = true
-        writer.close()
+        writer?.close()
         ptyFd = -1
         onExit?(status)
     }
@@ -256,50 +291,10 @@ final class HelperLink: PtyLink {
         pendingBytes = 0
         let current = connection
         lock.unlock()
-        writer.close()
+        writer?.close()
         ptyFd = -1
         onData = nil
         onExit = nil
         return current
-    }
-}
-
-/// Writes input to a pty master on its own queue, in order, so a program that isn't reading its
-/// input stalls only that queue, never the app. Owns the descriptor and closes it last.
-final class PtyWriter {
-    private let fd: Int32
-    private let queue = DispatchQueue(label: "agterm.pty-writer")
-    private var closed = false
-
-    init(fd: Int32) {
-        self.fd = fd
-    }
-
-    func write(_ bytes: ArraySlice<UInt8>) {
-        let bytes = Array(bytes)
-        queue.async { [self] in
-            guard !closed else { return }
-            var offset = 0
-            while offset < bytes.count {
-                let count = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress! + offset, bytes.count - offset) }
-                if count > 0 {
-                    offset += count
-                } else if count < 0 && errno == EAGAIN {
-                    var poller = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-                    _ = poll(&poller, 1, 100)
-                } else if !(count < 0 && errno == EINTR) {
-                    return // EIO: the shell is gone.
-                }
-            }
-        }
-    }
-
-    /// Closes the descriptor after the input already queued.
-    func close() {
-        queue.async { [self] in
-            guard !closed else { return }
-            closed = true
-            Darwin.close(fd)
-        }
     }
 }

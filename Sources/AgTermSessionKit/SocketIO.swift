@@ -414,6 +414,7 @@ public final class WireConnection {
         switch m {
         case .output(let data) where data.count > WireFrame.maxPayload: (bytes, wrap) = (data, WireMessage.output)
         case .replay(let data) where data.count > WireFrame.maxPayload: (bytes, wrap) = (data, WireMessage.replay)
+        case .input(let data) where data.count > WireFrame.maxPayload: (bytes, wrap) = (data, WireMessage.input)
         default: return [WireFrame.encode(m)]
         }
         return stride(from: bytes.startIndex, to: bytes.endIndex, by: WireFrame.maxPayload).map {

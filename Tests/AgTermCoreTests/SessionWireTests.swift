@@ -18,6 +18,9 @@ final class SessionWireTests: XCTestCase {
             .kill(id: "s1", signal: 15),
             .shutdownIfIdle,
             .error("boom"),
+            .input(Data("ls\r".utf8)),
+            .resize(WindowSize(cols: 120, rows: 40, width: 960, height: 640)),
+            .auth(token: "t0k"),
         ]
     }
 
@@ -116,6 +119,7 @@ final class SessionWireTests: XCTestCase {
             (.spawn(SpawnRequest(executable: "a", argv: [], env: [], cwd: "/", cols: 1, rows: 1)), 4),
             (.attach(id: "s"), 5), (.attached(info), 6), (.replay(Data()), 7), (.output(Data()), 8),
             (.exited(id: "s", status: 0), 9), (.kill(id: "s", signal: 9), 10), (.shutdownIfIdle, 11), (.error("e"), 12),
+            (.input(Data()), 13), (.resize(WindowSize(cols: 1, rows: 1)), 14), (.auth(token: "t"), 15),
         ]
         XCTAssertEqual(expected.count, allMessages.count)
         for (message, tag) in expected {

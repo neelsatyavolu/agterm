@@ -85,6 +85,29 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         }
     }
 
+    /// A new shell on a cloud machine (cloud sessions), or the one it already runs as `attaching`.
+    /// The machine picks its own login shell and environment; this tab sends only its terminal
+    /// settings and id. Throws if the machine can't be reached.
+    init(cloud: CloudHost, cwd: String, attaching id: String? = nil) throws {
+        let tabID = UUID().uuidString
+        let view = Self.makeView()
+        let terminal = view.getTerminal()
+        let env = ["TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=agterm", "AGTERM_TAB_ID=\(tabID)",
+                   "LANG=\(ProcessInfo.processInfo.environment["LANG"] ?? "en_US.UTF-8")"]
+        let shellPath = ProcInfo.loginShell()
+        let request = SpawnRequest(executable: shellPath, argv: ["-" + (shellPath as NSString).lastPathComponent], env: env,
+                                   cwd: cwd, cols: UInt16(terminal.cols), rows: UInt16(terminal.rows))
+        let link = try id.map(cloud.attach) ?? cloud.spawn(request)
+        self.tabID = tabID
+        self.cwd = cwd
+        self.shellPath = shellPath
+        shellName = (shellPath as NSString).lastPathComponent
+        self.view = view
+        super.init()
+        setUpView()
+        view.attach(link)
+    }
+
     private static func makeView() -> AgentTerminalView {
         var options = TerminalOptions.default
         options.scrollback = Scrollback.maxLines

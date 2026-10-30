@@ -22,6 +22,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | One test class | `swift test --filter ChangelogTests` |
 | All tests | `swift test` |
 | Linux tests (OrbStack/Docker) | `docker run --rm -v "$PWD":/src -v agterm-linux-build:/build -w /src swift:6.4-noble swift test --scratch-path /build` |
+| Cloud tabs against a Linux helper | Build `agterm-sessions` as above, run it in a container with `-p 127.0.0.1:7600:7600 -e AGTERM_GATEWAY_TOKEN` and `--sessions-helper --socket /tmp/agterm/s.sock --build linux --listen 0.0.0.0:7600`, then start the app with `AGTERM_CLOUD=127.0.0.1:7600 AGTERM_CLOUD_TOKEN=<same>` (add `AGTERM_CLOUD_CHECK=1 AGTERM_SELFTEST=<dir>` for the self-test) |
 | Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |

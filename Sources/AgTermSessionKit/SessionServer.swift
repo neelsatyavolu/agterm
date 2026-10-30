@@ -11,8 +11,9 @@ public enum SessionServerError: Error, Equatable {
 /// The sessions helper (`agterm --sessions-helper`): owns every tab's shell and serves the app over a Unix socket,
 /// so shells outlive app updates, quits and crashes. All state lives on one serial queue.
 public final class SessionServer {
-    /// With no sessions and no clients for this long, the server stops.
-    public var idleExitAfter: TimeInterval = 10
+    /// With no sessions and no clients for this long, the server stops; nil never stops (a
+    /// cloud machine's helper, which the gateway reaches).
+    public var idleExitAfter: TimeInterval? = 10
 
     private let socketPath: String
     private let build: String
@@ -120,6 +121,10 @@ public final class SessionServer {
             guard let session = sessions[id] else { return reply(client, .error("no such session")) }
             guard (1..<32).contains(signal) else { return reply(client, .error("bad signal")) }
             session.signal(signal)
+        case .input(let bytes):
+            sessions.values.first { $0.isAttached(client) }?.write(bytes, from: client)
+        case .resize(let size):
+            sessions.values.first { $0.isAttached(client) }?.resize(size)
         case .shutdownIfIdle:
             if sessions.isEmpty { shutdown() }
         default:
@@ -180,7 +185,7 @@ public final class SessionServer {
     /// Called on every change; schedules the idle exit when nothing is left.
     private func noteActivity() {
         idleToken &+= 1
-        guard !stopped, sessions.isEmpty, clients.isEmpty else { return }
+        guard !stopped, sessions.isEmpty, clients.isEmpty, let idleExitAfter else { return }
         let token = idleToken
         queue.asyncAfter(deadline: .now() + idleExitAfter) { [weak self] in
             guard let self, self.idleToken == token, self.sessions.isEmpty, self.clients.isEmpty else { return }

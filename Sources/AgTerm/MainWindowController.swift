@@ -203,6 +203,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     @objc func newTab() { addTab(cwd: currentFolder, restoring: nil) }
 
+    /// A tab whose shell runs on the cloud machine (`CloudHost.configured`), in the same folder
+    /// if the machine has it.
+    @objc func newCloudTab() {
+        guard let cloud = CloudHost.configured else { return }
+        openCloudTab(cloud)
+    }
+
+    /// `attaching` shows a shell the machine already runs.
+    func openCloudTab(_ cloud: CloudHost, attaching id: String? = nil) {
+        do {
+            install(try TerminalSession(cloud: cloud, cwd: currentFolder, attaching: id))
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Couldn't open a cloud tab"
+            alert.informativeText = "The cloud machine at \(cloud.host):\(cloud.port) didn't answer: \(error)"
+            alert.runModal()
+        }
+    }
+
     #if DEBUG
     func restoreTabForTest(_ saved: SavedTab) { addTab(cwd: saved.cwd, restoring: saved) }
     var selectedTabCardForTest: NSView { tabBar.selectedCardForTest }

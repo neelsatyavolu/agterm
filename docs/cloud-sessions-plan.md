@@ -35,13 +35,13 @@ When the Mac starts and the cloud has tabs: **Keep in cloud** (just attach) or *
 ## Architecture
 
 ```
-Mac agterm ──TLS WebSocket──► gateway ──unix socket──► agterm --sessions-helper (Linux)
+Mac agterm ──TLS (Fly proxy)──► gateway ──unix socket──► sessions helper   (one process: agterm-sessions --listen)
 iPhone ─────agmux relay─────► cloud desktop (same tab ids)
 control plane: accounts, Stripe, VM create/start/stop
 ```
 
 - **Linux helper**: `AgTermSessionKit` + `AgTermCore` have no AppKit. Swap `Darwin.*` for `Glibc` under `#if`, fix the `CMSG` layout in `SocketIO.swift`, drop the launchd bits in `SessionPaths`. Run `SessionServerTests` / `HeadlessTerminalTests` on Linux in CI.
-- **Gateway**: authenticates the account token, then forwards `SessionWire` frames as they are. No wire changes, so helper compatibility rules hold; fd-passing messages are never sent to cloud peers.
+- **Gateway** (`SessionGateway`, built): `SessionWire` frames over plain TCP, in the helper's own process. TLS is terminated in front of it (Fly's `tls` handler), so there is no WebSocket or SwiftNIO. The first frame must be `auth` with the machine's token (`AGTERM_GATEWAY_TOKEN`). Then the gateway opens its own connection to the helper's socket and passes frames both ways, closing the pty descriptors the helper passes. Clients type with the new `input` message and resize with `resize`, both added tags. Spawns get the machine's login shell, home and PATH; of the Mac's environment only the terminal variables and the tab id arrive.
 - **Status in the cloud**: `StatusRules` lives in Core, so the cloud side knows working / needs you / done. It pushes "needs you" and "all done" to the phone and decides when to stop the VM.
 - **Phone**: the cloud registers on the relay so agterm Remote works with the Mac off.
 - **Cloud helper updates**: only applied while the VM is stopped (you control both sides, but must not kill running tabs).
@@ -80,7 +80,10 @@ Suggested plan: **$12/month: 100 cloud hours, 20 GB, 4 GB RAM; $0.10/hour after.
 ## Phases
 
 1. Linux helper + tests in CI. Verify: `SessionServerTests` pass on Linux. **Done 2026-10-30**: `agterm-sessions` (Linux only), all 455 Core + SessionKit tests pass on Linux (Swift 6.4, Ubuntu 24.04) and macOS; `.github/workflows/linux.yml`.
-2. Gateway + "cloud host" tabs in the Mac app (a hand-made VM). Verify: a self-test attaches a tab over the network and replays its screen.
+2. Gateway + "cloud host" tabs in the Mac app (a hand-made VM). Verify: a self-test attaches a tab over the network and replays its screen. **Done 2026-10-30**:
+   - `agterm-sessions --listen`, and Shell → New Cloud Tab when `AGTERM_CLOUD` and `AGTERM_CLOUD_TOKEN` are set. Loopback only until the client has TLS.
+   - `AGTERM_CLOUD_CHECK=1` passes against an in-process gateway and against the Linux helper in a container.
+   - Left for phase 3: TLS in the client; cloud tabs coming back after a relaunch; a cloud marker on the tab; and agent and folder info for cloud tabs, which today come from local process lookups that a cloud tab skips.
 3. Move All to Cloud for agent tabs (sync, transcripts, resume). Verify: a Claude tab mid-turn keeps going after the Mac app quits.
 4. Control plane, Fly VMs, auto-stop, Stripe, sign-up. Verify: hours metered match Fly's bill.
 5. Phone on the cloud desktop; Bring back. Verify: phone answers a prompt with the Mac off; bring back leaves no file differences.

@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
+        ] + (CloudHost.configured == nil ? [] : [item("New Cloud Tab", #selector(MainWindowController.newCloudTab))]) + [
             newAgentTabItem(),
         ] + Self.agentItems([.claude, .codex, .grok]) + [
             moreAgentsItem(),

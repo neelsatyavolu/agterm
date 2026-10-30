@@ -56,6 +56,22 @@ public struct SessionInfo: Codable, Equatable {
     }
 }
 
+/// A terminal size, as a client without the pty (over the network) reports it with `resize`.
+public struct WindowSize: Codable, Equatable {
+    public var cols: UInt16
+    public var rows: UInt16
+    /// Pixels, which some programs read; 0 if unknown.
+    public var width: UInt16
+    public var height: UInt16
+
+    public init(cols: UInt16, rows: UInt16, width: UInt16 = 0, height: UInt16 = 0) {
+        self.cols = cols
+        self.rows = rows
+        self.width = width
+        self.height = height
+    }
+}
+
 public enum WireMessage: Equatable {
     case hello(version: Int, build: String)
     case list
@@ -71,6 +87,13 @@ public enum WireMessage: Equatable {
     case kill(id: String, signal: Int32)
     case shutdownIfIdle
     case error(String)
+    /// Keystrokes for the attached session's shell, from a client that has no pty descriptor
+    /// (one connected through the gateway); raw. Helpers before cloud sessions skip it.
+    case input(Data)
+    /// The attached session's new size, from a client that has no pty descriptor.
+    case resize(WindowSize)
+    /// A gateway client's first frame: the account token. The gateway never forwards it.
+    case auth(token: String)
 }
 
 public enum WireFrameError: Error, Equatable {
@@ -83,6 +106,7 @@ public enum WireFrame {
     private enum Tag: UInt8 {
         case hello = 1, list = 2, sessions = 3, spawn = 4, attach = 5, attached = 6
         case replay = 7, output = 8, exited = 9, kill = 10, shutdownIfIdle = 11, error = 12
+        case input = 13, resize = 14, auth = 15
     }
 
     private struct Hello: Codable { var version: Int; var build: String }
@@ -142,6 +166,9 @@ public enum WireFrame {
         case .kill(let id, let signal): return (.kill, json(Kill(id: id, signal: signal)))
         case .shutdownIfIdle: return (.shutdownIfIdle, Data())
         case .error(let text): return (.error, Data(text.utf8))
+        case .input(let bytes): return (.input, bytes)
+        case .resize(let size): return (.resize, json(size))
+        case .auth(let token): return (.auth, Data(token.utf8))
         }
     }
 
@@ -159,6 +186,9 @@ public enum WireFrame {
         case .kill: let k: Kill = try object(payload); return .kill(id: k.id, signal: k.signal)
         case .shutdownIfIdle: return .shutdownIfIdle
         case .error: return .error(String(decoding: payload, as: UTF8.self))
+        case .input: return .input(payload)
+        case .resize: return .resize(try object(payload))
+        case .auth: return .auth(token: String(decoding: payload, as: UTF8.self))
         }
     }
 
