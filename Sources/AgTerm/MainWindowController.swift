@@ -272,7 +272,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         } catch {
             let alert = NSAlert()
             alert.messageText = "Couldn't open a cloud tab"
-            alert.informativeText = "The cloud machine at \(cloud.host):\(cloud.port) didn't answer: \(error)"
+            alert.informativeText = "The cloud machine at \(cloud) didn't answer: \(error)"
             alert.runModal()
         }
     }

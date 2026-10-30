@@ -3,35 +3,45 @@ import AgTermSessionKit
 import Foundation
 
 /// A cloud machine's sessions helper, reached through its gateway (`agterm-sessions --listen`,
-/// see docs/cloud-sessions-plan.md). For now it is set with `AGTERM_CLOUD=<host:port>` and
-/// `AGTERM_CLOUD_TOKEN`, and only on this Mac's loopback: the gateway speaks plain TCP, so a
-/// machine elsewhere is reached through an SSH tunnel or a container's port forward until hosted
-/// machines bring TLS. Each tab opens its own connection.
-final class CloudHost: SessionEndpoint {
+/// see docs/cloud-sessions-plan.md) over a WebSocket (`WebSocketPipe`). On Fly, `machine` picks
+/// the user's machine behind the shared address. Each tab opens its own connection. In
+/// development it comes from `AGTERM_CLOUD` (a wss:// URL, or ws:// / host:port on loopback),
+/// `AGTERM_CLOUD_MACHINE` and `AGTERM_CLOUD_TOKEN`.
+final class CloudHost: SessionEndpoint, CustomStringConvertible {
     private static let timeout: TimeInterval = 5
     private static let loopback: Set<String> = ["127.0.0.1", "::1", "localhost"]
 
-    let host: String
-    let port: UInt16
+    let url: URL
+    let machine: String?
     private let token: String
 
-    init(host: String, port: UInt16, token: String) {
-        self.host = host
-        self.port = port
+    init(url: URL, machine: String? = nil, token: String) {
+        self.url = url
+        self.machine = machine
         self.token = token
     }
+
+    var description: String { url.host ?? url.absoluteString }
 
     /// The machine set in the environment, if any.
     static let configured: CloudHost? = {
         let env = ProcessInfo.processInfo.environment
-        guard let endpoint = env["AGTERM_CLOUD"], let (host, port) = TCPSocket.parse(endpoint),
-              let token = env["AGTERM_CLOUD_TOKEN"], !token.isEmpty else { return nil }
-        guard loopback.contains(host) else {
-            NSLog("agterm: AGTERM_CLOUD must be a loopback address (the gateway has no TLS yet); ignoring %@", endpoint)
+        guard let endpoint = env["AGTERM_CLOUD"], let token = env["AGTERM_CLOUD_TOKEN"], !token.isEmpty,
+              let url = url(endpoint) else { return nil }
+        return CloudHost(url: url, machine: env["AGTERM_CLOUD_MACHINE"], token: token)
+    }()
+
+    /// wss:// anywhere; ws:// (or a bare host:port) only on loopback, since it isn't encrypted.
+    static func url(_ endpoint: String) -> URL? {
+        let url = endpoint.contains("://") ? URL(string: endpoint) : TCPSocket.parse(endpoint).flatMap { _ in URL(string: "ws://\(endpoint)/") }
+        guard let url, let host = url.host else { return nil }
+        if url.scheme == "wss" { return url }
+        guard url.scheme == "ws", loopback.contains(host) else {
+            NSLog("agterm: a cloud machine needs wss://, or ws:// on loopback; ignoring %@", endpoint)
             return nil
         }
-        return CloudHost(host: host, port: port, token: token)
-    }()
+        return url
+    }
 
     func spawn(_ request: SpawnRequest) throws -> HelperLink {
         let (connection, info) = try open(.spawn(request))
@@ -54,7 +64,7 @@ final class CloudHost: SessionEndpoint {
 
     /// A connection running `argv` on the machine with plain pipes (see `WireMessage.exec`).
     func exec(_ argv: [String]) throws -> WireConnection {
-        let connection = WireConnection(fd: try TCPSocket.connect(host: host, port: port, timeout: Self.timeout))
+        let connection = try socket()
         do {
             try connection.send(.auth(token: token))
             try connection.send(.exec(argv: argv))
@@ -102,8 +112,16 @@ final class CloudHost: SessionEndpoint {
     }
 
     /// Authenticated and greeted.
+    /// A WebSocket to the gateway, before `auth`.
+    private func socket() throws -> WireConnection {
+        var request = URLRequest(url: url, timeoutInterval: Self.timeout)
+        if let machine { request.setValue(machine, forHTTPHeaderField: "fly-force-instance-id") }
+        // A stopped machine takes a few seconds to start when the proxy wakes it.
+        return WireConnection(fd: try WebSocketPipe.open(request, timeout: machine == nil ? Self.timeout : 30))
+    }
+
     private func connect() throws -> WireConnection {
-        let connection = WireConnection(fd: try TCPSocket.connect(host: host, port: port, timeout: Self.timeout))
+        let connection = try socket()
         do {
             try connection.send(.auth(token: token))
             let server = try connection.handshake(build: SessionHelper.buildID, timeout: Self.timeout)

@@ -1,12 +1,13 @@
 import AgTermCore
 import Foundation
 
-/// Lets an app on another machine use this sessions helper (cloud sessions). A TCP client
-/// opens with `auth`; with the right token the gateway opens its own connection to the
+/// Lets an app on another machine use this sessions helper (cloud sessions). Clients connect
+/// with a WebSocket (`WebSocketTransport`, which Fly's HTTP proxy can route to this machine) and
+/// open with `auth`; with the right token the gateway opens its own connection to the
 /// helper's socket and passes frames both ways. The client never gets a pty descriptor
 /// (the gateway closes the ones the helper passes), so it types with `input` and resizes with
-/// `resize`. Spawns run this machine's login shell (`RemoteSpawn`). TLS is the host's job:
-/// listen on loopback and put a TLS proxy (or an SSH tunnel) in front.
+/// `resize`. Spawns run this machine's login shell (`RemoteSpawn`). TLS is the host's job
+/// (Fly's proxy); without one, listen on loopback only.
 public final class SessionGateway {
     /// How long a new connection has to send `auth`.
     public var authTimeout: TimeInterval = 10
@@ -65,10 +66,18 @@ public final class SessionGateway {
             let fd = accept(listenFd, nil, nil)
             guard fd >= 0 else { return }
             TCPSocket.configure(fd)
-            let bridge = Bridge(remote: WireConnection(fd: fd), gateway: self)
-            bridges[ObjectIdentifier(bridge)] = bridge
-            bridge.start(queue: queue, authTimeout: authTimeout)
+            WebSocketTransport.serve(fd) { [weak self] stream in
+                guard let self else { return _ = close(stream) }
+                self.queue.async { self.adopt(stream) }
+            }
         }
+    }
+
+    private func adopt(_ stream: Int32) {
+        guard listener != nil else { return _ = close(stream) }
+        let bridge = Bridge(remote: WireConnection(fd: stream), gateway: self)
+        bridges[ObjectIdentifier(bridge)] = bridge
+        bridge.start(queue: queue, authTimeout: authTimeout)
     }
 
     fileprivate func accepts(_ offered: String) -> Bool {

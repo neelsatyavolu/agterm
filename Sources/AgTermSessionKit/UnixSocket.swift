@@ -57,9 +57,9 @@ enum UnixSocket {
     }
 
     #if canImport(Darwin)
-    private static let streamType = SOCK_STREAM
+    static let streamType = SOCK_STREAM
     #else
-    private static let streamType = Int32(SOCK_STREAM.rawValue)
+    static let streamType = Int32(SOCK_STREAM.rawValue)
     #endif
 
     private static func make() throws -> Int32 {

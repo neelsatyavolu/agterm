@@ -85,7 +85,7 @@ final class CloudMove {
         guard let binary = Bundle.main.executableURL?.path, !binary.contains(" ") else {
             return "agterm's path has a space, which rsync can't use."
         }
-        guard cloud.list() != nil else { return "The cloud machine at \(cloud.host):\(cloud.port) didn't answer." }
+        guard cloud.list() != nil else { return "The cloud machine at \(cloud) didn't answer." }
         return nil
     }
 

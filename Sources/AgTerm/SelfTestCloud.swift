@@ -27,7 +27,7 @@ extension SelfTest {
         }
         window.setContentSize(NSSize(width: 900, height: 420))
         controller.showWindow(nil)
-        let wrong = CloudHost(host: cloud.host, port: cloud.port, token: String(repeating: "x", count: 32))
+        let wrong = CloudHost(url: cloud.url, machine: cloud.machine, token: String(repeating: "x", count: 32))
         report("wrong token refused", (try? wrong.spawn(SpawnRequest(executable: "/bin/sh", argv: ["-sh"], env: [], cwd: "/",
                                                                      cols: 80, rows: 24))) == nil)
         controller.openCloudTab(cloud)
@@ -87,7 +87,7 @@ extension SelfTest {
         server.idleExitAfter = nil
         let gateway = SessionGateway(socketPath: socket, host: "127.0.0.1", port: 0, token: token)
         guard (try? server.start()) != nil, (try? gateway.start()) != nil else { return nil }
-        return (server, gateway, CloudHost(host: "127.0.0.1", port: gateway.port, token: token))
+        return (server, gateway, CloudHost(url: URL(string: "ws://127.0.0.1:\(gateway.port)/")!, token: token))
     }
 
     /// Polls `condition` on the main queue every 0.1 s for up to `timeout`, then calls `done`.

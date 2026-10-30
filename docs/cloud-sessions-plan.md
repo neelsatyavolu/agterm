@@ -35,13 +35,13 @@ When the Mac starts and the cloud has tabs: **Keep in cloud** (just attach) or *
 ## Architecture
 
 ```
-Mac agterm ──TLS (Fly proxy)──► gateway ──unix socket──► sessions helper   (one process: agterm-sessions --listen)
+Mac agterm ──wss (Fly proxy)──► gateway ──unix socket──► sessions helper   (one process: agterm-sessions --listen)
 iPhone ─────agmux relay─────► cloud desktop (same tab ids)
 control plane: accounts, Stripe, VM create/start/stop
 ```
 
 - **Linux helper**: `AgTermSessionKit` + `AgTermCore` have no AppKit. Swap `Darwin.*` for `Glibc` under `#if`, fix the `CMSG` layout in `SocketIO.swift`, drop the launchd bits in `SessionPaths`. Run `SessionServerTests` / `HeadlessTerminalTests` on Linux in CI.
-- **Gateway** (`SessionGateway`, built): `SessionWire` frames over plain TCP, in the helper's own process. TLS is terminated in front of it (Fly's `tls` handler), so there is no WebSocket or SwiftNIO. The first frame must be `auth` with the machine's token (`AGTERM_GATEWAY_TOKEN`). Then the gateway opens its own connection to the helper's socket and passes frames both ways, closing the pty descriptors the helper passes. Clients type with the new `input` message and resize with `resize`, both added tags. Spawns get the machine's login shell, home and PATH; of the Mac's environment only the terminal variables and the tab id arrive.
+- **Gateway** (`SessionGateway`, built): `SessionWire` frames inside a WebSocket (`WebSocketTransport`, hand-written, no SwiftNIO), in the helper's own process. Fly's shared IPv4 and its per-machine routing (`fly-force-instance-id`) work only for HTTP services, so one Fly app with a free shared address serves every user's machine; Fly terminates TLS, and the Mac connects with URLSession. The first frame must be `auth` with the machine's token (`AGTERM_GATEWAY_TOKEN`). Then the gateway opens its own connection to the helper's socket and passes frames both ways, closing the pty descriptors the helper passes. Clients type with the new `input` message and resize with `resize`, both added tags. Spawns get the machine's login shell, home and PATH; of the Mac's environment only the terminal variables and the tab id arrive.
 - **Status in the cloud**: `StatusRules` lives in Core, so the cloud side knows working / needs you / done. It pushes "needs you" and "all done" to the phone and decides when to stop the VM.
 - **Phone**: the cloud registers on the relay so agterm Remote works with the Mac off.
 - **Cloud helper updates**: only applied while the VM is stopped (you control both sides, but must not kill running tabs).

@@ -194,7 +194,8 @@ final class SessionGatewayTests: XCTestCase {
     // MARK: Helpers
 
     private func open() throws -> WireConnection {
-        WireConnection(fd: try TCPSocket.connect(host: "127.0.0.1", port: gateway.port, timeout: 5))
+        let tcp = try TCPSocket.connect(host: "127.0.0.1", port: gateway.port, timeout: 5)
+        return WireConnection(fd: try WebSocketTransport.connect(tcp, host: "127.0.0.1"))
     }
 
     private func authenticated() throws -> WireConnection {
