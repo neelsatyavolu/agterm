@@ -52,7 +52,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// `restoring` brings back a tab saved at the last quit: its history, then its agent.
     /// `command` is typed at the first prompt (starting an agent from the Shell menu).
     init(cwd: String, restoring saved: SavedTab? = nil, command: String? = nil) {
-        tabID = UUID().uuidString
+        // A tab coming back from the cloud keeps its id, as one reattached here does.
+        tabID = saved?.tabID ?? UUID().uuidString
         self.cwd = cwd
         FolderIndex.shared.visit(cwd)
         shellPath = ProcInfo.loginShell()
@@ -445,6 +446,12 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         onChange?()
     }
 
+    /// The program in the foreground, if it isn't the shell: its process group here, or on the cloud machine.
+    var foregroundJob: pid_t? {
+        guard !signals.exited, let foreground, !foreground.isShell else { return nil }
+        return foreground.pid
+    }
+
     /// The process group in the foreground, if it isn't the shell (an agent, say).
     var foregroundGroup: pid_t? {
         guard !signals.exited, let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd),
@@ -454,6 +461,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
 
     /// Signals the job in the foreground (an agent), leaving the shell running.
     func signalForeground(_ signal: Int32) {
+        if isCloud { return (view.link as? HelperLink)?.signalForeground(signal) ?? () }
         let shell = view.link.shellPid
         guard let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd), group != shell, group > 0 else { return }
         killpg(group, signal)

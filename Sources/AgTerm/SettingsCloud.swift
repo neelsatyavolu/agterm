@@ -6,6 +6,7 @@ struct CloudPane: View {
     @ObservedObject var account: CloudAccount
     @ObservedObject var teams: TeamsAccount
     @State private var limit = ""
+    @AppStorage(CloudReturn.automaticKey) private var returnAutomatically = true
 
     var body: some View {
         Form {
@@ -78,6 +79,7 @@ struct CloudPane: View {
     private func machine(_ status: CloudAccount.Status) -> some View {
         if let machine = status.machine, CloudCredentials.current != nil {
             LabeledContent("Machine", value: [machine.state.map(Self.describe), machine.region].compactMap { $0 }.joined(separator: " · "))
+            Toggle("Bring tabs back when you return to this Mac", isOn: $returnAutomatically)
         } else {
             LabeledContent("No machine yet") {
                 Button("Set Up Machine") { account.setUpMachine() }.disabled(account.busy)

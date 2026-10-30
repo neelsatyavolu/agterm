@@ -4,7 +4,7 @@ import Combine
 
 /// The single window: tab bar in the title bar, the selected terminal below.
 final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDelegate {
-    private let tabBar = TabBarView(frame: .zero)
+    let tabBar = TabBarView(frame: .zero)
     private let container = NSView()
     /// Paints the margins around the terminal; the terminal paints its own area, so a
     /// see-through background isn't layered twice.
@@ -33,6 +33,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         applyAppearance()
         restoreTabs()
         startTimers()
+        startCloudReturn()
         configureCommandBar()
         NotificationCenter.default.addObserver(forName: .agtermOpenTab, object: nil, queue: .main) { [weak self] note in
             guard let self, let command = note.userInfo?["command"] as? String else { return }
@@ -246,7 +247,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             switch outcome {
             case .moved(let count):
                 Notifier.shared.post(title: "Moved \(count) tab\(count == 1 ? "" : "s") to the cloud",
-                                     body: "They keep running when this Mac is off.", tabID: "cloud")
+                                     body: "You can turn off this Mac; they keep running and come back when you return.", tabID: "cloud")
             case .failed(let reason):
                 Notifier.shared.post(title: "Couldn't move tabs to the cloud", body: reason, tabID: "cloud")
             }
@@ -256,7 +257,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     /// Puts `new` where `old` is and ends `old`'s shell.
-    private func replaceTab(_ old: TerminalSession, with new: TerminalSession) {
+    func replaceTab(_ old: TerminalSession, with new: TerminalSession) {
         guard let index = sessions.firstIndex(of: old) else { return }
         let wasSelected = index == selected
         let current = selected
@@ -541,7 +542,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             .map { "\($0.foregroundName ?? "?") in \($0.folder)" }
     }
 
+    /// Moving to or from the cloud, and bringing tabs home (MainWindowController+Cloud).
+    let cloudState = CloudState()
+
     private func render() {
+        updateCloudButton()
         tabBar.update(sessions.enumerated().map { i, s in
             TabModel(topic: s.topic, folder: s.isCloud ? "cloud · " + s.folder : s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
                      status: s.status, selected: i == selected)

@@ -2,9 +2,9 @@
 // Sources/AgTerm/SelfTestMove.swift). Like Claude it records its session in
 // ~/.claude/sessions/<pid>.json (busy, mid-turn) and appends to its transcript in
 // ~/.claude/projects/<cwd>/<id>.jsonl, then waits. `--resume <id>` continues a transcript; the
-// last other argument is the prompt. It prints one line saying which session it is in, how
-// long the transcript is, the prompt and the OS, so the test can tell where it runs and what
-// it remembers.
+// last other argument is the prompt; `--idle` records the turn as finished. It prints one line
+// saying which session it is in, how long the transcript is, the prompt and the OS, so the test
+// can tell where it runs and what it remembers.
 #include <ctype.h>
 #include <limits.h>
 #include <signal.h>
@@ -32,9 +32,10 @@ static void make_dirs(char *path) {
 }
 
 int main(int argc, char **argv) {
-    const char *id = NULL, *prompt = "";
+    const char *id = NULL, *prompt = "", *status = "busy";
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--resume") == 0 && i + 1 < argc) id = argv[++i];
+        else if (strcmp(argv[i], "--idle") == 0) status = "idle";
         else if (argv[i][0] != '-') prompt = argv[i];
     }
     char fresh[40];
@@ -59,7 +60,7 @@ int main(int argc, char **argv) {
     signal(SIGINT, stop);
 
     FILE *f = fopen(record, "w");
-    if (f) { fprintf(f, "{\"sessionId\":\"%s\",\"status\":\"busy\"}\n", id); fclose(f); }
+    if (f) { fprintf(f, "{\"sessionId\":\"%s\",\"status\":\"%s\"}\n", id, status); fclose(f); }
     f = fopen(transcript, "a");
     if (f) { fprintf(f, "{\"prompt\":\"%s\"}\n", prompt); fclose(f); }
     int lines = 0, c;

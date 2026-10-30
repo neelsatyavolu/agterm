@@ -69,12 +69,12 @@ extension SelfTest {
     }
 
     /// realpath'd, as the shell reports it.
-    private static let moveRoot = "/private/tmp/agmove"
-    private static let moveRepo = moveRoot + "/proj"
+    static let moveRoot = "/private/tmp/agmove"
+    static let moveRepo = moveRoot + "/proj"
 
     /// A repo with a file and a node_modules, and the fake Claude built here and on the machine.
     /// Returns the local fake's path.
-    private static func prepareMoveFixture(_ cloud: CloudHost) -> String? {
+    static func prepareMoveFixture(_ cloud: CloudHost) -> String? {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../scripts/fake-claude.c").standardized.path
         let fm = FileManager.default
         try? fm.removeItem(atPath: moveRoot)

@@ -138,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Quits once the tabs are in the cloud; stays open if that fails (a notification says why).
     private func moveThenQuit(_ items: [CloudMove.Item]) -> NSApplication.TerminateReply {
         guard let controller, let cloud = CloudHost.configured else { return .terminateCancel }
+        CloudReturn.movedAway = true
         controller.moveToCloud(items, cloud: cloud) { outcome in
             if case .moved = outcome { return NSApp.reply(toApplicationShouldTerminate: true) }
             NSApp.reply(toApplicationShouldTerminate: false)

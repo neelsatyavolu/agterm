@@ -199,7 +199,7 @@ final class CloudMove {
     }
 
     /// Checks `condition` every 0.25 s; `done(true)` once it holds, `done(false)` at the deadline.
-    private static func wait(upTo seconds: TimeInterval, until condition: @escaping () -> Bool, then done: @escaping (Bool) -> Void) {
+    static func wait(upTo seconds: TimeInterval, until condition: @escaping () -> Bool, then done: @escaping (Bool) -> Void) {
         let deadline = Date().addingTimeInterval(seconds)
         func check() {
             if condition() { return done(true) }

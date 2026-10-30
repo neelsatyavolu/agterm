@@ -193,6 +193,13 @@ final class HostedSession {
         }
     }
 
+    /// Signals the foreground job, if it isn't the shell.
+    func signalForeground(_ signal: Int32) {
+        guard !exited else { return }
+        let group = tcgetpgrp(masterFd)
+        if group > 0, group != pid { killpg(group, signal) }
+    }
+
     /// Kills the shell and its jobs now and reaps it, without telling the client.
     func terminate() {
         guard !exited else { return }

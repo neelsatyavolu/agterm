@@ -26,6 +26,8 @@ protocol TabBarDelegate: AnyObject {
     func tabBar(_ bar: TabBarView, didMove from: Int, to: Int)
     /// Right-click on a tab: rename it and the like.
     func tabBar(_ bar: TabBarView, menuFor index: Int) -> NSMenu
+    /// The cloud button beside +: move every tab to the cloud, or bring them back.
+    func tabBarDidRequestCloud(_ bar: TabBarView)
 }
 
 /// Horizontal strip of two-line tab cards plus a new-tab button. Sits in the title bar.
@@ -36,6 +38,7 @@ final class TabBarView: NSView {
     /// Room for the traffic lights.
     private static let leadingInset: CGFloat = 80
     private static let plusWidth: CGFloat = 44
+    private static let cloudWidth: CGFloat = 40
     private static let minTabWidth: CGFloat = 168
     private static let maxTabWidth: CGFloat = 300
 
@@ -43,10 +46,37 @@ final class TabBarView: NSView {
     private var cards: [TabCardView] = []
     private let strip = NSView()
     private let plusButton = IconButton(.plus)
+    private let cloudButton = IconButton(.cloud)
     private let leftButton = IconButton(.left)
     private let rightButton = IconButton(.right)
     private var scrollX: CGFloat = 0
     private var selectedIndex: Int?
+    /// What the cloud button beside + offers (agterm Cloud).
+    enum Cloud: Equatable {
+        case hidden
+        /// Move every tab to the cloud, to turn this Mac off.
+        case moveUp
+        /// Bring the tabs back from the cloud.
+        case bringBack
+        /// Moving one way or the other.
+        case busy
+    }
+
+    var cloud: Cloud = .hidden {
+        didSet {
+            guard cloud != oldValue else { return }
+            cloudButton.isHidden = cloud == .hidden
+            cloudButton.cloud = cloud
+            cloudButton.toolTip = switch cloud {
+            case .moveUp: "Move all tabs to the cloud. They keep running when you turn this Mac off."
+            case .bringBack: "Bring your tabs back from the cloud."
+            case .busy: "Moving tabs…"
+            case .hidden: nil
+            }
+            needsLayout = true
+        }
+    }
+
     /// Toggles twice a second so working dots blink.
     var blinkOn = true {
         didSet { cards.forEach { $0.blinkOn = blinkOn } }
@@ -67,6 +97,12 @@ final class TabBarView: NSView {
         }
         plusButton.toolTip = "New tab. Right-click to start an agent."
         addSubview(plusButton)
+        cloudButton.onClick = { [weak self] in
+            guard let self, self.cloud != .busy else { return }
+            self.delegate?.tabBarDidRequestCloud(self)
+        }
+        cloudButton.isHidden = true
+        addSubview(cloudButton)
         leftButton.onClick = { [weak self] in self?.scroll(by: -1) }
         rightButton.onClick = { [weak self] in self?.scroll(by: 1) }
         addSubview(leftButton)
@@ -221,7 +257,9 @@ final class TabBarView: NSView {
     }
 
     /// Room for tabs when they all fit.
-    private var fullStripWidth: CGFloat { max(0, bounds.width - Self.leadingInset - Self.plusWidth) }
+    private var fullStripWidth: CGFloat {
+        max(0, bounds.width - Self.leadingInset - Self.plusWidth - (cloud == .hidden ? 0 : Self.cloudWidth))
+    }
     private var overflows: Bool { CGFloat(cards.count) * Self.minTabWidth > fullStripWidth }
     /// When tabs overflow, the strip gives up room at each end for the scroll arrows.
     private var stripX: CGFloat { Self.leadingInset + (overflows ? Self.arrowWidth : 0) }
@@ -237,6 +275,7 @@ final class TabBarView: NSView {
         layoutCards(animated: false)
         let contentEnd = overflows ? strip.frame.maxX + Self.arrowWidth : stripX + CGFloat(cards.count) * width
         plusButton.frame = NSRect(x: contentEnd, y: 0, width: Self.plusWidth, height: bounds.height)
+        cloudButton.frame = NSRect(x: plusButton.frame.maxX - 6, y: 0, width: Self.cloudWidth, height: bounds.height)
 
         // Arrows beside the strip, hidden when there's nothing more on that side.
         leftButton.isHidden = !overflows || scrollX <= 0
@@ -290,12 +329,14 @@ final class TabBarView: NSView {
 }
 
 private final class IconButton: NSView {
-    enum Icon { case plus, left, right }
+    enum Icon { case plus, left, right, cloud }
 
     var onClick: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
     private let icon: Icon
     private var hovering = false { didSet { needsDisplay = true } }
+    /// For `.cloud`: which way it points.
+    var cloud: TabBarView.Cloud = .moveUp { didSet { needsDisplay = true } }
 
     init(_ icon: Icon) {
         self.icon = icon
@@ -334,6 +375,25 @@ private final class IconButton: NSView {
             ink.setFill()
             NSRect(x: c.x - 6, y: c.y - 0.5, width: 12, height: 1).fill()
             NSRect(x: c.x - 0.5, y: c.y - 6, width: 1, height: 12).fill()
+        case .cloud:
+            if hovering && cloud != .busy {
+                Theme.surfaceHover.setFill()
+                NSBezierPath(roundedRect: NSRect(x: c.x - 13, y: c.y - 13, width: 26, height: 26), xRadius: 7, yRadius: 7).fill()
+            }
+            let name = switch cloud {
+            case .bringBack: "icloud.and.arrow.down"
+            case .busy: "arrow.triangle.2.circlepath.icloud"
+            default: "icloud.and.arrow.up"
+            }
+            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: toolTip)?.withSymbolConfiguration(config) else { return }
+            let tinted = NSImage(size: symbol.size, flipped: false) { rect in
+                symbol.draw(in: rect)
+                (self.cloud == .busy ? Theme.fg3 : ink).set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: NSRect(x: c.x - symbol.size.width / 2, y: c.y - symbol.size.height / 2, width: symbol.size.width, height: symbol.size.height))
         case .left, .right:
             // Opaque so the arrow sits cleanly over the tab underneath.
             Theme.chrome.setFill()

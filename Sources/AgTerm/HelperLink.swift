@@ -109,6 +109,12 @@ final class HelperLink: PtyLink {
         try? currentConnection.send(.inspect)
     }
 
+    /// Signals a cloud shell's foreground job (local ones are signalled directly).
+    func signalForeground(_ signal: Int32) {
+        guard !closed, writer == nil else { return }
+        try? currentConnection.send(.signalForeground(signal))
+    }
+
     private var currentConnection: WireConnection {
         lock.lock()
         defer { lock.unlock() }

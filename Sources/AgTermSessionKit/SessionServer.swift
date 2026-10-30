@@ -131,6 +131,9 @@ public final class SessionServer {
             session.signal(signal)
         case .input(let bytes):
             sessions.values.first { $0.isAttached(client) }?.write(bytes, from: client)
+        case .signalForeground(let signal):
+            guard (1..<32).contains(signal) else { return reply(client, .error("bad signal")) }
+            sessions.values.first { $0.isAttached(client) }?.signalForeground(signal)
         case .inspect:
             guard let session = sessions.values.first(where: { $0.isAttached(client) }) else { return reply(client, .error("not attached")) }
             reply(client, .foreground(session.foreground()))

@@ -2,9 +2,9 @@ import AgTermCore
 import AgTermSessionKit
 import Foundation
 
-/// Copies folders and files to the cloud machine at the same paths, with macOS's rsync
+/// Copies folders and files to and from the cloud machine at the same paths, with macOS's rsync
 /// talking to rsync there through the gateway (`agterm --cloud-pipe`). Only changes go after
-/// the first copy. Nothing on the cloud machine is deleted. Blocks; not for the main queue.
+/// the first copy. Nothing is deleted on either side. Blocks; not for the main queue.
 enum CloudSync {
     struct Failure: Error, CustomStringConvertible {
         let description: String
@@ -17,16 +17,28 @@ enum CloudSync {
     static func push(folders: [String], files: [String], to cloud: CloudHost) throws {
         for folder in folders where isDirectory(folder) {
             try makeFolder(folder, on: cloud)
-            try copy([folder + "/"], to: folder + "/", excluding: CloudMovePlan.excluded, via: cloud)
+            try copy([folder + "/"], to: "cloud:" + folder + "/", excluding: CloudMovePlan.excluded, via: cloud)
         }
         for path in files where FileManager.default.fileExists(atPath: path) {
             if isDirectory(path) {
                 try makeFolder(path, on: cloud)
-                try copy([path + "/"], to: path + "/", excluding: [], via: cloud)
+                try copy([path + "/"], to: "cloud:" + path + "/", excluding: [], via: cloud)
             } else {
                 let parent = (path as NSString).deletingLastPathComponent
                 try makeFolder(parent, on: cloud)
-                try copy([path], to: parent + "/", excluding: [], via: cloud)
+                try copy([path], to: "cloud:" + parent + "/", excluding: [], via: cloud)
+            }
+        }
+    }
+
+    /// Brings folders (without `CloudMovePlan.excluded`) and whole folders of agent state back.
+    /// A file changed here more recently than there is kept, so work done on this Mac meanwhile
+    /// isn't lost. Paths the cloud machine doesn't have are skipped.
+    static func pull(folders: [String], files: [String], from cloud: CloudHost) throws {
+        for (paths, excluded) in [(folders, CloudMovePlan.excluded), (files, [])] {
+            for folder in paths where (try? cloud.run(["/usr/bin/env", "test", "-d", folder]))?.status == 0 {
+                try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+                try copy(["cloud:" + folder + "/"], to: folder + "/", excluding: excluded, options: ["--update"], via: cloud)
             }
         }
     }
@@ -36,14 +48,16 @@ enum CloudSync {
         guard result.status == 0 else { throw Failure(description: "couldn't make \(path) on the cloud machine: \(result.stderr)") }
     }
 
-    private static func copy(_ sources: [String], to destination: String, excluding excluded: [String], via cloud: CloudHost) throws {
+    /// `sources` and `destination` name the cloud side as `cloud:<path>`.
+    private static func copy(_ sources: [String], to destination: String, excluding excluded: [String], options: [String] = [],
+                             via cloud: CloudHost) throws {
         guard let binary = Bundle.main.executableURL?.path, !binary.contains(" ") else {
             throw Failure(description: "agterm's path has a space, which rsync's -e can't take")
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: rsync)
-        process.arguments = ["-a"] + excluded.flatMap { ["--exclude", $0] } + ["-e", "\(binary) \(CloudPipe.flag)"]
-            + sources + ["cloud:" + destination]
+        process.arguments = ["-a"] + options + excluded.flatMap { ["--exclude", $0] } + ["-e", "\(binary) \(CloudPipe.flag)"]
+            + sources + [destination]
         process.environment = ProcessInfo.processInfo.environment.merging(cloud.environment) { $1 }
         let errors = Pipe()
         process.standardError = errors

@@ -131,6 +131,9 @@ public enum WireMessage: Equatable {
     /// as `output` and its stderr as `stderr`, then `exited`. The connection is used for nothing else.
     case exec(argv: [String])
     case stderr(Data)
+    /// Signals the attached session's foreground job (an agent), leaving the shell, for a client
+    /// that has no pty descriptor to find the job with.
+    case signalForeground(Int32)
 }
 
 public enum WireFrameError: Error, Equatable {
@@ -143,13 +146,14 @@ public enum WireFrame {
     private enum Tag: UInt8 {
         case hello = 1, list = 2, sessions = 3, spawn = 4, attach = 5, attached = 6
         case replay = 7, output = 8, exited = 9, kill = 10, shutdownIfIdle = 11, error = 12
-        case input = 13, resize = 14, auth = 15, inspect = 16, foreground = 17, exec = 18, stderr = 19
+        case input = 13, resize = 14, auth = 15, inspect = 16, foreground = 17, exec = 18, stderr = 19, signalForeground = 20
     }
 
     private struct Hello: Codable { var version: Int; var build: String }
     private struct SessionID: Codable { var id: String }
     private struct Exited: Codable { var id: String; var status: Int32 }
     private struct Kill: Codable { var id: String; var signal: Int32 }
+    private struct Signal: Codable { var signal: Int32 }
 
     /// Largest payload one frame can carry. Senders split larger `output` and `replay` data
     /// into several frames, which receivers feed in order.
@@ -210,6 +214,7 @@ public enum WireFrame {
         case .foreground(let info): return (.foreground, json(info))
         case .exec(let argv): return (.exec, json(argv))
         case .stderr(let bytes): return (.stderr, bytes)
+        case .signalForeground(let signal): return (.signalForeground, json(Signal(signal: signal)))
         }
     }
 
@@ -234,6 +239,7 @@ public enum WireFrame {
         case .foreground: return .foreground(try object(payload))
         case .exec: return .exec(argv: try object(payload))
         case .stderr: return .stderr(payload)
+        case .signalForeground: return .signalForeground(try object(payload, as: Signal.self).signal)
         }
     }
 

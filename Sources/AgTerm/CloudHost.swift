@@ -83,16 +83,18 @@ final class CloudHost: SessionEndpoint, CustomStringConvertible {
         }
     }
 
-    /// Runs `argv` with no input and waits for it; returns its status and what it wrote to stderr.
-    func run(_ argv: [String], timeout: TimeInterval = 30) throws -> (status: Int32, stderr: String) {
+    /// Runs `argv` with no input and waits for it; returns its status and output.
+    @discardableResult
+    func run(_ argv: [String], timeout: TimeInterval = 30) throws -> (status: Int32, stdout: String, stderr: String) {
         let connection = try exec(argv)
         defer { connection.close() }
         try connection.send(.input(Data()))
-        var stderr = ""
+        var stdout = "", stderr = ""
         while true {
             switch try connection.receive(timeout: timeout) {
+            case .output(let bytes): stdout += String(decoding: bytes, as: UTF8.self)
             case .stderr(let bytes): stderr += String(decoding: bytes, as: UTF8.self)
-            case .exited(_, let status): return (status, stderr)
+            case .exited(_, let status): return (status, stdout, stderr)
             case .error(let text): throw WireError.remote(text)
             default: break
             }
