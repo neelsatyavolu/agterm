@@ -57,6 +57,32 @@ final class ChangelogTests: XCTestCase {
         XCTAssertEqual(Changelog.compare("0.9.9", "1.0"), .orderedAscending)
     }
 
+    func testBetaSections() {
+        let releases = Changelog.parse("""
+        ## 1.1.0 — 2026-11-20
+        - Added: Cloud.
+        ## 1.1.0-beta.2 — 2026-11-10
+        - Fixed: b.
+        ## 1.1.0-beta.1 — 2026-10-30
+        - Added: Cloud (beta).
+        ## 1.0.9 — 2026-10-30
+        - Fixed: a.
+        """)
+        XCTAssertEqual(releases.map(\.version), ["1.1.0", "1.1.0-beta.2", "1.1.0-beta.1", "1.0.9"])
+        XCTAssertEqual(releases[2].date, "2026-10-30")
+        XCTAssertEqual(Changelog.compare("1.1.0-beta.1", "1.1.0"), .orderedAscending)
+        XCTAssertEqual(Changelog.compare("1.1.0-beta.2", "1.1.0-beta.1"), .orderedDescending)
+        XCTAssertEqual(Changelog.compare("1.1.0-beta.1", "1.0.9"), .orderedDescending)
+        // A tester moving between betas, then to the release, sees each step once.
+        XCTAssertEqual(Changelog.unseen(releases, lastSeen: "1.1.0-beta.1", current: "1.1.0-beta.2").map(\.version), ["1.1.0-beta.2"])
+        XCTAssertEqual(Changelog.unseen(releases, lastSeen: "1.1.0-beta.2", current: "1.1.0").map(\.version), ["1.1.0"])
+        // A stable user never sees beta sections; the release's section repeats their changes.
+        XCTAssertEqual(Changelog.unseen(releases, lastSeen: "1.0.9", current: "1.1.0").map(\.version), ["1.1.0"])
+        XCTAssertEqual(Changelog.shown(releases, current: "1.1.0").map(\.version), ["1.1.0", "1.0.9"])
+        XCTAssertEqual(Changelog.shown(releases, current: "1.1.0-beta.2").count, 4)
+        XCTAssertEqual(Changelog.effectiveLastSeen(stored: nil, previousInstall: true, releases: releases, current: "1.1.0"), "1.0.9")
+    }
+
     func testIgnoresTextOutsideSections() {
         let releases = Changelog.parse(sample)
         XCTAssertEqual(releases.flatMap(\.items).filter { $0.text.contains("stray") }.count, 0)
