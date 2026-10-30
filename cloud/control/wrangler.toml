@@ -17,7 +17,7 @@ crons = ["7 * * * *"]
 [vars]
 TEAMS_URL = "https://teams.agmux.dev"
 FLY_APP = "agterm-cloud-machines"
-CLOUD_IMAGE = "registry.fly.io/agterm-cloud-machines:latest"
+CLOUD_IMAGE = "registry.fly.io/agterm-cloud-machines:v202610302330"
 INCLUDED_HOURS = "100"
 MAX_HOURS = "500"
 STRIPE_OVERAGE_PRICE = "price_1UWP1NBPM9ZAoURp9l196RW4" # $0.10 an hour past 100, meter mtr_61VfmyjLaLhKdpSQZ41BPM9ZAoURp0iO
