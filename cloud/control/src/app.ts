@@ -255,8 +255,9 @@ async function stopFor(machineID: string, deps: Deps) {
 
 const retainAfterCancel = 30 * 24 * 3600;
 
-/** Meters every machine's running time, stops machines past their limit, and deletes machines
- *  and volumes 30 days after a subscription ends. */
+/** Meters every machine's running time, stops machines past their limit, moves stopped machines
+ *  to the current image (a running one keeps its tabs), and deletes machines and volumes 30 days
+ *  after a subscription ends. */
 export async function hourly(deps: Deps): Promise<void> {
   const users = (await deps.db.prepare("SELECT * FROM users WHERE machine IS NOT NULL").all<UserRow>()).results;
   const now = deps.now();
@@ -281,6 +282,10 @@ export async function hourly(deps: Deps): Promise<void> {
       await deps.db.prepare("UPDATE users SET seconds_used = ?, metered_until = ?, capped = ?, overage_reported = ? WHERE id = ?")
         .bind(used, now, over ? 1 : user.capped, reported, user.id).run();
       if (over && !user.capped) await stopFor(user.machine!, deps);
+      const state = await deps.fly.machineState(user.machine!);
+      if ((state === "stopped" || state === "suspended" || state === "created") && (await deps.fly.machineImage(user.machine!)) !== deps.config.image) {
+        await deps.fly.updateImage(user.machine!, deps.config.image);
+      }
     } catch (error) {
       console.error(`metering ${user.id}`, error);
     }

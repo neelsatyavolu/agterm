@@ -21,6 +21,10 @@ export interface Fly {
   createVolume(name: string, region: string, sizeGB: number): Promise<string>;
   createMachine(spec: MachineSpec): Promise<string>;
   machineState(id: string): Promise<string | null>;
+  /** The image the machine runs, from its config. */
+  machineImage(id: string): Promise<string | null>;
+  /** Moves a machine to `image` without starting it. */
+  updateImage(id: string, image: string): Promise<void>;
   events(id: string): Promise<MachineEvent[]>;
   stop(id: string): Promise<void>;
   setAutostart(id: string, autostart: boolean): Promise<void>;
@@ -106,6 +110,15 @@ export class HttpFly implements Fly {
     } catch {
       return null;
     }
+  }
+
+  async machineImage(id: string): Promise<string | null> {
+    return (await this.call<{ config?: { image?: string } }>("GET", `/machines/${id}`)).config?.image ?? null;
+  }
+
+  async updateImage(id: string, image: string): Promise<void> {
+    const machine = await this.call<{ config: { image: string } }>("GET", `/machines/${id}`);
+    await this.call("POST", `/machines/${id}`, { config: { ...machine.config, image }, skip_launch: true });
   }
 
   async events(id: string): Promise<MachineEvent[]> {

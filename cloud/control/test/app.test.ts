@@ -29,6 +29,8 @@ class FakeFly implements Fly {
     return id;
   }
   async machineState(id: string) { return this.machines.get(id)?.state ?? null; }
+  async machineImage(id: string) { return this.machines.get(id)?.spec.image ?? null; }
+  async updateImage(id: string, image: string) { this.machines.get(id)!.spec.image = image; }
   async events(id: string) { return this.machines.get(id)?.events ?? []; }
   async stop(id: string) { this.machines.get(id)!.state = "stopped"; }
   async setAutostart(id: string, on: boolean) { this.machines.get(id)!.autostart = on; }
@@ -201,6 +203,23 @@ describe("metering", () => {
   it("limits stay within the most allowed", async () => {
     expect((await call("POST", "/v1/cloud/cap", { hours: 501 })).status).toBe(400);
     expect((await call("POST", "/v1/cloud/cap", { hours: -1 })).status).toBe(400);
+  });
+});
+
+describe("image updates", () => {
+  it("moves stopped machines to the current image and leaves running ones alone", async () => {
+    await call("GET", "/v1/cloud");
+    await subscribe();
+    await call("POST", "/v1/cloud/machine", { user: "neel", home: "/Users/neel" });
+    const machine = fly.machines.get("m1")!;
+    deps.config.image = "img:2";
+    machine.state = "started";
+    await hourly(deps);
+    expect(machine.spec.image).toBe("img");
+    machine.state = "stopped";
+    await hourly(deps);
+    expect(machine.spec.image).toBe("img:2");
+    expect(machine.state).toBe("stopped");
   });
 });
 
