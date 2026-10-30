@@ -11,6 +11,9 @@ public enum SessionServerError: Error, Equatable {
 /// The sessions helper (`agterm --sessions-helper`): owns every tab's shell and serves the app over a Unix socket,
 /// so shells outlive app updates, quits and crashes. All state lives on one serial queue.
 public final class SessionServer {
+    /// Where a cloud machine keeps its sessions across a stop (`SessionKeeper`); nil keeps nothing.
+    /// Set before `start()`.
+    public var statePath: String?
     /// With no sessions and no clients for this long, the server stops; nil never stops (a
     /// cloud machine's helper, which the gateway reaches).
     public var idleExitAfter: TimeInterval? = 10
@@ -46,7 +49,10 @@ public final class SessionServer {
 
     /// Binds the socket and starts serving on the server's queue without blocking.
     public func start() throws {
-        try queue.sync { try listen() }
+        try queue.sync {
+            try listen()
+            if let statePath { SessionKeeper.take(from: statePath).forEach(restore) }
+        }
         queue.async { self.noteActivity() }
     }
 
@@ -159,16 +165,28 @@ public final class SessionServer {
         } catch {
             return reply(client, .error("spawn failed: \(error)"))
         }
+        register(session)
+        detachEverywhere(client)
+        session.attach(client)
+        session.start()
+        noteActivity()
+    }
+
+    /// A session kept across a machine stop, back under its old id with its screen and agent.
+    private func restore(_ kept: KeptSession) {
+        guard sessions[kept.id] == nil, let session = try? HostedSession(request: kept.request, queue: queue, id: kept.id) else { return }
+        session.restore(screen: kept.screen, resume: kept.resume)
+        register(session)
+        session.start()
+    }
+
+    private func register(_ session: HostedSession) {
         session.onExit = { [weak self] session in
             self?.sessions[session.id] = nil
             self?.noteActivity()
         }
         session.onOutput = { [weak self] in self?.lastActivity = Date() }
         sessions[session.id] = session
-        detachEverywhere(client)
-        session.attach(client)
-        session.start()
-        noteActivity()
     }
 
     private func reply(_ client: WireConnection, _ message: WireMessage) {
@@ -213,6 +231,7 @@ public final class SessionServer {
         listener?.cancel()
         listener = nil
         unlink(socketPath)
+        if let statePath { SessionKeeper.save(sessions.values.sorted { $0.startedAt < $1.startedAt }.map { $0.kept() }, to: statePath) }
         sessions.values.forEach { $0.terminate() }
         sessions = [:]
         clients.values.forEach { $0.close() }

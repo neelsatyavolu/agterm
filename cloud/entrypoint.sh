@@ -24,4 +24,4 @@ exec setpriv --reuid="$user" --regid="$user" --init-groups \
     PATH="$home/.local/bin:$home/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     AGTERM_GATEWAY_TOKEN="$AGTERM_GATEWAY_TOKEN" \
     /usr/local/bin/agterm-sessions --sessions-helper --socket "/tmp/agterm-$user/s.sock" --build cloud \
-        --listen 0.0.0.0:8080 --idle-stop "${AGTERM_IDLE_STOP:-900}"
+        --listen 0.0.0.0:8080 --idle-stop "${AGTERM_IDLE_STOP:-900}" --state "$home/.agterm/cloud-sessions.json"

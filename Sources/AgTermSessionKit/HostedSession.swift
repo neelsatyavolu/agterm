@@ -26,7 +26,11 @@ final class HostedSession {
     private static let setWindowSize = UInt(TIOCSWINSZ)
     #endif
 
-    let id = UUID().uuidString
+    let id: String
+    /// What started the shell, kept for `kept()`.
+    private let request: SpawnRequest
+    /// Typed once the shell first writes (its prompt): a kept agent's resume command.
+    private var pendingInput: String?
     let pid: pid_t
     let cwd: String
     let startedAt = Date()
@@ -53,8 +57,10 @@ final class HostedSession {
 
     var info: SessionInfo { SessionInfo(id: id, pid: pid, cwd: cwd, startedAt: startedAt, attached: client != nil) }
 
-    init(request: SpawnRequest, queue: DispatchQueue) throws {
+    init(request: SpawnRequest, queue: DispatchQueue, id: String = UUID().uuidString) throws {
         (pid, masterFd) = try PtySpawn.fork(request)
+        self.id = id
+        self.request = request
         cwd = request.cwd
         self.queue = queue
         terminal = Self.makeTerminal(cols: Int(request.cols), rows: Int(request.rows), delegate: terminalDelegate)
@@ -123,6 +129,16 @@ final class HostedSession {
         guard writer.pendingBytes > Self.inputPauseAbove else { return }
         connection.pauseReading()
         writer.whenPending(atMost: Self.inputResumeAt, on: queue) { [weak connection] in connection?.resumeReading() }
+    }
+
+    private func type(_ text: String) {
+        guard !exited else { return }
+        if writer == nil {
+            let fd = fcntl(masterFd, F_DUPFD_CLOEXEC, 0)
+            guard fd >= 0 else { return }
+            writer = PtyWriter(fd: fd)
+        }
+        writer?.write(Array(text.utf8)[...])
     }
 
     /// A new size from a client that has no pty descriptor; the kernel tells the foreground job.
@@ -217,8 +233,30 @@ final class HostedSession {
         return false
     }
 
+    /// This session as a stopping machine keeps it (`SessionKeeper`).
+    func kept() -> KeptSession {
+        let now = foreground()
+        var next = request
+        next.cwd = now.cwd ?? cwd
+        next.cols = UInt16(terminal.cols)
+        next.rows = UInt16(terminal.rows)
+        return KeptSession(id: id, request: next, screen: ScreenReplay.bytes(terminal), resume: SessionKeeper.resumeCommand(now))
+    }
+
+    /// A kept session's screen, shown above the new shell, and its resume command, typed at the
+    /// shell's first prompt. Call before `start()`.
+    func restore(screen: Data, resume: String?) {
+        terminal.feed(buffer: [UInt8](screen)[...])
+        terminal.feed(text: "\r\n\u{1b}[0;2m— the cloud machine restarted —\u{1b}[0m\r\n")
+        pendingInput = resume
+    }
+
     private func received(_ bytes: Data) {
         onOutput?()
+        if let input = pendingInput {
+            pendingInput = nil
+            queue.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.type(input + "\r") }
+        }
         syncSize()
         terminal.feed(buffer: [UInt8](bytes)[...])
         guard let client else { return }

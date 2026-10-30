@@ -22,11 +22,13 @@ public enum SessionHelperMain {
             let server = SessionServer(socketPath: socketPath, build: value(of: "--build", in: arguments) ?? "unknown")
             if let gateway {
                 server.idleExitAfter = nil
+                server.statePath = value(of: "--state", in: arguments)
                 try server.start()
                 // Kept here: nothing else holds it, and dispatchMain never returns.
                 let running = gateway(socketPath)
                 try running.start()
                 if let limit = value(of: "--idle-stop", in: arguments).flatMap(TimeInterval.init) { stopWhenQuiet(server, after: limit) }
+                stopOnSignals(server)
                 withExtendedLifetime(running) { dispatchMain() }
             }
             try server.run()
@@ -61,6 +63,21 @@ public enum SessionHelperMain {
     }
 
     nonisolated(unsafe) private static var idleTimer: DispatchSourceTimer?
+    nonisolated(unsafe) private static var signalSources: [DispatchSourceSignal] = []
+
+    /// Fly stops a machine with SIGINT (SIGTERM elsewhere): keep the sessions, then exit.
+    private static func stopOnSignals(_ server: SessionServer) {
+        for number in [SIGINT, SIGTERM] {
+            signal(number, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
+            source.setEventHandler {
+                server.stop()
+                exit(0)
+            }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
 
     public static let tokenVariable = "AGTERM_GATEWAY_TOKEN"
     private static let minimumTokenLength = 32
