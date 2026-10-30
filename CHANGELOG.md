@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.9 — 2026-10-30
+- Fixed: Grok tabs show only the conversation's topic, without Grok's status ("- Thinking -", "- Waiting for response... -") in front of it.
+- Fixed: A Grok tab no longer flips back to working after Grok finishes, such as when Grok names the conversation a few seconds later or while you type your next message. Its title also drops the trailing "- grok".
+
 ## 1.0.8 — 2026-10-29
 - Added: Right-click a tab (or Control-click it) to rename it, open a new tab in its folder, copy the folder's path, show the folder in Finder, or close the tab. Shell → Rename Tab… renames the current tab.
 - Added: A renamed tab keeps its name after agterm quits and reopens. Clear the name to go back to the program's own title.
