@@ -10,11 +10,14 @@ import Security
 @MainActor
 final class CloudAccount: ObservableObject {
     static let shared = CloudAccount()
-    /// Hidden until the service launches: shown with `defaults write <bundle id> agtermCloud -bool
-    /// true`, or in development with `AGTERM_CLOUD` or `AGTERM_CLOUD_CONTROL` set.
+    /// Hidden in stable releases until the service launches; shown in beta builds, with
+    /// `defaults write <bundle id> agtermCloud -bool true`, or in development with `AGTERM_CLOUD`
+    /// or `AGTERM_CLOUD_CONTROL` set.
     nonisolated static var isEnabled: Bool {
         let env = ProcessInfo.processInfo.environment
-        return env["AGTERM_CLOUD"] != nil || env["AGTERM_CLOUD_CONTROL"] != nil || UserDefaults.standard.bool(forKey: "agtermCloud")
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        return version.contains("-beta") || env["AGTERM_CLOUD"] != nil || env["AGTERM_CLOUD_CONTROL"] != nil
+            || UserDefaults.standard.bool(forKey: "agtermCloud")
     }
 
     nonisolated static let controlURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_CLOUD_CONTROL"] ?? "https://cloud.agterm.xanom.co")!
