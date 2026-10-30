@@ -1,0 +1,17 @@
+# Cloud sessions run the sessions helper on Linux: keep AgTermCore and AgTermSessionKit building
+# and passing their tests there.
+name: Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build
+      - run: swift test

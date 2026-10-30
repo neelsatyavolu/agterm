@@ -18,9 +18,9 @@ final class HeadlessTerminalTests: XCTestCase {
         let toggle = Array("\u{1b}[?2026h x \u{1b}[?2026l\r".utf8)
         let batch = Array([[UInt8]](repeating: toggle, count: 1_000).joined())
         terminal.feed(buffer: batch[...])
-        let before = footprint()
+        let before = processFootprint()
         for _ in 0..<50 { terminal.feed(buffer: batch[...]) }
-        let grown = footprint() - before
+        let grown = processFootprint() - before
         XCTAssertLessThan(grown, 4 * 1024 * 1024, "50k synchronized-output toggles grew the footprint by \(grown) bytes")
         XCTAssertFalse(terminal.synchronizedOutputActive)
     }
@@ -31,15 +31,5 @@ final class HeadlessTerminalTests: XCTestCase {
         XCTAssertTrue(terminal.synchronizedOutputActive)
         terminal.feed(text: "\u{1b}[?2026l")
         XCTAssertFalse(terminal.synchronizedOutputActive)
-    }
-
-    /// This process's physical footprint, as Activity Monitor shows it.
-    private func footprint() -> Int {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
-        }
-        return result == KERN_SUCCESS ? Int(info.phys_footprint) : 0
     }
 }

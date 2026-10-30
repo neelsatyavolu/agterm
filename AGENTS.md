@@ -8,6 +8,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | `Sources/AgTerm/` | The Mac app (AppKit, SwiftTerm) |
 | `Sources/AgTermCore/` | Logic shared with the iPhone app: no AppKit, no SwiftTerm imports |
 | `Sources/AgTermSessionKit/` | The session helper's server, socket code and entry point (shells live here, not in the app). The helper is the app's own executable run as `agterm --sessions-helper`, so it keeps agterm's code identity and privacy permissions; don't split it back into a separate binary |
+| `Sources/agterm-sessions/` | The sessions helper alone, built only on Linux, for cloud sessions (`docs/cloud-sessions-plan.md`). Keep `AgTermCore` and `AgTermSessionKit` building on Linux |
 | `Vendor/SwiftTerm/` | SwiftTerm with local changes; edit in place, keep the comments explaining each change |
 | `Mobile/` | agterm Remote (iOS); see `Mobile/README.md` |
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
@@ -20,6 +21,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Build | `swift build` |
 | One test class | `swift test --filter ChangelogTests` |
 | All tests | `swift test` |
+| Linux tests (OrbStack/Docker) | `docker run --rm -v "$PWD":/src -v agterm-linux-build:/build -w /src swift:6.4-noble swift test --scratch-path /build` |
 | Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |

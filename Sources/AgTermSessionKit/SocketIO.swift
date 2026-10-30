@@ -24,8 +24,16 @@ public final class WireConnection {
     public static let maxQueuedBytes = 8 * 1024 * 1024
     private static let readSize = 64 * 1024
     private static let controlSize = 256
-    /// `CMSG_DATA` offset and `CMSG_LEN(4)` on Darwin, where `cmsghdr` is three 32-bit fields.
-    private static let cmsgHeader = 12
+    /// `CMSG_DATA` offset and record alignment: 12 and 4 on Darwin (three 32-bit fields), 16 and 8
+    /// on Linux (`cmsg_len` is a size_t).
+    private static let cmsgHeader = MemoryLayout<cmsghdr>.size
+    private static let cmsgAlign = MemoryLayout<cmsghdr>.alignment
+    #if canImport(Darwin)
+    private static let sendFlags: Int32 = 0
+    #else
+    /// Linux sockets have no SO_NOSIGPIPE, so each send asks not to raise SIGPIPE.
+    private static let sendFlags = Int32(MSG_NOSIGNAL)
+    #endif
 
     public let fd: Int32
     /// Called on the reading queue for each message, after `startReading`.
@@ -80,7 +88,7 @@ public final class WireConnection {
         do {
             try UnixSocket.requirePeer(fd, uid: getuid())
         } catch {
-            Darwin.close(fd)
+            Foundation.close(fd)
             throw error
         }
         return WireConnection(fd: fd)
@@ -143,10 +151,15 @@ public final class WireConnection {
 
     /// The process at the other end.
     public var peerPID: pid_t? {
+        #if canImport(Darwin)
         var pid: pid_t = 0
         var length = socklen_t(MemoryLayout<pid_t>.size)
         guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) == 0, pid > 0 else { return nil }
         return pid
+        #else
+        guard let pid = try? UnixSocket.peerCredentials(fd).pid, pid > 0 else { return nil }
+        return pid
+        #endif
     }
 
     /// Closes once everything queued has been written (right away if nothing is).
@@ -262,14 +275,14 @@ public final class WireConnection {
             message.msg_iov = iovPointer
             message.msg_iovlen = 1
             message.msg_control = controlBuffer
-            message.msg_controllen = socklen_t(Self.controlSize)
+            message.msg_controllen = .init(Self.controlSize)
             return recvmsg(fd, &message, 0)
         }
         guard count >= 0 else { return count }
         let fds = Self.descriptors(in: controlBuffer, length: Int(message.msg_controllen))
         if !fds.isEmpty {
             lock.lock()
-            if closed { fds.forEach { Darwin.close($0) } } else { receivedFDs += fds }
+            if closed { fds.forEach { Foundation.close($0) } } else { receivedFDs += fds }
             lock.unlock()
         }
         inbox.append(readBuffer.assumingMemoryBound(to: UInt8.self), count: count)
@@ -280,18 +293,17 @@ public final class WireConnection {
         var fds: [Int32] = []
         var offset = 0
         while offset + cmsgHeader <= length {
-            let cmsgLength = Int(control.load(fromByteOffset: offset, as: UInt32.self))
-            let level = control.load(fromByteOffset: offset + 4, as: Int32.self)
-            let type = control.load(fromByteOffset: offset + 8, as: Int32.self)
+            let header = control.load(fromByteOffset: offset, as: cmsghdr.self)
+            let cmsgLength = Int(header.cmsg_len)
             guard cmsgLength >= cmsgHeader, offset + cmsgLength <= length else { break }
-            if level == SOL_SOCKET && type == SCM_RIGHTS {
+            if header.cmsg_level == SOL_SOCKET && header.cmsg_type == Int32(SCM_RIGHTS) {
                 for index in 0..<(cmsgLength - cmsgHeader) / 4 {
                     let fd = control.load(fromByteOffset: offset + cmsgHeader + index * 4, as: Int32.self)
                     _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
                     fds.append(fd)
                 }
             }
-            offset += (cmsgLength + 3) & ~3
+            offset += (cmsgLength + cmsgAlign - 1) & ~(cmsgAlign - 1)
         }
         return fds
     }
@@ -303,7 +315,7 @@ public final class WireConnection {
             let written = write(outbox[0])
             if written > 0 {
                 // The kernel attaches the descriptor to the first bytes it accepts, so it is gone now.
-                if let passed = outbox[0].fd { Darwin.close(passed); outbox[0].fd = nil }
+                if let passed = outbox[0].fd { Foundation.close(passed); outbox[0].fd = nil }
                 outbox[0].offset += written
                 queuedBytes -= written
                 if outbox[0].offset == outbox[0].data.count { outbox.removeFirst() }
@@ -332,24 +344,26 @@ public final class WireConnection {
     }
 
     private func write(_ pending: Pending) -> Int {
-        pending.data.withUnsafeBytes { raw -> Int in
+        pending.data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int in
             var iov = iovec(iov_base: UnsafeMutableRawPointer(mutating: raw.baseAddress! + pending.offset),
                             iov_len: raw.count - pending.offset)
             return withUnsafeMutablePointer(to: &iov) { iovPointer -> Int in
                 var message = msghdr()
                 message.msg_iov = iovPointer
                 message.msg_iovlen = 1
-                guard let passing = pending.fd else { return sendmsg(fd, &message, 0) }
+                guard let passing = pending.fd else { return sendmsg(fd, &message, Self.sendFlags) }
                 let length = Self.cmsgHeader + 4
                 let control = UnsafeMutableRawPointer.allocate(byteCount: length, alignment: 8)
                 defer { control.deallocate() }
-                control.storeBytes(of: UInt32(length), toByteOffset: 0, as: UInt32.self)
-                control.storeBytes(of: SOL_SOCKET, toByteOffset: 4, as: Int32.self)
-                control.storeBytes(of: SCM_RIGHTS, toByteOffset: 8, as: Int32.self)
+                var header = cmsghdr()
+                header.cmsg_len = .init(length)
+                header.cmsg_level = SOL_SOCKET
+                header.cmsg_type = Int32(SCM_RIGHTS)
+                control.storeBytes(of: header, toByteOffset: 0, as: cmsghdr.self)
                 control.storeBytes(of: passing, toByteOffset: Self.cmsgHeader, as: Int32.self)
                 message.msg_control = control
-                message.msg_controllen = socklen_t(length)
-                return sendmsg(fd, &message, 0)
+                message.msg_controllen = .init(length)
+                return sendmsg(fd, &message, Self.sendFlags)
             }
         }
     }
@@ -372,20 +386,20 @@ public final class WireConnection {
     private func closeLocked(notify: Bool = true) {
         guard !closed else { return }
         closed = true
-        for pending in outbox { if let passed = pending.fd { Darwin.close(passed) } }
+        for pending in outbox { if let passed = pending.fd { Foundation.close(passed) } }
         outbox = []
         queuedBytes = 0
         backlogWatch = nil
-        receivedFDs.forEach { Darwin.close($0) }
+        receivedFDs.forEach { Foundation.close($0) }
         receivedFDs = []
-        guard let queue else { Darwin.close(fd); return }
+        guard let queue else { Foundation.close(fd); return }
         // A suspended source never runs its cancel handler (and crashes when released).
         if readPaused { readSource?.resume(); readPaused = false }
         readSource?.cancel()
         writeSource?.cancel()
         readSource = nil
         writeSource = nil
-        liveSources.notify(queue: queue) { [fd] in Darwin.close(fd) }
+        liveSources.notify(queue: queue) { [fd] in Foundation.close(fd) }
         guard notify else { return }
         queue.async { [self] in
             onClose?()

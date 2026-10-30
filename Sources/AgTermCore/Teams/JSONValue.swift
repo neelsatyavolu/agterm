@@ -29,9 +29,9 @@ enum JSONValue: Equatable {
         case is NSNull:
             self = .null
         case let number as NSNumber:
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            if Self.isBool(number) {
                 self = .bool(number.boolValue)
-            } else if CFNumberIsFloatType(number) {
+            } else if Self.isFloat(number) {
                 self = .double(number.doubleValue)
             } else if let exact = Int(exactly: number.int64Value), number.int64Value.description == number.stringValue {
                 self = .int(exact)
@@ -49,6 +49,15 @@ enum JSONValue: Equatable {
             return nil
         }
     }
+
+    #if canImport(Darwin)
+    private static func isBool(_ number: NSNumber) -> Bool { CFGetTypeID(number) == CFBooleanGetTypeID() }
+    private static func isFloat(_ number: NSNumber) -> Bool { CFNumberIsFloatType(number) }
+    #else
+    // swift-corelibs-foundation has no CFBoolean; its JSON booleans are "c" numbers, floats "d".
+    private static func isBool(_ number: NSNumber) -> Bool { String(cString: number.objCType) == "c" }
+    private static func isFloat(_ number: NSNumber) -> Bool { ["d", "f"].contains(String(cString: number.objCType)) }
+    #endif
 
     /// Member of an object; nil for a missing key or a non-object.
     subscript(key: String) -> JSONValue? {

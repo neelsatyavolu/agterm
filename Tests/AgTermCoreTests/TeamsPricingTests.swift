@@ -347,7 +347,8 @@ final class TeamsPricingTests: XCTestCase {
         let line = #"{"timestamp":"2026-07-29T14:05:00Z","payload":{"model":"vendor/new-model","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":500,"cache_write_input_tokens":0,"output_tokens":100}}}}"#
         let e = CodexTranscript.parse(lines: line, sessionID: "s", prices: prices)[0]
         XCTAssertFalse(e.costIncomplete)
-        XCTAssertEqual(e.costUSD, (500 * 2 + 500 * 0.2 + 100 * 8) / 1e6, accuracy: 1e-12)
+        let expected: Double = (500 * 2 + 500 * 0.2 + 100 * 8) / 1e6
+        XCTAssertEqual(e.costUSD, expected, accuracy: 1e-12)
         XCTAssertTrue(CodexTranscript.parse(lines: line, sessionID: "s")[0].costIncomplete)
     }
 }

@@ -11,7 +11,8 @@ Differences from upstream 1.20.0:
   queue over a million ~15-byte chunks for 2M lines, and draining that queue shifted the whole
   backlog every 32 chunks. 2M lines of output now take ~2.2 s instead of 2.9–7.5 s.
 - `SwiftTermBuildInfo.swift` is a fixed file instead of the git-reading build plugin.
-- `Package.swift` declares only the `SwiftTerm` library.
+- `Package.swift` declares only the `SwiftTerm` library, and on Linux leaves out `Apple/`, `Mac/`
+  and `iOS/` (the headless terminal is all the cloud sessions helper needs).
 - The end of `Terminal.swift` adds read-only accessors (cursor visibility, keypad, focus, origin,
   insert and wraparound modes, mouse encoding, window title, per-buffer rows) so agterm's session
   helper can replay a terminal's screen and modes into a new terminal.

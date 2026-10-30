@@ -5,19 +5,24 @@
 
 import PackageDescription
 
+#if os(Linux)
+// agterm: Linux (cloud sessions) builds only the headless terminal, as upstream does.
+let swiftTerm = Target.target(name: "SwiftTerm", path: "Sources/SwiftTerm", exclude: ["Apple", "Mac", "iOS"])
+#else
+let swiftTerm = Target.target(
+    name: "SwiftTerm",
+    path: "Sources/SwiftTerm",
+    exclude: ["Mac/README.md"],
+    resources: [.process("Apple/Metal/Shaders.metal")]
+)
+#endif
+
 let package = Package(
     name: "SwiftTerm",
     platforms: [.macOS(.v11), .iOS(.v14)],
     products: [
         .library(name: "SwiftTerm", targets: ["SwiftTerm"]),
     ],
-    targets: [
-        .target(
-            name: "SwiftTerm",
-            path: "Sources/SwiftTerm",
-            exclude: ["Mac/README.md"],
-            resources: [.process("Apple/Metal/Shaders.metal")]
-        ),
-    ],
+    targets: [swiftTerm],
     swiftLanguageModes: [.v5]
 )

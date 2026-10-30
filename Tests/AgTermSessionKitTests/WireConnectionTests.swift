@@ -40,7 +40,7 @@ final class WireConnectionTests: XCTestCase {
 
     func testPeerOfAnotherUserIsRefused() throws {
         var fds: [Int32] = [-1, -1]
-        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        XCTAssertEqual(socketpair(AF_UNIX, streamSocket, 0, &fds), 0)
         defer { fds.forEach { close($0) } }
         XCTAssertNoThrow(try UnixSocket.requirePeer(fds[0], uid: getuid()))
         XCTAssertThrowsError(try UnixSocket.requirePeer(fds[0], uid: getuid() &+ 1)) {
@@ -52,7 +52,7 @@ final class WireConnectionTests: XCTestCase {
     /// whole, along with the output that follows it, without the server dropping it.
     func testMessageLargerThanBacklogCapIsDelivered() throws {
         var fds: [Int32] = [-1, -1]
-        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        XCTAssertEqual(socketpair(AF_UNIX, streamSocket, 0, &fds), 0)
         let queue = DispatchQueue(label: "test.server")
         let server = WireConnection(fd: fds[0])
         let client = WireConnection(fd: fds[1])
@@ -79,7 +79,7 @@ final class WireConnectionTests: XCTestCase {
     /// (the replay) must still be delivered, without waiting for more bytes.
     func testStartReadingDeliversMessagesAlreadyBuffered() throws {
         var fds: [Int32] = [-1, -1]
-        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        XCTAssertEqual(socketpair(AF_UNIX, streamSocket, 0, &fds), 0)
         let server = WireConnection(fd: fds[0])
         let client = WireConnection(fd: fds[1])
         defer { server.close(); client.close() }
@@ -96,11 +96,13 @@ final class WireConnectionTests: XCTestCase {
     /// the connection stays open and the next message arrives.
     func testUnknownTagDoesNotDropTheConnection() throws {
         var fds: [Int32] = [-1, -1]
-        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        XCTAssertEqual(socketpair(AF_UNIX, streamSocket, 0, &fds), 0)
         let client = WireConnection(fd: fds[1])
         defer { close(fds[0]); client.close() }
+        #if canImport(Darwin)
         var on: Int32 = 1
         setsockopt(fds[0], SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        #endif
         var bytes: [UInt8] = [0, 0, 0, 4, 0xEE, 0x7b, 0x7d, 0x0a]
         bytes += Array(WireFrame.encode(.output(Data("next".utf8))))
         XCTAssertEqual(write(fds[0], bytes, bytes.count), bytes.count)
@@ -118,7 +120,7 @@ final class WireConnectionTests: XCTestCase {
 
     func testPausedReadingDeliversNothingUntilResumed() throws {
         var fds: [Int32] = [-1, -1]
-        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds), 0)
+        XCTAssertEqual(socketpair(AF_UNIX, streamSocket, 0, &fds), 0)
         let server = WireConnection(fd: fds[0])
         let client = WireConnection(fd: fds[1])
         defer { server.close(); client.close() }

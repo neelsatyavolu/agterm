@@ -14,6 +14,11 @@ final class HostedSession {
     /// rather than growing the helper's memory (or getting dropped).
     private static let pauseAbove = 4 * 1024 * 1024
     private static let resumeAt = 1 * 1024 * 1024
+    #if canImport(Darwin)
+    private static let getWindowSize = TIOCGWINSZ
+    #else
+    private static let getWindowSize = UInt(TIOCGWINSZ)
+    #endif
 
     let id = UUID().uuidString
     let pid: pid_t
@@ -29,7 +34,7 @@ final class HostedSession {
     private var readSource: DispatchSourceRead?
     /// The reader is suspended once every slave has closed, until the shell is reaped.
     private var readerSuspended = false
-    private var exitSource: DispatchSourceProcess?
+    private var exitWatcher: ExitWatcher?
     private var client: WireConnection?
     /// The client whose backlog has the reader suspended.
     private var throttledBy: WireConnection?
@@ -66,14 +71,11 @@ final class HostedSession {
         reader.setEventHandler { [weak self] in self?.readPty() }
         // The master stays open until the session ends, so its number is never reused while
         // `attach` or `signal` might still use it.
-        reader.setCancelHandler { [masterFd] in Darwin.close(masterFd) }
+        reader.setCancelHandler { [masterFd] in Foundation.close(masterFd) }
         readSource = reader
         reader.resume()
 
-        let watcher = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
-        watcher.setEventHandler { [weak self] in self?.reap(blocking: true) }
-        exitSource = watcher
-        watcher.resume()
+        exitWatcher = ExitWatcher(pid: pid, queue: queue) { [weak self] in self?.reap(blocking: true) }
         // The shell may have died before the watcher was registered.
         queue.async { [weak self] in self?.reap(blocking: false) }
     }
@@ -176,7 +178,7 @@ final class HostedSession {
     /// The client resizes the pty directly; follow it so the screen kept here wraps the same.
     private func syncSize() {
         var size = winsize()
-        guard ioctl(masterFd, TIOCGWINSZ, &size) == 0, size.ws_col > 0, size.ws_row > 0 else { return }
+        guard ioctl(masterFd, Self.getWindowSize, &size) == 0, size.ws_col > 0, size.ws_row > 0 else { return }
         if Int(size.ws_col) != terminal.cols || Int(size.ws_row) != terminal.rows {
             terminal.resize(cols: Int(size.ws_col), rows: Int(size.ws_row))
         }
@@ -196,8 +198,8 @@ final class HostedSession {
 
     private func finish(status: Int32) {
         exited = true
-        exitSource?.cancel()
-        exitSource = nil
+        exitWatcher?.cancel()
+        exitWatcher = nil
         // A suspended source never runs its cancel handler, which closes the master.
         unthrottle()
         if readerSuspended { readSource?.resume() }
