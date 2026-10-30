@@ -27,7 +27,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Cloud image | `docker build -f cloud/Dockerfile .` |
 | Publish the cloud image | `cloud/publish.sh`: a dated tag on Fly's builder, set as the control plane's `CLOUD_IMAGE`; stopped machines move to it within the hour, running ones keep their tabs |
 | Deploy the control plane | `cd cloud/control && npx wrangler deploy` (secrets: `FLY_API_TOKEN`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) |
-| Cloud machine for development | `scripts/cloud-dev.sh && set -a && . .build/cloud-dev.env && set +a`, then run the app (Shell → New Cloud Tab), or a self-test: `AGTERM_CLOUD_CHECK=1` or `AGTERM_MOVE_CHECK=1` with `AGTERM_SELFTEST=<dir>`. `scripts/cloud-dev.sh stop` removes it |
+| Cloud machine for development | `scripts/cloud-dev.sh && set -a && . .build/cloud-dev.env && set +a`, then run the app (Shell → New Cloud Tab), or a self-test: `AGTERM_CLOUD_CHECK=1`, `AGTERM_MOVE_CHECK=1` or `AGTERM_RETURN_CHECK=1` with `AGTERM_SELFTEST=<dir>`. `scripts/cloud-dev.sh stop` removes it |
 | Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |

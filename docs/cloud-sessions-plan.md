@@ -95,12 +95,14 @@ Suggested plan: **$12/month: 100 cloud hours, 20 GB, 4 GB RAM; $0.10/hour after.
    - `cloud/control`: a Worker with D1. It checks the agmux Teams token (`/api/auth/me`), runs Stripe Checkout, the billing portal and the webhook, creates a volume and machine per user on first use, meters running hours hourly from Fly's machine events, stops a machine at the user's limit (autostart off until the next period), and deletes it 30 days after cancelling.
    - The app: Settings → Cloud (subscribe, set up the machine, limit, billing); the connection lives in the Keychain. Hidden until launch (`defaults write … agtermCloud -bool true`).
    - Not yet: overage billing at $0.10/hour (v1 stops at the included hours); resuming agents on a machine that stopped while tabs were open (they come back from history); moving existing machines to a new image (the control plane should update each one while it is stopped). New Fly orgs allow 2 cores a machine, so machines are shared-cpu-2x with 4 GB.
-5. Phone on the cloud desktop; Bring back. Verify: phone answers a prompt with the Mac off; bring back leaves no file differences.
+5. Phone on the cloud desktop; Bring back. Verify: phone answers a prompt with the Mac off; bring back leaves no file differences. **Bring back done 2026-10-30**: `CloudBringBack` (rsync `--update`, so files changed on the Mac meanwhile are kept), the automatic return, and a machine that stops keeps its sessions (`SessionKeeper`: same ids, screens, agents resumed). `AGTERM_RETURN_CHECK` passes against a real Fly machine, and a session survived a real Fly stop and wake. The phone part is still to do.
 6. Warm copy (background sync), preflight polish, 8 GB tier.
 
 ## Decisions (2026-10-30)
 
-- **Coming back**: ask each time, Keep in cloud or Bring back.
+- **Coming back**: automatic (changed 2026-10-30). After moving away with the cloud button beside + (or Move to Cloud, Then Quit), tabs come home at the next launch or wake, each once its agent isn't mid-turn; the button brings them back by hand, and Settings → Cloud can turn the automatic return off.
+- **Sign-in**: agterm Cloud links its own agmux device and shares nothing; a Mac signed in to agmux Teams reuses that.
+- **Overage**: $0.10 an hour past 100, through a Stripe meter, only up to a limit the user raises (up to 500).
 - **Logins**: one-time setup in the cloud (`claude setup-token`, `codex login --device-auth`); never copy credentials from the Mac.
 - **Running commands**: the preflight sheet asks per tab, restart in cloud or leave stopped.
 - **Billing**: $12/month, 100 hours, 20 GB, 4 GB RAM; $0.10/hour after, with a user-set cap.
