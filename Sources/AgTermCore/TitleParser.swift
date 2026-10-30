@@ -40,9 +40,16 @@ public enum TitleParser {
         } else if let scalar = first.unicodeScalars.first, workingRanges.contains(where: { $0.contains(scalar.value) }) {
             activity = .working
         } else {
-            return ParsedTitle(topic: trimmed, activity: .unknown)
+            return ParsedTitle(topic: droppingStatus(trimmed), activity: .unknown)
         }
         let topic = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
-        return ParsedTitle(topic: topic, activity: activity)
+        return ParsedTitle(topic: droppingStatus(topic), activity: activity)
+    }
+
+    /// Grok puts its status between dashes before the topic: `- Thinking - Fix login bug`.
+    private static func droppingStatus(_ topic: String) -> String {
+        guard topic.hasPrefix("- "), let end = topic.range(of: " - ", range: topic.index(topic.startIndex, offsetBy: 2)..<topic.endIndex)
+        else { return topic }
+        return topic[end.upperBound...].trimmingCharacters(in: .whitespaces)
     }
 }

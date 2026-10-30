@@ -19,6 +19,13 @@ final class TitleParserTests: XCTestCase {
         XCTAssertEqual(TitleParser.parse("◑ Ok"), ParsedTitle(topic: "Ok", activity: .working))
     }
 
+    func testGrokStatusIsDropped() {
+        XCTAssertEqual(TitleParser.parse("⠋ - Thinking - Major load-speed performance"),
+                       ParsedTitle(topic: "Major load-speed performance", activity: .working))
+        XCTAssertEqual(TitleParser.parse("- Waiting for response... - Major load-speed performance"),
+                       ParsedTitle(topic: "Major load-speed performance", activity: .unknown))
+    }
+
     func testPlainTitleIsUnknown() {
         XCTAssertEqual(TitleParser.parse("vim notes.md"), ParsedTitle(topic: "vim notes.md", activity: .unknown))
     }
