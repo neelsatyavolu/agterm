@@ -156,6 +156,29 @@ final class SavedWorkspaceTests: XCTestCase {
                        [.restore(SavedTab(cwd: "/a", scrollback: "old", resume: nil, sessionID: "A")), .restore(plain)])
     }
 
+    func testLaunchReattachesCloudTabsFromTheCloudMachine() {
+        let date = Date(timeIntervalSince1970: 0)
+        let local = SessionInfo(id: "L", pid: 10, cwd: "/a", startedAt: date)
+        let remote = SessionInfo(id: "C", pid: 10, cwd: "/a", startedAt: date)
+        let stray = SessionInfo(id: "S", pid: 11, cwd: "/s", startedAt: date)
+        let here = SavedTab(cwd: "/a", scrollback: "", resume: nil, sessionID: "L")
+        let there = SavedTab(cwd: "/a", scrollback: "", resume: "command claude --resume x", sessionID: "C", inCloud: true)
+        XCTAssertEqual(LaunchTab.plan(saved: [there, here], live: [local], cloud: [remote, stray]),
+                       [.reattachCloud(remote, saved: there), .reattach(local, saved: here), .reattachCloud(stray, saved: nil)])
+        // A cloud id never matches this Mac's helper.
+        XCTAssertEqual(LaunchTab.plan(saved: [there], live: [SessionInfo(id: "C", pid: 1, cwd: "/", startedAt: date)], cloud: []).first,
+                       .restore(SavedTab(cwd: "/a", scrollback: "", resume: nil, sessionID: "C", inCloud: true)))
+    }
+
+    /// Its agent ran in the cloud: reopening it here must not start a second copy.
+    func testUnreachableOrEndedCloudTabRestoresHistoryWithoutResuming() {
+        let there = SavedTab(cwd: "/a", scrollback: "old", resume: "command claude --resume x", sessionID: "C", inCloud: true)
+        var history = there
+        history.resume = nil
+        XCTAssertEqual(LaunchTab.plan(saved: [there], live: [], cloud: nil), [.restore(history)])
+        XCTAssertEqual(LaunchTab.plan(saved: [there], live: [], cloud: []), [.restore(history)])
+    }
+
     func testSelectionIsClampedToTabs() throws {
         let data = Data(#"{"version": 1, "selected": 7, "savedAt": 0, "tabs": [{"cwd": "/a", "scrollback": ""}]}"#.utf8)
         XCTAssertEqual(try SavedWorkspace.decode(data).selected, 0)

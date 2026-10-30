@@ -47,19 +47,32 @@ extension SelfTest {
             waitFor({ screenLine(first, containing: size).map { !$0.contains("stty") } == true }) { resized in
                 report("resize reaches the shell (\(size))", resized)
                 snapshot(window, "\(outDir)/cloud-tab.png")
-                controller.openCloudTab(cloud, attaching: id)
-                let second = controller.sessions.last!
-                waitFor({ screenLine(second, containing: "CLOUD-42") != nil }) { replayed in
-                    report("second tab replays the screen", replayed)
-                    report("listed as attached", cloud.list()?.first { $0.id == id }?.attached == true)
-                    waitFor({ first.signals.exited }) { superseded in
-                        report("first tab superseded", superseded)
-                        second.terminate()
-                        waitFor({ cloud.list()?.isEmpty == true }) { ended in
-                            report("closing ends the cloud shell", ended)
-                            finish()
-                        }
+                first.view.send(txt: "sleep 3\r")
+                waitFor({ first.pollProcess(); return first.foregroundName == "sleep" && first.isRunningProgram }) { seen in
+                    report("foreground program seen through the helper", seen)
+                    waitFor({ first.pollProcess(); return !first.isRunningProgram }) { _ in
+                        reattach(controller, cloud: cloud, first: first, id: id, report: report, finish: finish)
                     }
+                }
+            }
+        }
+    }
+
+    /// A second tab attached to `first`'s shell replays its screen and supersedes it; closing
+    /// that tab ends the cloud shell.
+    private static func reattach(_ controller: MainWindowController, cloud: CloudHost, first: TerminalSession, id: String,
+                                 report: @escaping (String, Bool) -> Void, finish: @escaping () -> Void) {
+        controller.openCloudTab(cloud, attaching: id)
+        let second = controller.sessions.last!
+        waitFor({ screenLine(second, containing: "CLOUD-42") != nil }) { replayed in
+            report("second tab replays the screen", replayed)
+            report("listed as attached", cloud.list()?.first { $0.id == id }?.attached == true)
+            waitFor({ first.signals.exited }) { superseded in
+                report("first tab superseded", superseded)
+                second.terminate()
+                waitFor({ cloud.list()?.isEmpty == true }) { ended in
+                    report("closing ends the cloud shell", ended)
+                    finish()
                 }
             }
         }

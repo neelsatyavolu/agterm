@@ -123,6 +123,9 @@ public final class SessionServer {
             session.signal(signal)
         case .input(let bytes):
             sessions.values.first { $0.isAttached(client) }?.write(bytes, from: client)
+        case .inspect:
+            guard let session = sessions.values.first(where: { $0.isAttached(client) }) else { return reply(client, .error("not attached")) }
+            reply(client, .foreground(session.foreground()))
         case .resize(let size):
             sessions.values.first { $0.isAttached(client) }?.resize(size)
         case .shutdownIfIdle:

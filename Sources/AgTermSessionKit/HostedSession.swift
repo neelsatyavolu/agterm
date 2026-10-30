@@ -131,6 +131,32 @@ final class HostedSession {
         syncSize()
     }
 
+    /// What the pty has in the foreground, looked up on this machine.
+    func foreground() -> ForegroundInfo {
+        let group = ProcInfo.foregroundPid(ptyFd: masterFd) ?? pid
+        let isShell = group == pid
+        let argv = ProcInfo.arguments(pid: group)
+        let name = ProcInfo.name(pid: group) ?? argv.first.map { ($0 as NSString).lastPathComponent } ?? ""
+        var info = ForegroundInfo(pid: group, isShell: isShell, name: name, argv: argv,
+                                  cwd: ProcInfo.cwd(pid: group) ?? ProcInfo.cwd(pid: pid))
+        guard !isShell else { return info }
+        if let claude = ProcInfo.claudeSession(pid: group) {
+            info.claudeSessionID = claude.id
+            info.claudeBusy = claude.busy
+        }
+        guard argv.contains(where: { ($0 as NSString).lastPathComponent.hasPrefix("codex") }) else { return info }
+        info.codexSessionID = ProcInfo.openFiles(group: group) { $0.contains("/sessions/") && $0.contains("rollout-") && $0.hasSuffix(".jsonl") }
+            .lazy.compactMap(Self.firstLine).compactMap(AgentResume.codexSessionID(rolloutHeader:)).first
+        return info
+    }
+
+    private static func firstLine(_ path: String) -> String? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        let data = (try? handle.read(upToCount: 256 * 1024)) ?? Data()
+        return String(decoding: data, as: UTF8.self).split(separator: "\n", maxSplits: 1).first.map(String.init)
+    }
+
     func detach(_ connection: WireConnection) {
         if client === connection { client = nil }
         if throttledBy === connection { unthrottle() }

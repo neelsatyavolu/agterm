@@ -37,6 +37,8 @@ final class HelperLink: PtyLink {
     private(set) var ptyFd: Int32
     var onData: (([UInt8]) -> Void)?
     var onExit: ((Int32?) -> Void)?
+    /// The cloud machine's answers to `requestForeground()`, on the main queue.
+    var onForeground: ((ForegroundInfo) -> Void)?
 
     private let id: String
     private let endpoint: SessionEndpoint
@@ -100,6 +102,13 @@ final class HelperLink: PtyLink {
         _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: ptyFd, windowSize: &size)
     }
 
+    /// Asks a cloud machine what the shell has in the foreground; the answer comes to
+    /// `onForeground`. Local shells are looked at directly.
+    func requestForeground() {
+        guard !closed, writer == nil else { return }
+        try? currentConnection.send(.inspect)
+    }
+
     private var currentConnection: WireConnection {
         lock.lock()
         defer { lock.unlock() }
@@ -125,6 +134,11 @@ final class HelperLink: PtyLink {
             case .output(let bytes): self?.enqueue(bytes)
             case .replay(let bytes) where showReplay: self?.enqueue(bytes)
             case .exited(let id, let status) where id == self?.id: self?.finish(status)
+            case .foreground(let info):
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !self.closed else { return }
+                    self.onForeground?(info)
+                }
             case .error(let text) where text == SessionWire.superseded: self?.superseded = true
             default: break
             }
@@ -295,6 +309,7 @@ final class HelperLink: PtyLink {
         ptyFd = -1
         onData = nil
         onExit = nil
+        onForeground = nil
         return current
     }
 }

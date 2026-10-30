@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Foundation
 
 /// Moves an agent to another login the moment it stops at a usage limit:

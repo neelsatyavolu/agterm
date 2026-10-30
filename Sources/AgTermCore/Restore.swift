@@ -50,14 +50,18 @@ public struct SavedTab: Codable, Equatable, Sendable {
     public var tabID: String?
     /// The name given with Rename Tab…, shown instead of the program's title.
     public var name: String?
+    /// `sessionID` is a session on the cloud machine, not this Mac's helper (cloud sessions).
+    public var inCloud: Bool?
 
-    public init(cwd: String, scrollback: String, resume: String?, sessionID: String? = nil, tabID: String? = nil, name: String? = nil) {
+    public init(cwd: String, scrollback: String, resume: String?, sessionID: String? = nil, tabID: String? = nil, name: String? = nil,
+                inCloud: Bool? = nil) {
         self.cwd = cwd
         self.scrollback = scrollback
         self.resume = resume
         self.sessionID = sessionID
         self.tabID = tabID
         self.name = name
+        self.inCloud = inCloud
     }
 }
 
@@ -74,6 +78,8 @@ public enum TabName {
 public enum LaunchTab: Equatable {
     /// The helper kept the shell: show it again.
     case reattach(SessionInfo, saved: SavedTab?)
+    /// The cloud machine has the shell: show it again.
+    case reattachCloud(SessionInfo, saved: SavedTab?)
     /// The shell is gone: a new one, with the saved history and agent.
     case restore(SavedTab)
 
@@ -84,23 +90,43 @@ public enum LaunchTab: Equatable {
     /// whose session that is: neither reattached nor reopened. `live` is nil when the helper can't
     /// be asked: a tab that was in it reopens from its history without its resume command, since
     /// its agent may well still be running there.
-    public static func plan(saved: [SavedTab], live: [SessionInfo]?) -> [LaunchTab] {
-        guard let live else {
-            return saved.map { tab in
-                guard tab.sessionID != nil else { return .restore(tab) }
-                var history = tab
-                history.resume = nil
-                return .restore(history)
-            }
-        }
-        let elsewhere = Set(live.filter(\.attached).map(\.id))
-        var unclaimed = live.filter { !$0.attached }
+    ///
+    /// Tabs saved `inCloud` are matched the same way against `cloud`, the cloud machine's sessions
+    /// (nil when there is none or it can't be reached). One that can't be matched reopens here
+    /// from its history, never with its resume command: its agent ran in the cloud.
+    public static func plan(saved: [SavedTab], live: [SessionInfo]?, cloud: [SessionInfo]? = nil) -> [LaunchTab] {
+        var here = Pool(live)
+        var there = Pool(cloud)
         let tabs: [LaunchTab] = saved.compactMap { tab in
-            if let id = tab.sessionID, elsewhere.contains(id) { return nil }
-            guard let index = unclaimed.firstIndex(where: { $0.id == tab.sessionID }) else { return .restore(tab) }
-            return .reattach(unclaimed.remove(at: index), saved: tab)
+            let inCloud = tab.inCloud == true
+            var pool = inCloud ? there : here
+            defer { if inCloud { there = pool } else { here = pool } }
+            guard let id = tab.sessionID else { return .restore(tab) }
+            if pool.elsewhere.contains(id) { return nil }
+            if let info = pool.claim(id) { return inCloud ? .reattachCloud(info, saved: tab) : .reattach(info, saved: tab) }
+            guard inCloud || !pool.known else { return .restore(tab) }
+            var history = tab
+            history.resume = nil
+            return .restore(history)
         }
-        return tabs + unclaimed.map { .reattach($0, saved: nil) }
+        return tabs + here.unclaimed.map { .reattach($0, saved: nil) } + there.unclaimed.map { .reattachCloud($0, saved: nil) }
+    }
+
+    /// One machine's sessions, as the plan hands them out.
+    private struct Pool {
+        let known: Bool
+        let elsewhere: Set<String>
+        var unclaimed: [SessionInfo]
+
+        init(_ sessions: [SessionInfo]?) {
+            known = sessions != nil
+            elsewhere = Set((sessions ?? []).filter(\.attached).map(\.id))
+            unclaimed = (sessions ?? []).filter { !$0.attached }
+        }
+
+        mutating func claim(_ id: String) -> SessionInfo? {
+            unclaimed.firstIndex { $0.id == id }.map { unclaimed.remove(at: $0) }
+        }
     }
 }
 

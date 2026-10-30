@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Darwin
 import Foundation
 import SQLite3

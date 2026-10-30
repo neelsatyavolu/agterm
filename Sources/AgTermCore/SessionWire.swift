@@ -72,6 +72,35 @@ public struct WindowSize: Codable, Equatable {
     }
 }
 
+/// What a session's pty has in the foreground, as a cloud machine's helper reports it (`inspect`):
+/// the app can't look at processes there itself.
+public struct ForegroundInfo: Codable, Equatable {
+    /// The foreground process group on that machine, or the shell's pid when it is the shell.
+    public var pid: Int32
+    public var isShell: Bool
+    public var name: String
+    public var argv: [String]
+    /// The foreground process's folder, else the shell's.
+    public var cwd: String?
+    /// Claude Code's record of its session, when Claude is in the foreground.
+    public var claudeSessionID: String?
+    public var claudeBusy: Bool?
+    /// The conversation Codex has open (its rollout file's id), when Codex is in the foreground.
+    public var codexSessionID: String?
+
+    public init(pid: Int32, isShell: Bool, name: String, argv: [String], cwd: String?,
+                claudeSessionID: String? = nil, claudeBusy: Bool? = nil, codexSessionID: String? = nil) {
+        self.pid = pid
+        self.isShell = isShell
+        self.name = name
+        self.argv = argv
+        self.cwd = cwd
+        self.claudeSessionID = claudeSessionID
+        self.claudeBusy = claudeBusy
+        self.codexSessionID = codexSessionID
+    }
+}
+
 public enum WireMessage: Equatable {
     case hello(version: Int, build: String)
     case list
@@ -94,6 +123,9 @@ public enum WireMessage: Equatable {
     case resize(WindowSize)
     /// A gateway client's first frame: the account token. The gateway never forwards it.
     case auth(token: String)
+    /// Asks what the attached session has in the foreground; answered with `foreground`.
+    case inspect
+    case foreground(ForegroundInfo)
 }
 
 public enum WireFrameError: Error, Equatable {
@@ -106,7 +138,7 @@ public enum WireFrame {
     private enum Tag: UInt8 {
         case hello = 1, list = 2, sessions = 3, spawn = 4, attach = 5, attached = 6
         case replay = 7, output = 8, exited = 9, kill = 10, shutdownIfIdle = 11, error = 12
-        case input = 13, resize = 14, auth = 15
+        case input = 13, resize = 14, auth = 15, inspect = 16, foreground = 17
     }
 
     private struct Hello: Codable { var version: Int; var build: String }
@@ -169,6 +201,8 @@ public enum WireFrame {
         case .input(let bytes): return (.input, bytes)
         case .resize(let size): return (.resize, json(size))
         case .auth(let token): return (.auth, Data(token.utf8))
+        case .inspect: return (.inspect, Data())
+        case .foreground(let info): return (.foreground, json(info))
         }
     }
 
@@ -189,6 +223,8 @@ public enum WireFrame {
         case .input: return .input(payload)
         case .resize: return .resize(try object(payload))
         case .auth: return .auth(token: String(decoding: payload, as: UTF8.self))
+        case .inspect: return .inspect
+        case .foreground: return .foreground(try object(payload))
         }
     }
 

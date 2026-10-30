@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Foundation
 import SwiftTerm
 

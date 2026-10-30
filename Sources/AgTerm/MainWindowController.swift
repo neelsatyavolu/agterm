@@ -182,7 +182,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let saved = WorkspaceStore.load()
         // Nil when the helper can't be asked: tabs that were in it come back without their agent.
         let live = SessionHelper.shared()?.list()
-        let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live)
+        let cloud = CloudHost.configured
+        let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live, cloud: cloud?.list())
         guard !plan.isEmpty else { return newTab() }
         for tab in plan {
             switch tab {
@@ -193,6 +194,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 // The tab now has its real size; a full-screen program redraws to fit it.
                 window?.layoutIfNeeded()
                 sessions.last?.pushSize()
+            case .reattachCloud(let info, let saved):
+                if let cloud, let session = try? TerminalSession(cloud: cloud, cwd: saved?.cwd ?? info.cwd, attaching: info.id, saved: saved) {
+                    install(session)
+                    window?.layoutIfNeeded()
+                    session.pushSize()
+                } else if var saved {
+                    saved.resume = nil
+                    addTab(cwd: saved.cwd, restoring: saved)
+                }
             }
         }
         select(saved?.selected ?? 0)
@@ -487,7 +497,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     private func render() {
         tabBar.update(sessions.enumerated().map { i, s in
-            TabModel(topic: s.topic, folder: s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
+            TabModel(topic: s.topic, folder: s.isCloud ? "cloud · " + s.folder : s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
                      status: s.status, selected: i == selected)
         })
         if sessions.indices.contains(selected) { window?.title = sessions[selected].topic }

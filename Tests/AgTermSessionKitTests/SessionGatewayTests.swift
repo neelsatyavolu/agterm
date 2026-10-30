@@ -88,6 +88,28 @@ final class SessionGatewayTests: XCTestCase {
         XCTAssertTrue(try collect(client, until: "33 101").contains("33 101"))
     }
 
+    /// The app can't look at the cloud machine's processes, so the helper reports the foreground.
+    func testInspectReportsTheForegroundProgram() throws {
+        let client = try connect()
+        defer { client.close() }
+        _ = try spawn(client)
+        try client.send(.inspect)
+        let atPrompt = try foreground(client)
+        XCTAssertTrue(atPrompt.isShell)
+        XCTAssertNotNil(atPrompt.cwd)
+        try client.send(.input(Data("sleep 30\r".utf8)))
+        let deadline = Date().addingTimeInterval(5)
+        var running = atPrompt
+        while running.isShell, Date() < deadline {
+            usleep(100_000)
+            try client.send(.inspect)
+            running = try foreground(client)
+        }
+        XCTAssertFalse(running.isShell)
+        XCTAssertEqual(running.argv, ["sleep", "30"])
+        XCTAssertEqual(running.name, "sleep")
+    }
+
     func testRemoteClientCannotShutDownTheHelper() throws {
         let client = try connect()
         defer { client.close() }
@@ -118,6 +140,13 @@ final class SessionGatewayTests: XCTestCase {
             throw POSIXError(.EPROTO)
         }
         return info
+    }
+
+    /// The next `foreground` reply, skipping output.
+    private func foreground(_ client: WireConnection) throws -> ForegroundInfo {
+        while true {
+            if case .foreground(let info) = try client.receive(timeout: 5) { return info }
+        }
     }
 
     private func collect(_ client: WireConnection, until needle: String, timeout: TimeInterval = 5) throws -> String {
