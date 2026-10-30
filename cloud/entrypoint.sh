@@ -15,7 +15,7 @@ if ! id "$user" >/dev/null 2>&1; then
 fi
 # A new volume: give it the usual dotfiles.
 if [ ! -e "$home/.profile" ]; then
-    cp -rn /etc/skel/. "$home/"
+    cp -r --update=none /etc/skel/. "$home/"
 fi
 chown "$user:$user" "$home"
 

@@ -1,0 +1,7 @@
+# Builds and pushes the cloud machine image (fly deploy --build-only, see AGENTS.md). Users'
+# machines are made by the control plane (cloud/control) through the Machines API, not here.
+app = "agterm-cloud-machines"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"

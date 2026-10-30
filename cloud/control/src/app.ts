@@ -61,11 +61,24 @@ class Failure extends Error {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+/** The pages Stripe Checkout returns to. */
+function page(title: string, text: string): Response {
+  const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escape(title)}</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#e8e6e1;font:16px/1.5 -apple-system,system-ui,sans-serif}
+main{max-width:30rem;padding:24px}h1{font-size:22px;font-weight:600;margin:0 0 8px}p{margin:0;color:#a8a49c}</style>
+<main><h1>${escape(title)}</h1><p>${escape(text)}</p></main>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
 export async function handle(request: Request, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
   try {
     if (url.pathname === "/v1/stripe/webhook" && request.method === "POST") return await webhook(request, deps);
     if (url.pathname === "/health") return json({ ok: true });
+    if (url.pathname === "/cloud/welcome") return page("You're subscribed to agterm Cloud", "Back in agterm, open Settings → Cloud and choose Set Up Machine. Then Shell → Move All Tabs to Cloud moves your tabs there.");
+    if (url.pathname === "/cloud") return page("agterm Cloud", "Nothing was charged. You can subscribe any time from agterm's Settings → Cloud.");
     const user = await authenticate(request, deps);
     switch (`${request.method} ${url.pathname}`) {
       case "GET /v1/cloud": return json(await status(user, deps));

@@ -53,7 +53,8 @@ export class HttpFly implements Fly {
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await fetch(this.base + path, {
       method,
-      headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
+      // Deploy tokens come as "FlyV1 …", which is the whole header; older tokens take Bearer.
+      headers: { authorization: this.token.startsWith("FlyV1 ") ? this.token : `Bearer ${this.token}`, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`Fly ${method} ${path}: ${response.status} ${await response.text()}`);
@@ -69,7 +70,8 @@ export class HttpFly implements Fly {
     const config = {
       image: spec.image,
       env: spec.env,
-      guest: { cpu_kind: "shared", cpus: 4, memory_mb: 4096 },
+      // New Fly orgs allow 2 cores a machine; 4 GB is the plan's memory.
+      guest: { cpu_kind: "shared", cpus: 2, memory_mb: 4096 },
       mounts: [{ volume: spec.volume, path: spec.mountPath }],
       // The helper exits 0 when idle, which stops the machine; it restarts only after a crash.
       restart: { policy: "on-failure" },

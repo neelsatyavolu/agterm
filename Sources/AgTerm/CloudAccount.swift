@@ -52,12 +52,21 @@ final class CloudAccount: ObservableObject {
     }
 
     /// Makes the machine on first use, with this Mac's user name and home folder (paths are the
-    /// same there), and keeps what it takes to connect.
+    /// same there), and keeps what it takes to connect once it is running: a new machine takes
+    /// about 20 seconds to boot, and a tab opened before then would fail.
     func setUpMachine() {
         let body = ["user": NSUserName(), "home": NSHomeDirectory()]
-        run { try await self.request("POST", "/v1/cloud/machine", body: body) as CloudCredentials.Connection } then: {
-            CloudCredentials.save($0)
-            self.refresh()
+        run {
+            let connection: CloudCredentials.Connection = try await self.request("POST", "/v1/cloud/machine", body: body)
+            var status: Status = try await self.request("GET", "/v1/cloud")
+            for _ in 0..<30 where status.machine?.state != "started" {
+                try await Task.sleep(for: .seconds(2))
+                status = try await self.request("GET", "/v1/cloud")
+            }
+            return (connection, status)
+        } then: { connection, status in
+            CloudCredentials.save(connection)
+            self.status = status
         }
     }
 
