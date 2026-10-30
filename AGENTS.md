@@ -14,6 +14,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
 | `Tests/AgTermSessionKitTests/` | XCTest for the session helper (runs a server in-process) |
 | `site/` | agterm.xanom.co landing page (Vercel) |
+| `cloud/` | agterm Cloud: the machine image (`Dockerfile`, `entrypoint.sh`) and the control plane Worker (`control/`, TypeScript, D1); see `docs/cloud-sessions-plan.md` |
 
 ## Commands
 | Task | Command |
@@ -22,6 +23,8 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | One test class | `swift test --filter ChangelogTests` |
 | All tests | `swift test` |
 | Linux tests (OrbStack/Docker) | `docker run --rm -v "$PWD":/src -v agterm-linux-build:/build -w /src swift:6.4-noble swift test --scratch-path /build` |
+| Control plane tests | `cd cloud/control && npm test && npm run typecheck` |
+| Cloud image | `docker build -f cloud/Dockerfile .` |
 | Cloud machine for development | `scripts/cloud-dev.sh && set -a && . .build/cloud-dev.env && set +a`, then run the app (Shell → New Cloud Tab), or a self-test: `AGTERM_CLOUD_CHECK=1` or `AGTERM_MOVE_CHECK=1` with `AGTERM_SELFTEST=<dir>`. `scripts/cloud-dev.sh stop` removes it |
 | Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |

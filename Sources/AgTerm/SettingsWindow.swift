@@ -16,6 +16,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.add("Accounts", symbol: "person.crop.circle", AccountsPane(store: .shared, monitor: .shared, login: .shared, team: .shared, teams: .shared))
         tabs.add("Command", symbol: "command", CommandPane())
         tabs.add("Teams & Phone", symbol: "person.2", ConnectionsPane())
+        if CloudAccount.isEnabled { tabs.add("Cloud", symbol: "cloud", CloudPane(account: .shared, teams: .shared)) }
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
         window.toolbarStyle = .preference
@@ -31,6 +32,13 @@ final class SettingsWindowController: NSWindowController {
     var paneCount: Int { (contentViewController as? NSTabViewController)?.tabViewItems.count ?? 0 }
     func selectPane(_ index: Int) { (contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = index }
     #endif
+
+    /// Opens the pane with this title.
+    func show(pane title: String) {
+        let tabs = contentViewController as? NSTabViewController
+        if let index = tabs?.tabViewItems.firstIndex(where: { $0.label == title }) { tabs?.selectedTabViewItemIndex = index }
+        show()
+    }
 
     func show() {
         DiskAccessMonitor.shared.refresh()

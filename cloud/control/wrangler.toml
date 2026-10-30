@@ -1,0 +1,24 @@
+# agterm Cloud control plane (docs/cloud-sessions-plan.md): accounts via agmux Teams, a Fly
+# machine per user, Stripe billing, hourly metering.
+name = "agterm-cloud"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agterm-cloud"
+database_id = "REPLACE_AFTER_d1_create"
+
+[triggers]
+crons = ["7 * * * *"]
+
+[vars]
+TEAMS_URL = "https://teams.agmux.dev"
+FLY_APP = "agterm-cloud-machines"
+CLOUD_IMAGE = "registry.fly.io/agterm-cloud-machines:latest"
+INCLUDED_HOURS = "100"
+VOLUME_GB = "20"
+STRIPE_PRICE = "REPLACE_WITH_PRICE_ID"
+APP_ORIGIN = "https://agterm.xanom.co"
+
+# Secrets (wrangler secret put): FLY_API_TOKEN, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET

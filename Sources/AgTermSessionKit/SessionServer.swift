@@ -26,6 +26,8 @@ public final class SessionServer {
     private var sessions: [String: HostedSession] = [:]
     private var stopped = false
     private var idleToken = 0
+    /// The last time a shell wrote something or a client came or went.
+    private var lastActivity = Date()
 
     public init(socketPath: String, build: String) {
         self.socketPath = socketPath
@@ -161,6 +163,7 @@ public final class SessionServer {
             self?.sessions[session.id] = nil
             self?.noteActivity()
         }
+        session.onOutput = { [weak self] in self?.lastActivity = Date() }
         sessions[session.id] = session
         detachEverywhere(client)
         session.attach(client)
@@ -185,8 +188,16 @@ public final class SessionServer {
 
     // MARK: Lifetime
 
+    /// How long it has been quiet: no client connected and no shell output. Nil while a client
+    /// is connected. A working agent keeps writing (its spinner, its timer), so a cloud machine
+    /// stops only once its agents are done and nobody is looking.
+    public var quietFor: TimeInterval? {
+        queue.sync { clients.isEmpty ? Date().timeIntervalSince(lastActivity) : nil }
+    }
+
     /// Called on every change; schedules the idle exit when nothing is left.
     private func noteActivity() {
+        lastActivity = Date()
         idleToken &+= 1
         guard !stopped, sessions.isEmpty, clients.isEmpty, let idleExitAfter else { return }
         let token = idleToken

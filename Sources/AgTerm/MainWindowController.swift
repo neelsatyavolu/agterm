@@ -182,7 +182,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let saved = WorkspaceStore.load()
         // Nil when the helper can't be asked: tabs that were in it come back without their agent.
         let live = SessionHelper.shared()?.list()
-        let cloud = CloudHost.configured
+        // Asking wakes a stopped cloud machine, so only when there are cloud tabs to bring back.
+        let cloud = saved?.tabs.contains { $0.inCloud == true } == true ? CloudHost.configured : nil
         let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live, cloud: cloud?.list())
         guard !plan.isEmpty else { return newTab() }
         for tab in plan {
@@ -216,13 +217,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// A tab whose shell runs on the cloud machine (`CloudHost.configured`), in the same folder
     /// if the machine has it.
     @objc func newCloudTab() {
-        guard let cloud = CloudHost.configured else { return }
+        guard let cloud = CloudHost.configured else { return SettingsWindowController.shared.show(pane: "Cloud") }
         openCloudTab(cloud)
     }
 
     /// Shell → Move All Tabs to Cloud…: lists what will happen to each tab, then moves them.
     @objc func moveAllToCloud() {
-        guard let cloud = CloudHost.configured else { return }
+        guard let cloud = CloudHost.configured else { return SettingsWindowController.shared.show(pane: "Cloud") }
         let items = CloudMove.preflight(sessions)
         guard !items.isEmpty else { return }
         let alert = NSAlert()

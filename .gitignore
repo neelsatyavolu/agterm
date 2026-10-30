@@ -4,3 +4,4 @@ dist/
 scripts/maintainer.local
 site/.vercel/
 .DS_Store
+node_modules/

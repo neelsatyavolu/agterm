@@ -90,7 +90,11 @@ Suggested plan: **$12/month: 100 cloud hours, 20 GB, 4 GB RAM; $0.10/hour after.
    - The cloud helper reports what runs in each tab (`inspect`), so cloud tabs get status, agent detection and resume commands. Cloud tabs come back after a relaunch.
    - `AGTERM_MOVE_CHECK=1` passes against `scripts/cloud-dev.sh`: a fake Claude (`scripts/fake-claude.c`) stopped mid-turn resumes in Linux with its transcript and the "continue" prompt, and is still running after the app quits.
    - Not done yet: restarting running commands in the cloud (the preflight is a plain list, and they are left stopped); copying `~/.claude/settings.json` and `~/.codex/config.toml`, which hold Mac paths and sometimes keys; TLS in the client.
-4. Control plane, Fly VMs, auto-stop, Stripe, sign-up. Verify: hours metered match Fly's bill.
+4. Control plane, Fly VMs, auto-stop, Stripe, sign-up. Verify: hours metered match Fly's bill. **Built, not deployed (2026-10-30)**:
+   - `cloud/Dockerfile` + `entrypoint.sh`: the user at the Mac's home path on their volume, `/tmp` → `/private/tmp`, git, rsync, build tools, Python, Node. The helper runs with `--idle-stop 900`: with no client and no output for 15 minutes it exits, so the machine stops; Fly's proxy starts it on the next connection.
+   - `cloud/control`: a Worker with D1. It checks the agmux Teams token (`/api/auth/me`), runs Stripe Checkout, the billing portal and the webhook, creates a volume and machine per user on first use, meters running hours hourly from Fly's machine events, stops a machine at the user's limit (autostart off until the next period), and deletes it 30 days after cancelling.
+   - The app: Settings → Cloud (subscribe, set up the machine, limit, billing); the connection lives in the Keychain. Hidden until launch (`defaults write … agtermCloud -bool true`).
+   - Not yet: overage billing at $0.10/hour (v1 stops at the included hours), and resuming agents on a machine that stopped while tabs were open (they come back from history).
 5. Phone on the cloud desktop; Bring back. Verify: phone answers a prompt with the Mac off; bring back leaves no file differences.
 6. Warm copy (background sync), preflight polish, 8 GB tier.
 

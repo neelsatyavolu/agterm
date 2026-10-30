@@ -72,6 +72,21 @@ final class SessionServerTests: XCTestCase {
         XCTAssertTrue(String(decoding: screen, as: UTF8.self).contains("MARK"))
     }
 
+    /// A cloud machine stops once nobody is connected and its shells have gone quiet.
+    func testQuietOnlyWithoutClientsAndOutput() throws {
+        let client = try connect()
+        XCTAssertNil(server.quietFor)
+        _ = try spawn(client, "sleep 0.3; echo LATE; sleep 5")
+        client.close()
+        usleep(150_000)
+        XCTAssertLessThan(try XCTUnwrap(server.quietFor), 0.5)
+        usleep(600_000)
+        // "LATE" was written after the client left.
+        XCTAssertLessThan(try XCTUnwrap(server.quietFor), 0.6)
+        usleep(500_000)
+        XCTAssertGreaterThan(try XCTUnwrap(server.quietFor), 0.4)
+    }
+
     func testListReportsWhichSessionsAreAttached() throws {
         let holder = try connect()
         defer { holder.close() }

@@ -32,6 +32,8 @@ final class HostedSession {
     let startedAt = Date()
     /// Called once the shell has exited and been reaped.
     var onExit: ((HostedSession) -> Void)?
+    /// Called whenever the shell writes something.
+    var onOutput: (() -> Void)?
 
     private let masterFd: Int32
     private let queue: DispatchQueue
@@ -216,6 +218,7 @@ final class HostedSession {
     }
 
     private func received(_ bytes: Data) {
+        onOutput?()
         syncSize()
         terminal.feed(buffer: [UInt8](bytes)[...])
         guard let client else { return }

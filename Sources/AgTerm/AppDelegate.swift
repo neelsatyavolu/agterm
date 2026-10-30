@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
-        ] + (CloudHost.configured == nil ? [] : [
+        ] + (!CloudAccount.isEnabled ? [] : [
             item("New Cloud Tab", #selector(MainWindowController.newCloudTab)),
             item("Move All Tabs to Cloud…", #selector(MainWindowController.moveAllToCloud)),
         ]) + [

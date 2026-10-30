@@ -3,7 +3,8 @@ import Foundation
 /// The sessions helper's entry point: `agterm --sessions-helper --socket <path> --build <id>`.
 /// On a cloud machine `--listen <host:port>` also starts the gateway, with the token in
 /// `AGTERM_GATEWAY_TOKEN` (never on the command line, which `ps` shows), and the helper no
-/// longer stops when idle.
+/// longer stops when idle; `--idle-stop <seconds>` then exits once `SessionServer.quietFor` passes
+/// that, which stops a Fly machine (its proxy starts it again for the next connection).
 /// The helper owns every tab's shell so it survives the app quitting (see SessionServer). It is
 /// the app's own executable, so macOS privacy checks for its shells (Full Disk Access and the
 /// like) see agterm's code identity even after the app quits.
@@ -25,6 +26,7 @@ public enum SessionHelperMain {
                 // Kept here: nothing else holds it, and dispatchMain never returns.
                 let running = gateway(socketPath)
                 try running.start()
+                if let limit = value(of: "--idle-stop", in: arguments).flatMap(TimeInterval.init) { stopWhenQuiet(server, after: limit) }
                 withExtendedLifetime(running) { dispatchMain() }
             }
             try server.run()
@@ -44,6 +46,21 @@ public enum SessionHelperMain {
         }
         return { SessionGateway(socketPath: $0, host: host, port: port, token: token) }
     }
+
+    /// Checks every 30 s; ending its shells first, so they hang up like on any shutdown.
+    private static func stopWhenQuiet(_ server: SessionServer, after limit: TimeInterval) {
+        let timer = DispatchSource.makeTimerSource(queue: .global())
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler {
+            guard let quiet = server.quietFor, quiet >= limit else { return }
+            server.stop()
+            exit(0)
+        }
+        timer.resume()
+        idleTimer = timer
+    }
+
+    nonisolated(unsafe) private static var idleTimer: DispatchSourceTimer?
 
     public static let tokenVariable = "AGTERM_GATEWAY_TOKEN"
     private static let minimumTokenLength = 32

@@ -4,9 +4,9 @@ import Foundation
 
 /// A cloud machine's sessions helper, reached through its gateway (`agterm-sessions --listen`,
 /// see docs/cloud-sessions-plan.md) over a WebSocket (`WebSocketPipe`). On Fly, `machine` picks
-/// the user's machine behind the shared address. Each tab opens its own connection. In
-/// development it comes from `AGTERM_CLOUD` (a wss:// URL, or ws:// / host:port on loopback),
-/// `AGTERM_CLOUD_MACHINE` and `AGTERM_CLOUD_TOKEN`.
+/// the user's machine behind the shared address. Each tab opens its own connection. It is the
+/// machine set up in Settings → Cloud (`CloudCredentials`), or in development `AGTERM_CLOUD` (a
+/// wss:// URL, or ws:// / host:port on loopback), `AGTERM_CLOUD_MACHINE` and `AGTERM_CLOUD_TOKEN`.
 final class CloudHost: SessionEndpoint, CustomStringConvertible {
     private static let timeout: TimeInterval = 5
     private static let loopback: Set<String> = ["127.0.0.1", "::1", "localhost"]
@@ -23,13 +23,21 @@ final class CloudHost: SessionEndpoint, CustomStringConvertible {
 
     var description: String { url.host ?? url.absoluteString }
 
-    /// The machine set in the environment, if any.
-    static let configured: CloudHost? = {
+    /// The machine in the environment, else the one set up in Settings; nil if neither.
+    static var configured: CloudHost? {
         let env = ProcessInfo.processInfo.environment
-        guard let endpoint = env["AGTERM_CLOUD"], let token = env["AGTERM_CLOUD_TOKEN"], !token.isEmpty,
-              let url = url(endpoint) else { return nil }
-        return CloudHost(url: url, machine: env["AGTERM_CLOUD_MACHINE"], token: token)
-    }()
+        if let endpoint = env["AGTERM_CLOUD"], let token = env["AGTERM_CLOUD_TOKEN"], !token.isEmpty {
+            return url(endpoint).map { CloudHost(url: $0, machine: env["AGTERM_CLOUD_MACHINE"], token: token) }
+        }
+        return CloudCredentials.current.map { CloudHost(url: $0.url, machine: $0.machine, token: $0.token) }
+    }
+
+    /// For `agterm --cloud-pipe` run by rsync, so it reaches this machine without the Keychain.
+    var environment: [String: String] {
+        var env = ["AGTERM_CLOUD": url.absoluteString, "AGTERM_CLOUD_TOKEN": token]
+        if let machine { env["AGTERM_CLOUD_MACHINE"] = machine }
+        return env
+    }
 
     /// wss:// anywhere; ws:// (or a bare host:port) only on loopback, since it isn't encrypted.
     static func url(_ endpoint: String) -> URL? {
