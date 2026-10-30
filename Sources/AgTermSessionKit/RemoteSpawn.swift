@@ -20,14 +20,18 @@ enum RemoteSpawn {
             let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin"
             return Account(user: user, home: home, shell: shell, path: path)
         }
+
+        /// What every command started for a remote client gets.
+        var environment: [String] {
+            ["HOME=\(home)", "USER=\(user)", "LOGNAME=\(user)", "SHELL=\(shell)", "PATH=\(path)"]
+        }
     }
 
     private static let clientKeys: Set<String> = ["TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "LANG", "AGTERM_TAB_ID"]
 
     static func localize(_ request: SpawnRequest, for account: Account,
                          isDirectory: (String) -> Bool = RemoteSpawn.isDirectory) -> SpawnRequest {
-        var env = ["HOME=\(account.home)", "USER=\(account.user)", "LOGNAME=\(account.user)",
-                   "SHELL=\(account.shell)", "PATH=\(account.path)"]
+        var env = account.environment
         env += request.env.filter { entry in
             let key = entry.prefix { $0 != "=" }
             return clientKeys.contains(String(key)) || key.hasPrefix("LC_")

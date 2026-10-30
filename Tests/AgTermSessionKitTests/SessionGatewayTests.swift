@@ -110,6 +110,79 @@ final class SessionGatewayTests: XCTestCase {
         XCTAssertEqual(running.name, "sleep")
     }
 
+    func testExecPipesInputOutputAndStatus() throws {
+        let client = try authenticated()
+        defer { client.close() }
+        try client.send(.exec(argv: ["/bin/sh", "-c", "cat; echo err >&2; exit 3"]))
+        try client.send(.input(Data("hello".utf8)))
+        try client.send(.input(Data()))
+        var out = "", err = ""
+        while true {
+            switch try client.receive(timeout: 5) {
+            case .output(let bytes): out += String(decoding: bytes, as: UTF8.self)
+            case .stderr(let bytes): err += String(decoding: bytes, as: UTF8.self)
+            case .exited(_, let status):
+                XCTAssertEqual([out, err], ["hello", "err\n"])
+                XCTAssertEqual(status, 3)
+                return XCTAssertThrowsError(try client.receive(timeout: 5))
+            default: break
+            }
+        }
+    }
+
+    /// rsync moves whole folders: input and output both outrun the other end, and neither the
+    /// gateway nor the connection may drop or pile up bytes.
+    func testExecStreamsMegabytesBothWays() throws {
+        let client = try authenticated()
+        defer { client.close() }
+        let total = 6 * 1024 * 1024
+        let lock = NSLock()
+        var received = 0
+        let done = expectation(description: "exited")
+        client.onMessage = { message in
+            switch message {
+            case .output(let bytes): lock.lock(); received += bytes.count; lock.unlock()
+            case .exited(_, let status): XCTAssertEqual(status, 0); done.fulfill()
+            default: break
+            }
+        }
+        client.startReading(queue: DispatchQueue(label: "test.exec"))
+        try client.send(.exec(argv: ["/bin/cat"]))
+        let chunk = Data(repeating: 0x2a, count: 64 * 1024)
+        for _ in 0..<(total / chunk.count) {
+            while client.backlogBytes > 1024 * 1024 { usleep(1000) }
+            try client.send(.input(chunk))
+        }
+        try client.send(.input(Data()))
+        wait(for: [done], timeout: 30)
+        lock.lock()
+        XCTAssertEqual(received, total)
+        lock.unlock()
+    }
+
+    /// The client hanging up mid-command kills it, and the gateway still reaps it (no zombie).
+    func testExecIsKilledAndReapedWhenTheClientLeaves() throws {
+        let client = try authenticated()
+        try client.send(.exec(argv: ["/bin/sh", "-c", "echo $$; exec sleep 30"]))
+        guard case .output(let bytes) = try client.receive(timeout: 5),
+              let pid = pid_t(String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return XCTFail("expected the pid")
+        }
+        client.close()
+        let deadline = Date().addingTimeInterval(5)
+        // kill(pid, 0) still succeeds on a zombie; it fails once the process is reaped.
+        while kill(pid, 0) == 0, Date() < deadline { usleep(50_000) }
+        XCTAssertNotEqual(kill(pid, 0), 0, "exec'd command \(pid) wasn't killed and reaped")
+    }
+
+    func testExecOfAMissingCommandIsRefused() throws {
+        let client = try authenticated()
+        defer { client.close() }
+        try client.send(.exec(argv: ["/no/such/command"]))
+        guard case .error(let text) = try client.receive(timeout: 5) else { return XCTFail("expected error") }
+        XCTAssertTrue(text.hasPrefix("exec failed"), text)
+    }
+
     func testRemoteClientCannotShutDownTheHelper() throws {
         let client = try connect()
         defer { client.close() }
@@ -124,9 +197,14 @@ final class SessionGatewayTests: XCTestCase {
         WireConnection(fd: try TCPSocket.connect(host: "127.0.0.1", port: gateway.port, timeout: 5))
     }
 
-    private func connect() throws -> WireConnection {
+    private func authenticated() throws -> WireConnection {
         let client = try open()
         try client.send(.auth(token: token))
+        return client
+    }
+
+    private func connect() throws -> WireConnection {
+        let client = try authenticated()
         XCTAssertEqual(try client.handshake(build: "test").version, SessionWire.protocolVersion)
         return client
     }

@@ -52,6 +52,35 @@ final class CloudHost: SessionEndpoint {
         return infos
     }
 
+    /// A connection running `argv` on the machine with plain pipes (see `WireMessage.exec`).
+    func exec(_ argv: [String]) throws -> WireConnection {
+        let connection = WireConnection(fd: try TCPSocket.connect(host: host, port: port, timeout: Self.timeout))
+        do {
+            try connection.send(.auth(token: token))
+            try connection.send(.exec(argv: argv))
+            return connection
+        } catch {
+            connection.close()
+            throw error
+        }
+    }
+
+    /// Runs `argv` with no input and waits for it; returns its status and what it wrote to stderr.
+    func run(_ argv: [String], timeout: TimeInterval = 30) throws -> (status: Int32, stderr: String) {
+        let connection = try exec(argv)
+        defer { connection.close() }
+        try connection.send(.input(Data()))
+        var stderr = ""
+        while true {
+            switch try connection.receive(timeout: timeout) {
+            case .stderr(let bytes): stderr += String(decoding: bytes, as: UTF8.self)
+            case .exited(_, let status): return (status, stderr)
+            case .error(let text): throw WireError.remote(text)
+            default: break
+            }
+        }
+    }
+
     func reattach(id: String) throws -> (WireConnection, Int32?) {
         (try open(.attach(id: id)).0, nil)
     }

@@ -12,6 +12,10 @@ if arguments.count >= 3, arguments[1] == "--agterm-exec" {
 if arguments.count >= 2, arguments[1] == SessionHelperMain.flag {
     SessionHelperMain.run(arguments: arguments)
 }
+// rsync's remote shell when tabs move to the cloud.
+if arguments.count >= 2, arguments[1] == CloudPipe.flag {
+    CloudPipe.run(arguments)
+}
 
 
 let app = NSApplication.shared

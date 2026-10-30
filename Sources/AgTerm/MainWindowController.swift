@@ -220,6 +220,51 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         openCloudTab(cloud)
     }
 
+    /// Shell → Move All Tabs to Cloud…: lists what will happen to each tab, then moves them.
+    @objc func moveAllToCloud() {
+        guard let cloud = CloudHost.configured else { return }
+        let items = CloudMove.preflight(sessions)
+        guard !items.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Move \(items.count) tab\(items.count == 1 ? "" : "s") to the cloud?"
+        alert.informativeText = items.map(\.summary).joined(separator: "\n")
+            + "\n\nEach tab's folder and conversation are copied first. Agents finish their turn, or stop after 20 seconds and continue in the cloud."
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        moveToCloud(items, cloud: cloud) { _ in }
+    }
+
+    /// Moves `items` and reports how it went (a notification, and `done`).
+    func moveToCloud(_ items: [CloudMove.Item], cloud: CloudHost, done: @escaping (CloudMove.Outcome) -> Void) {
+        window?.subtitle = "Moving to the cloud…"
+        let move = CloudMove(cloud: cloud, isOpen: { [weak self] in self?.sessions.contains($0) == true },
+                             replace: { [weak self] old, new in self?.replaceTab(old, with: new) })
+        move.run(items) { [weak self] outcome in
+            self?.window?.subtitle = ""
+            switch outcome {
+            case .moved(let count):
+                Notifier.shared.post(title: "Moved \(count) tab\(count == 1 ? "" : "s") to the cloud",
+                                     body: "They keep running when this Mac is off.", tabID: "cloud")
+            case .failed(let reason):
+                Notifier.shared.post(title: "Couldn't move tabs to the cloud", body: reason, tabID: "cloud")
+            }
+            done(outcome)
+            _ = move
+        }
+    }
+
+    /// Puts `new` where `old` is and ends `old`'s shell.
+    private func replaceTab(_ old: TerminalSession, with new: TerminalSession) {
+        guard let index = sessions.firstIndex(of: old) else { return }
+        let wasSelected = index == selected
+        let current = selected
+        install(new)
+        sessions.swapAt(index, sessions.count - 1)
+        removeTab(at: sessions.count - 1)
+        select(wasSelected ? index : current)
+    }
+
     /// `attaching` shows a shell the machine already runs.
     func openCloudTab(_ cloud: CloudHost, attaching id: String? = nil) {
         do {

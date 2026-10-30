@@ -84,7 +84,12 @@ Suggested plan: **$12/month: 100 cloud hours, 20 GB, 4 GB RAM; $0.10/hour after.
    - `agterm-sessions --listen`, and Shell → New Cloud Tab when `AGTERM_CLOUD` and `AGTERM_CLOUD_TOKEN` are set. Loopback only until the client has TLS.
    - `AGTERM_CLOUD_CHECK=1` passes against an in-process gateway and against the Linux helper in a container.
    - Left for phase 3: TLS in the client; cloud tabs coming back after a relaunch; a cloud marker on the tab; and agent and folder info for cloud tabs, which today come from local process lookups that a cloud tab skips.
-3. Move All to Cloud for agent tabs (sync, transcripts, resume). Verify: a Claude tab mid-turn keeps going after the Mac app quits.
+3. Move All to Cloud for agent tabs (sync, transcripts, resume). Verify: a Claude tab mid-turn keeps going after the Mac app quits. **Done 2026-10-30**:
+   - Shell → Move All Tabs to Cloud…, and a "Move to Cloud, Then Quit" button when quitting with agents running.
+   - Files go with macOS's rsync through the gateway: the gateway's `exec` message, and `agterm --cloud-pipe` as rsync's remote shell. Nothing on the cloud machine is deleted.
+   - The cloud helper reports what runs in each tab (`inspect`), so cloud tabs get status, agent detection and resume commands. Cloud tabs come back after a relaunch.
+   - `AGTERM_MOVE_CHECK=1` passes against `scripts/cloud-dev.sh`: a fake Claude (`scripts/fake-claude.c`) stopped mid-turn resumes in Linux with its transcript and the "continue" prompt, and is still running after the app quits.
+   - Not done yet: restarting running commands in the cloud (the preflight is a plain list, and they are left stopped); copying `~/.claude/settings.json` and `~/.codex/config.toml`, which hold Mac paths and sometimes keys; TLS in the client.
 4. Control plane, Fly VMs, auto-stop, Stripe, sign-up. Verify: hours metered match Fly's bill.
 5. Phone on the cloud desktop; Bring back. Verify: phone answers a prompt with the Mac off; bring back leaves no file differences.
 6. Warm copy (background sync), preflight polish, 8 GB tier.
@@ -100,4 +105,4 @@ Suggested plan: **$12/month: 100 cloud hours, 20 GB, 4 GB RAM; $0.10/hour after.
 
 - Multiple logins per agent (`AGTERM_ACCOUNT`, team pool): set up each one in the cloud, or only the default?
 - Phone: does agterm Remote need to show two desktops (Mac and cloud), or should the cloud take over the Mac's desktop id while the Mac is off?
-- Base image: which toolchains come preinstalled, and whether to honor a repo's `.devcontainer`.
+- Base image: which toolchains come preinstalled, and whether to honor a repo's `.devcontainer`. Required either way: the user's home at the Mac's home path, `/tmp` as a link to `/private/tmp` (agents key conversations by the real path of their folder), and rsync.

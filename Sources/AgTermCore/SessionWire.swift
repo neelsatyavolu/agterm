@@ -126,6 +126,11 @@ public enum WireMessage: Equatable {
     /// Asks what the attached session has in the foreground; answered with `foreground`.
     case inspect
     case foreground(ForegroundInfo)
+    /// Runs a command on the gateway's machine with plain pipes, not a pty (rsync's other end,
+    /// when moving tabs). Its stdin comes as `input` (empty: end of input), its stdout goes out
+    /// as `output` and its stderr as `stderr`, then `exited`. The connection is used for nothing else.
+    case exec(argv: [String])
+    case stderr(Data)
 }
 
 public enum WireFrameError: Error, Equatable {
@@ -138,7 +143,7 @@ public enum WireFrame {
     private enum Tag: UInt8 {
         case hello = 1, list = 2, sessions = 3, spawn = 4, attach = 5, attached = 6
         case replay = 7, output = 8, exited = 9, kill = 10, shutdownIfIdle = 11, error = 12
-        case input = 13, resize = 14, auth = 15, inspect = 16, foreground = 17
+        case input = 13, resize = 14, auth = 15, inspect = 16, foreground = 17, exec = 18, stderr = 19
     }
 
     private struct Hello: Codable { var version: Int; var build: String }
@@ -203,6 +208,8 @@ public enum WireFrame {
         case .auth(let token): return (.auth, Data(token.utf8))
         case .inspect: return (.inspect, Data())
         case .foreground(let info): return (.foreground, json(info))
+        case .exec(let argv): return (.exec, json(argv))
+        case .stderr(let bytes): return (.stderr, bytes)
         }
     }
 
@@ -225,6 +232,8 @@ public enum WireFrame {
         case .auth: return .auth(token: String(decoding: payload, as: UTF8.self))
         case .inspect: return .inspect
         case .foreground: return .foreground(try object(payload))
+        case .exec: return .exec(argv: try object(payload))
+        case .stderr: return .stderr(payload)
         }
     }
 

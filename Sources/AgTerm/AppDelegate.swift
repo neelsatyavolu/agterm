@@ -109,15 +109,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ending sessions lists every program already; an update's relaunch keeps team logins.
         let stopsKeptTeamAgents = !endSessionsOnQuit && !Updater.shared.isRelaunchingForUpdate
         let teamAgents = stopsKeptTeamAgents ? controller?.teamAgentsStopping(TeamAccounts.shared.teamAgentsByTab) ?? [] : []
-        guard !running.isEmpty || !teamAgents.isEmpty else { return .terminateNow }
+        // Agents kept in the helper don't stop on a plain quit, but they do when the Mac turns off.
+        let moving = endSessionsOnQuit ? [] : cloudMoveItems()
+        guard !running.isEmpty || !teamAgents.isEmpty || !moving.isEmpty else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Quit agterm?"
         alert.informativeText = [running.isEmpty ? nil : "Still running:\n" + running.joined(separator: "\n"),
-                                 teamAgents.isEmpty ? nil : teamAgents.joined(separator: "\n")]
+                                 teamAgents.isEmpty ? nil : teamAgents.joined(separator: "\n"),
+                                 moving.isEmpty ? nil : "Agents are working. Move them to the cloud instead? They keep working while this Mac is off."]
             .compactMap { $0 }.joined(separator: "\n\n")
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        if !moving.isEmpty { alert.addButton(withTitle: "Move to Cloud, Then Quit") }
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .terminateNow
+        case .alertThirdButtonReturn: return moveThenQuit(moving)
+        default: return .terminateCancel
+        }
+    }
+
+    /// Local tabs a quit could move to the cloud instead, when a cloud machine is set and an agent runs in one.
+    private func cloudMoveItems() -> [CloudMove.Item] {
+        guard CloudHost.configured != nil, let controller else { return [] }
+        let items = CloudMove.preflight(controller.sessions)
+        return items.contains { $0.agent != nil } ? items : []
+    }
+
+    /// Quits once the tabs are in the cloud; stays open if that fails (a notification says why).
+    private func moveThenQuit(_ items: [CloudMove.Item]) -> NSApplication.TerminateReply {
+        guard let controller, let cloud = CloudHost.configured else { return .terminateCancel }
+        controller.moveToCloud(items, cloud: cloud) { outcome in
+            if case .moved = outcome { return NSApp.reply(toApplicationShouldTerminate: true) }
+            NSApp.reply(toApplicationShouldTerminate: false)
+        }
+        return .terminateLater
     }
 
     private func buildMenu() -> NSMenu {
@@ -136,7 +161,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
-        ] + (CloudHost.configured == nil ? [] : [item("New Cloud Tab", #selector(MainWindowController.newCloudTab))]) + [
+        ] + (CloudHost.configured == nil ? [] : [
+            item("New Cloud Tab", #selector(MainWindowController.newCloudTab)),
+            item("Move All Tabs to Cloud…", #selector(MainWindowController.moveAllToCloud)),
+        ]) + [
             newAgentTabItem(),
         ] + Self.agentItems([.claude, .codex, .grok]) + [
             moreAgentsItem(),

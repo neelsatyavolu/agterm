@@ -24,6 +24,8 @@ final class SessionWireTests: XCTestCase {
             .inspect,
             .foreground(ForegroundInfo(pid: 9, isShell: false, name: "claude", argv: ["claude", "-c"], cwd: "/w",
                                        claudeSessionID: "abc", claudeBusy: true, codexSessionID: nil)),
+            .exec(argv: ["/bin/sh", "-c", "rsync --server ."]),
+            .stderr(Data("oops\n".utf8)),
         ]
     }
 
@@ -124,6 +126,7 @@ final class SessionWireTests: XCTestCase {
             (.exited(id: "s", status: 0), 9), (.kill(id: "s", signal: 9), 10), (.shutdownIfIdle, 11), (.error("e"), 12),
             (.input(Data()), 13), (.resize(WindowSize(cols: 1, rows: 1)), 14), (.auth(token: "t"), 15),
             (.inspect, 16), (.foreground(ForegroundInfo(pid: 1, isShell: true, name: "sh", argv: [], cwd: nil)), 17),
+            (.exec(argv: []), 18), (.stderr(Data()), 19),
         ]
         XCTAssertEqual(expected.count, allMessages.count)
         for (message, tag) in expected {

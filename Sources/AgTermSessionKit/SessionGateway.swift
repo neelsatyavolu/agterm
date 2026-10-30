@@ -86,6 +86,10 @@ public final class SessionGateway {
         RemoteSpawn.localize(request, for: account)
     }
 
+    fileprivate func exec(_ argv: [String], for client: WireConnection) throws -> ExecSession {
+        try ExecSession(argv: argv, env: account.environment, client: client, queue: queue)
+    }
+
     fileprivate func ended(_ bridge: Bridge) {
         bridges[ObjectIdentifier(bridge)] = nil
     }
@@ -97,6 +101,8 @@ private final class Bridge {
     private var local: WireConnection?
     private weak var gateway: SessionGateway?
     private var closed = false
+    /// The connection runs a command instead of talking to the helper.
+    private var exec: ExecSession?
 
     init(remote: WireConnection, gateway: SessionGateway) {
         self.remote = remote
@@ -116,6 +122,7 @@ private final class Bridge {
     func close() {
         guard !closed else { return }
         closed = true
+        exec?.terminate()
         remote.close()
         local?.close()
         gateway?.ended(self)
@@ -123,7 +130,21 @@ private final class Bridge {
 
     private func fromRemote(_ message: WireMessage, queue: DispatchQueue) {
         guard let local else { return authenticate(message, queue: queue) }
+        if let exec {
+            if case .input(let bytes) = message { exec.write(bytes) }
+            return
+        }
         switch message {
+        case .exec(let argv):
+            do {
+                exec = try gateway?.exec(argv, for: remote)
+                // A command's connection doesn't use the helper.
+                local.onClose = nil
+                local.close()
+            } catch {
+                try? remote.send(.error("exec failed: \(error)"))
+                remote.closeAfterSending()
+            }
         // The helper's lifetime isn't a remote client's to end.
         case .auth, .shutdownIfIdle: return
         case .spawn(let request): send(.spawn(gateway?.localize(request) ?? request), to: local)

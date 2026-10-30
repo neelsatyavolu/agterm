@@ -113,6 +113,10 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         super.init()
         setUpView()
         pendingCommand = command
+        // A tab moved here keeps the history it had on the Mac.
+        if id == nil, let saved, !saved.scrollback.isEmpty {
+            view.feed(text: saved.scrollback + "\r\n\u{1b}[0;2m— moved to the cloud —\u{1b}[0m\r\n")
+        }
         view.attach(link)
         link.onForeground = { [weak self] in self?.received($0) }
     }
@@ -186,35 +190,36 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// resume a conversation, the command that brings them back.
     func snapshot() -> SavedTab {
         pollProcess()
-        var resume: String?
-        if let info = foreground, !info.isShell, !signals.exited {
-            let codexID = isCloud ? info.codexSessionID : localCodexSessionID()
-            resume = AgentResume.commandLine(argv: info.argv, claudeSessionID: info.claudeSessionID)
-                ?? codexResume(argv: info.argv, sessionID: codexID)
-                ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: info.argv) }
-        }
-        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand,
+        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resumeCommand() ?? pendingCommand,
                         sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID, name: name,
                         inCloud: isCloud ? true : nil)
     }
 
+    /// The command that brings back the agent in the foreground, with `prompt` as its first
+    /// message where the agent takes one; nil if nothing resumable runs. Call `pollProcess` first.
+    func resumeCommand(prompt: String? = nil) -> String? {
+        guard let info = foreground, !info.isShell, !signals.exited else { return nil }
+        let codexID = isCloud ? info.codexSessionID : codexRollout.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
+        return AgentResume.commandLine(argv: info.argv, claudeSessionID: info.claudeSessionID, prompt: prompt)
+            ?? codexResume(argv: info.argv, sessionID: codexID, prompt: prompt)
+            ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: info.argv) }
+    }
+
     /// `codex resume <id>` for the conversation this tab's Codex has open (it keeps its rollout
     /// file open), with the options it was started with.
-    private func codexResume(argv: [String], sessionID: String?) -> String? {
+    private func codexResume(argv: [String], sessionID: String?, prompt: String?) -> String? {
         guard agentName == "codex", let id = sessionID else { return nil }
         // The wrapper recorded your arguments for this very run; else read them off the process.
         let launch = AccountStore.launch(tabID: tabID, provider: .codex)
         let args = launch.flatMap { launch in agentStartedAt.map { abs(launch.startedAt.timeIntervalSince($0)) < 20 } == true ? launch.args : nil }
             ?? argv.firstIndex { ($0 as NSString).lastPathComponent.hasPrefix("codex") }.map { Array(argv[($0 + 1)...]) } ?? []
-        return AgentResume.codexCommandLine(userArgs: args, sessionID: id)
+        return AgentResume.codexCommandLine(userArgs: args, sessionID: id, prompt: prompt)
     }
 
-    /// The id of the rollout file this tab's Codex holds open.
-    private func localCodexSessionID() -> String? {
-        guard agentName == "codex", let group = foregroundGroup,
-              let rollout = ProcInfo.openFiles(group: group, matching: { $0.contains("/sessions/") && $0.hasSuffix(".jsonl") && $0.contains("rollout-") }).first,
-              let header = Self.firstLine(rollout) else { return nil }
-        return AgentResume.codexSessionID(rolloutHeader: header)
+    /// The rollout file this tab's Codex holds open (a local tab only).
+    var codexRollout: String? {
+        guard !isCloud, agentName == "codex", let group = foregroundGroup else { return nil }
+        return ProcInfo.openFiles(group: group, matching: { $0.contains("/sessions/") && $0.hasSuffix(".jsonl") && $0.contains("rollout-") }).first
     }
 
     private static func firstLine(_ path: String) -> String? {

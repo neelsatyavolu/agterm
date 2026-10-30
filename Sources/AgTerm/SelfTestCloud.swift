@@ -91,7 +91,7 @@ extension SelfTest {
     }
 
     /// Polls `condition` on the main queue every 0.1 s for up to `timeout`, then calls `done`.
-    private static func waitFor(_ condition: @escaping () -> Bool, timeout: TimeInterval = 8, _ done: @escaping (Bool) -> Void) {
+    static func waitFor(_ condition: @escaping () -> Bool, timeout: TimeInterval = 8, _ done: @escaping (Bool) -> Void) {
         let deadline = Date().addingTimeInterval(timeout)
         func poll() {
             if condition() { return done(true) }
