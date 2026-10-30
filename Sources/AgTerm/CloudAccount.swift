@@ -30,6 +30,9 @@ final class CloudAccount: ObservableObject {
         let plan: String
         let hoursUsed: Double
         let hoursLimit: Double
+        /// Hours the plan includes; hours past them up to the limit cost $0.10 each.
+        let hoursIncluded: Double?
+        let hoursMax: Double?
         let capped: Bool
         let machine: Machine?
     }

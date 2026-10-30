@@ -7,6 +7,10 @@ export interface Config {
   flyApp: string;
   image: string;
   includedHours: number;
+  /** The highest limit a user can set; hours past the included ones are billed. */
+  maxHours: number;
+  overagePrice: string;
+  meterEvent: string;
   volumeGB: number;
   price: string;
   appOrigin: string;
@@ -48,6 +52,7 @@ interface UserRow {
   seconds_used: number;
   metered_until: number | null;
   cap_hours: number | null;
+  overage_reported: number;
   capped: number;
   canceled_at: number | null;
 }
@@ -115,7 +120,7 @@ async function row(id: string, deps: Deps): Promise<UserRow | null> {
 }
 
 function limitHours(user: UserRow, config: Config): number {
-  return Math.min(user.cap_hours ?? config.includedHours, config.includedHours);
+  return Math.min(user.cap_hours ?? config.includedHours, config.maxHours);
 }
 
 async function status(user: UserRow, deps: Deps) {
@@ -123,6 +128,8 @@ async function status(user: UserRow, deps: Deps) {
     plan: user.status,
     hoursUsed: Math.round((user.seconds_used / 3600) * 10) / 10,
     hoursLimit: limitHours(user, deps.config),
+    hoursIncluded: deps.config.includedHours,
+    hoursMax: deps.config.maxHours,
     capped: user.capped === 1,
     machine: user.machine ? { id: user.machine, state: await deps.fly.machineState(user.machine), region: user.region } : null,
   };
@@ -133,7 +140,7 @@ async function status(user: UserRow, deps: Deps) {
 async function checkout(user: UserRow, deps: Deps): Promise<string> {
   if (user.status === "active") throw new Failure(409, "already_subscribed", "agterm Cloud is already active.");
   return await deps.stripe.checkout({
-    customer: user.stripe_customer, email: user.email, userID: user.id, price: deps.config.price,
+    customer: user.stripe_customer, email: user.email, userID: user.id, price: deps.config.price, overagePrice: deps.config.overagePrice,
     successURL: `${deps.config.appOrigin}/cloud/welcome`, cancelURL: `${deps.config.appOrigin}/cloud`,
   });
 }
@@ -170,8 +177,9 @@ async function webhook(request: Request, deps: Deps): Promise<Response> {
       const newPeriod = start !== user.period_start;
       await deps.db.prepare(`UPDATE users SET status = ?, subscription = ?, period_start = ?,
           seconds_used = CASE WHEN ? THEN 0 ELSE seconds_used END, capped = CASE WHEN ? THEN 0 ELSE capped END,
+          overage_reported = CASE WHEN ? THEN 0 ELSE overage_reported END,
           canceled_at = CASE WHEN ? = 'canceled' THEN COALESCE(canceled_at, ?) ELSE NULL END WHERE id = ?`)
-        .bind(status, object.id, start, newPeriod ? 1 : 0, newPeriod ? 1 : 0, status, deps.now(), user.id).run();
+        .bind(status, object.id, start, newPeriod ? 1 : 0, newPeriod ? 1 : 0, newPeriod ? 1 : 0, status, deps.now(), user.id).run();
       if (user.machine && newPeriod && user.capped) await deps.fly.setAutostart(user.machine, true);
       if (user.machine && status !== "active") await stopFor(user.machine, deps);
       break;
@@ -228,10 +236,13 @@ async function machine(user: UserRow, request: Request, deps: Deps) {
 async function setCap(user: UserRow, request: Request, deps: Deps) {
   const body = (await request.json().catch(() => ({}))) as { hours?: number | null };
   const hours = body.hours === null || body.hours === undefined ? null : Number(body.hours);
-  if (hours !== null && !(hours >= 0 && hours <= deps.config.includedHours)) {
-    throw new Failure(400, "bad_cap", `The limit must be between 0 and ${deps.config.includedHours} hours.`);
+  if (hours !== null && !(hours >= 0 && hours <= deps.config.maxHours)) {
+    throw new Failure(400, "bad_cap", `The limit must be between 0 and ${deps.config.maxHours} hours.`);
   }
-  await deps.db.prepare("UPDATE users SET cap_hours = ? WHERE id = ?").bind(hours, user.id).run();
+  // A higher limit lifts a stop for reaching the old one.
+  const capped = user.capped === 1 && user.seconds_used >= (hours ?? deps.config.includedHours) * 3600 ? 1 : 0;
+  await deps.db.prepare("UPDATE users SET cap_hours = ?, capped = ? WHERE id = ?").bind(hours, capped, user.id).run();
+  if (user.capped && !capped && user.machine) await deps.fly.setAutostart(user.machine, true);
   return status((await row(user.id, deps))!, deps);
 }
 
@@ -260,8 +271,15 @@ export async function hourly(deps: Deps): Promise<void> {
       const from = Math.max(user.metered_until ?? now, user.period_start ?? 0);
       const used = user.seconds_used + runningSeconds(await deps.fly.events(user.machine!), from, now);
       const over = used >= limitHours(user, deps.config) * 3600;
-      await deps.db.prepare("UPDATE users SET seconds_used = ?, metered_until = ?, capped = ? WHERE id = ?")
-        .bind(used, now, over ? 1 : user.capped, user.id).run();
+      // Whole hours past the included ones, sent once each; a part hour isn't billed.
+      const overage = Math.floor(Math.max(0, used - deps.config.includedHours * 3600) / 3600);
+      let reported = user.overage_reported;
+      if (overage > reported && user.stripe_customer) {
+        await deps.stripe.meterEvent(deps.config.meterEvent, user.stripe_customer, overage - reported, `${user.id}-${user.period_start}-${overage}`);
+        reported = overage;
+      }
+      await deps.db.prepare("UPDATE users SET seconds_used = ?, metered_until = ?, capped = ?, overage_reported = ? WHERE id = ?")
+        .bind(used, now, over ? 1 : user.capped, reported, user.id).run();
       if (over && !user.capped) await stopFor(user.machine!, deps);
     } catch (error) {
       console.error(`metering ${user.id}`, error);

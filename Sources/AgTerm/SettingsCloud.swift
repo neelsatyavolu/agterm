@@ -38,7 +38,7 @@ struct CloudPane: View {
             } header: {
                 Text("agterm Cloud")
             } footer: {
-                Footnote("Sign in with your agmux account; nothing about your sessions is shared. Your tabs keep running on a cloud machine while this Mac is off. Shell → Move All Tabs to Cloud copies each tab's folder and conversation there and continues it. $12 a month for 100 hours, 20 GB and 4 GB of memory. Agents sign in there once; your Mac's logins are never copied.")
+                Footnote("Sign in with your agmux account; nothing about your sessions is shared. Your tabs keep running on a cloud machine while this Mac is off. Shell → Move All Tabs to Cloud copies each tab's folder and conversation there and continues it. $12 a month for 100 hours, 20 GB and 4 GB of memory; more hours $0.10 each. Agents sign in there once; your Mac's logins are never copied.")
             }
         }
         .onAppear { if account.isSignedIn { account.refresh() } }
@@ -61,6 +61,9 @@ struct CloudPane: View {
                     Text("hours a month")
                 }
             }
+            Text(String(format: "%.0f hours a month are included. Hours past that cost $0.10 each, up to your limit (at most %.0f).",
+                        status.hoursIncluded ?? 100, status.hoursMax ?? 500))
+                .font(.callout).foregroundStyle(.secondary)
             LabeledContent("Billing") { Button("Manage…") { account.manageBilling() } }
         case "past_due":
             LabeledContent("The last payment didn't go through") { Button("Update Payment…") { account.manageBilling() } }

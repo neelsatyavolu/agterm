@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   seconds_used INTEGER NOT NULL DEFAULT 0, -- running time this period
   metered_until INTEGER,             -- events up to here are counted
   cap_hours REAL,                    -- the user's own limit; null = included hours
+  overage_reported INTEGER NOT NULL DEFAULT 0, -- hours past the included ones sent to Stripe's meter
   capped INTEGER NOT NULL DEFAULT 0, -- stopped for reaching the limit
   canceled_at INTEGER,
   created_at INTEGER NOT NULL

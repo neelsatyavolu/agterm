@@ -7,6 +7,9 @@ export interface Env {
   FLY_APP: string;
   CLOUD_IMAGE: string;
   INCLUDED_HOURS: string;
+  MAX_HOURS: string;
+  STRIPE_OVERAGE_PRICE: string;
+  STRIPE_METER_EVENT: string;
   VOLUME_GB: string;
   STRIPE_PRICE: string;
   APP_ORIGIN: string;
@@ -25,6 +28,9 @@ function deps(env: Env): Deps {
       flyApp: env.FLY_APP,
       image: env.CLOUD_IMAGE,
       includedHours: Number(env.INCLUDED_HOURS),
+      maxHours: Number(env.MAX_HOURS),
+      overagePrice: env.STRIPE_OVERAGE_PRICE,
+      meterEvent: env.STRIPE_METER_EVENT,
       volumeGB: Number(env.VOLUME_GB),
       price: env.STRIPE_PRICE,
       appOrigin: env.APP_ORIGIN,

@@ -28,8 +28,21 @@ export interface Fly {
   destroyVolume(id: string): Promise<void>;
 }
 
+export interface CheckoutInput {
+  customer: string | null;
+  email: string | null;
+  userID: string;
+  price: string;
+  /** Metered price for hours past the included ones. */
+  overagePrice: string;
+  successURL: string;
+  cancelURL: string;
+}
+
 export interface Stripe {
-  checkout(input: { customer: string | null; email: string | null; userID: string; price: string; successURL: string; cancelURL: string }): Promise<string>;
+  checkout(input: CheckoutInput): Promise<string>;
+  /** Reports `hours` of overage; `identifier` makes a retry count once. */
+  meterEvent(event: string, customer: string, hours: number, identifier: string): Promise<void>;
   portal(customer: string, returnURL: string): Promise<string>;
 }
 
@@ -134,11 +147,12 @@ export class HttpStripe implements Stripe {
     return (await response.json()) as { url: string };
   }
 
-  async checkout(input: { customer: string | null; email: string | null; userID: string; price: string; successURL: string; cancelURL: string }): Promise<string> {
+  async checkout(input: CheckoutInput): Promise<string> {
     const fields: Record<string, string> = {
       mode: "subscription",
       "line_items[0][price]": input.price,
       "line_items[0][quantity]": "1",
+      "line_items[1][price]": input.overagePrice,
       client_reference_id: input.userID,
       "subscription_data[metadata][agterm_user]": input.userID,
       success_url: input.successURL,
@@ -147,6 +161,12 @@ export class HttpStripe implements Stripe {
     if (input.customer) fields.customer = input.customer;
     else if (input.email) fields.customer_email = input.email;
     return (await this.form("/checkout/sessions", fields)).url;
+  }
+
+  async meterEvent(event: string, customer: string, hours: number, identifier: string): Promise<void> {
+    await this.form("/billing/meter_events", {
+      event_name: event, identifier, "payload[stripe_customer_id]": customer, "payload[value]": String(hours),
+    });
   }
 
   async portal(customer: string, returnURL: string): Promise<string> {

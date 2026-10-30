@@ -36,9 +36,11 @@ class FakeFly implements Fly {
   async destroyVolume(id: string) { this.volumes.delete(id); }
 }
 
+const meterEvents: { customer: string; hours: number; identifier: string }[] = [];
 const stripe: Stripe = {
-  checkout: async (input) => `https://checkout.test/${input.userID}?price=${input.price}`,
+  checkout: async (input) => `https://checkout.test/${input.userID}?price=${input.price}&overage=${input.overagePrice}`,
   portal: async (customer) => `https://portal.test/${customer}`,
+  meterEvent: async (_event, customer, hours, identifier) => { meterEvents.push({ customer, hours, identifier }); },
 };
 const teams: Teams = { whoami: async (token) => (token === "good" ? { id: "U1", email: "neel@example.com" } : null) };
 const secret = "whsec_test";
@@ -50,9 +52,10 @@ let clock: number;
 beforeEach(() => {
   fly = new FakeFly();
   clock = 1_800_000_000;
+  meterEvents.length = 0;
   deps = {
     db: sqlite(), teams, fly, stripe, now: () => clock, token: () => "gw-token",
-    config: { flyApp: "agterm-cloud-machines", image: "img", includedHours: 100, volumeGB: 20, price: "price_1", appOrigin: "https://agterm.test", webhookSecret: secret },
+    config: { flyApp: "agterm-cloud-machines", image: "img", includedHours: 100, maxHours: 500, overagePrice: "price_over", meterEvent: "hours", volumeGB: 20, price: "price_1", appOrigin: "https://agterm.test", webhookSecret: secret },
   };
 });
 
@@ -87,7 +90,7 @@ describe("accounts", () => {
   });
 
   it("checkout carries the user so the webhook can find them", async () => {
-    expect((await call("POST", "/v1/cloud/checkout")).body.url).toBe("https://checkout.test/U1?price=price_1");
+    expect((await call("POST", "/v1/cloud/checkout")).body.url).toBe("https://checkout.test/U1?price=price_1&overage=price_over");
   });
 });
 
@@ -171,8 +174,32 @@ describe("metering", () => {
     expect(machine.autostart).toBe(true);
   });
 
-  it("limits can't exceed the included hours", async () => {
-    expect((await call("POST", "/v1/cloud/cap", { hours: 500 })).status).toBe(400);
+  it("bills whole hours past the included ones, once each, up to the user's limit", async () => {
+    await call("GET", "/v1/cloud");
+    await subscribe();
+    await call("POST", "/v1/cloud/machine", { user: "neel", home: "/Users/neel" });
+    expect((await call("POST", "/v1/cloud/cap", { hours: 103 })).body.hoursLimit).toBe(103);
+    const machine = fly.machines.get("m1")!;
+    machine.events = [{ type: "start", status: "started", timestamp: clock * 1000 }];
+    clock += 101.5 * 3600;
+    await hourly(deps);
+    expect(meterEvents).toEqual([{ customer: "cus_1", hours: 1, identifier: `U1-${clock - 101.5 * 3600 - 100}-1` }]);
+    await hourly(deps);
+    expect(meterEvents.length).toBe(1);
+    clock += 3600;
+    await hourly(deps);
+    expect(meterEvents.map((e) => e.hours)).toEqual([1, 1]);
+    expect((await call("GET", "/v1/cloud")).body.capped).toBe(false);
+    clock += 3600;
+    await hourly(deps);
+    expect((await call("GET", "/v1/cloud")).body.capped).toBe(true);
+    // Raising the limit lets it run again.
+    expect((await call("POST", "/v1/cloud/cap", { hours: 200 })).body.capped).toBe(false);
+    expect(machine.autostart).toBe(true);
+  });
+
+  it("limits stay within the most allowed", async () => {
+    expect((await call("POST", "/v1/cloud/cap", { hours: 501 })).status).toBe(400);
     expect((await call("POST", "/v1/cloud/cap", { hours: -1 })).status).toBe(400);
   });
 });
