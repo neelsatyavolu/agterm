@@ -10,11 +10,21 @@ struct CloudPane: View {
     var body: some View {
         Form {
             Section {
-                if !teams.isSignedIn {
-                    LabeledContent("Sign in to agmux Teams to use agterm Cloud") {
-                        Button("Open Teams & Phone") { SettingsWindowController.shared.show(pane: "Teams & Phone") }
+                if case .linking(let url) = account.signIn {
+                    LabeledContent("Waiting for you to approve in the browser…") {
+                        HStack {
+                            Button("Open Again") { NSWorkspace.shared.open(url) }
+                            Button("Cancel") { account.cancelSignIn() }
+                        }
+                    }
+                } else if !account.isSignedIn {
+                    LabeledContent("Not signed in") {
+                        Button("Sign In…") { account.startSignIn() }
                     }
                 } else if let status = account.status {
+                    if case .signedIn(let email) = account.signIn {
+                        LabeledContent(email ?? "Signed in") { Button("Sign Out") { account.signOut() } }
+                    }
                     plan(status)
                     if status.plan == "active" { machine(status) }
                 } else {
@@ -28,10 +38,10 @@ struct CloudPane: View {
             } header: {
                 Text("agterm Cloud")
             } footer: {
-                Footnote("Your tabs keep running on a cloud machine while this Mac is off. Shell → Move All Tabs to Cloud copies each tab's folder and conversation there and continues it. $12 a month for 100 hours, 20 GB and 4 GB of memory. Agents sign in there once; your Mac's logins are never copied.")
+                Footnote("Sign in with your agmux account; nothing about your sessions is shared. Your tabs keep running on a cloud machine while this Mac is off. Shell → Move All Tabs to Cloud copies each tab's folder and conversation there and continues it. $12 a month for 100 hours, 20 GB and 4 GB of memory. Agents sign in there once; your Mac's logins are never copied.")
             }
         }
-        .onAppear { if teams.isSignedIn { account.refresh() } }
+        .onAppear { if account.isSignedIn { account.refresh() } }
     }
 
     @ViewBuilder

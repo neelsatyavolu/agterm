@@ -3,8 +3,10 @@ import Foundation
 import Security
 
 /// agterm Cloud (docs/cloud-sessions-plan.md): the subscription and the cloud machine, through the
-/// control plane (cloud/control), signed in with the agmux Teams account. Setting the machine up
-/// stores how to reach it (`CloudCredentials`), which `CloudHost.configured` then uses.
+/// control plane (cloud/control), with the agmux account. Signing in here links its own device
+/// through agmux's device-link page and shares nothing; a Mac already signed in to agmux Teams
+/// uses that sign-in. Setting the machine up stores how to reach it (`CloudCredentials`), which
+/// `CloudHost.configured` then uses.
 @MainActor
 final class CloudAccount: ObservableObject {
     static let shared = CloudAccount()
@@ -32,11 +34,82 @@ final class CloudAccount: ObservableObject {
         let machine: Machine?
     }
 
+    enum SignIn: Equatable {
+        case signedOut
+        /// Waiting for the user to approve in the browser.
+        case linking(URL)
+        case signedIn(email: String?)
+    }
+
     @Published private(set) var status: Status?
     @Published private(set) var busy = false
     @Published private(set) var lastError: String?
+    @Published private(set) var signIn: SignIn = .signedOut
+    private var linkTask: Task<Void, Never>?
 
-    private init() {}
+    private init() {
+        if CloudCredentials.deviceToken != nil { signIn = .signedIn(email: UserDefaults.standard.string(forKey: "cloudEmail")) }
+    }
+
+    /// The token the control plane takes: this sign-in's, else agmux Teams'.
+    var token: String? { CloudCredentials.deviceToken ?? TeamsAccount.shared.token }
+
+    var isSignedIn: Bool { token != nil }
+
+    // MARK: Signing in
+
+    private struct LinkStart: Decodable { let code: String; let url: String; let expiresInSeconds: Int? }
+    private struct LinkClaim: Decodable {
+        struct User: Decodable { let email: String? }
+        let pending: Bool?
+        let token: String?
+        let user: User?
+    }
+
+    func startSignIn() {
+        lastError = nil
+        linkTask?.cancel()
+        linkTask = Task {
+            do {
+                let host = Host.current().localizedName ?? "Mac"
+                let start: LinkStart = try await TeamsAccount.post("/api/auth/device/start",
+                                                                   body: ["deviceId": CloudCredentials.deviceID, "label": "agterm Cloud on \(host)"])
+                guard let url = URL(string: start.url) else { throw Failure(message: "The sign-in page address was invalid.") }
+                signIn = .linking(url)
+                NSWorkspace.shared.open(url)
+                let deadline = Date().addingTimeInterval(Double(start.expiresInSeconds ?? 1800))
+                while Date() < deadline, !Task.isCancelled {
+                    try await Task.sleep(for: .seconds(2))
+                    let claim: LinkClaim = try await TeamsAccount.post("/api/auth/device/claim", body: ["code": start.code])
+                    if let token = claim.token, claim.pending != true {
+                        CloudCredentials.saveDeviceToken(token)
+                        UserDefaults.standard.set(claim.user?.email, forKey: "cloudEmail")
+                        signIn = .signedIn(email: claim.user?.email)
+                        refresh()
+                        return
+                    }
+                }
+                if !Task.isCancelled { throw Failure(message: "The sign-in link expired. Try again.") }
+            } catch is CancellationError {
+            } catch {
+                signIn = .signedOut
+                lastError = error.localizedDescription
+            }
+        }
+    }
+
+    func cancelSignIn() {
+        linkTask?.cancel()
+        if case .linking = signIn { signIn = .signedOut }
+    }
+
+    /// Forgets this sign-in; the machine and its tabs stay.
+    func signOut() {
+        CloudCredentials.saveDeviceToken(nil)
+        UserDefaults.standard.removeObject(forKey: "cloudEmail")
+        signIn = .signedOut
+        status = nil
+    }
 
     func refresh() {
         run { try await self.request("GET", "/v1/cloud") as Status } then: { self.status = $0 }
@@ -99,7 +172,7 @@ final class CloudAccount: ObservableObject {
     }
 
     private func request<T: Decodable, Body: Encodable>(_ method: String, _ path: String, body: Body? = nil as [String: String]?) async throws -> T {
-        guard let token = TeamsAccount.shared.token else { throw Failure(message: "Sign in to agmux Teams first.") }
+        guard let token else { throw Failure(message: "Sign in to agterm Cloud first.") }
         var request = URLRequest(url: Self.controlURL.appendingPathComponent(path))
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -157,7 +230,37 @@ enum CloudCredentials {
         return try? JSONDecoder().decode(Connection.self, from: data)
     }
 
-    private static func query() -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "machine"]
+    private static func query(_ account: String = "machine") -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+    }
+
+    // MARK: Sign-in
+
+    /// agterm Cloud's own device token from agmux's device link; nil if signed in another way.
+    static var deviceToken: String? {
+        var search = query("device-token")
+        search[kSecReturnData as String] = true
+        search[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(search as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func saveDeviceToken(_ token: String?) {
+        SecItemDelete(query("device-token") as CFDictionary)
+        guard let token else { return }
+        var add = query("device-token")
+        add[kSecValueData as String] = Data(token.utf8)
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
+    /// Stable per install, apart from agmux Teams' own device.
+    static var deviceID: String {
+        let key = "cloudDeviceID"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = "agterm-cloud-" + UUID().uuidString.lowercased()
+        UserDefaults.standard.set(id, forKey: key)
+        return id
     }
 }
