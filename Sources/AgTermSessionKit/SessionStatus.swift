@@ -27,11 +27,12 @@ final class SessionStatus {
     func resized() { signals.lastResize = Date() }
 
     func titleChanged(_ raw: String) {
-        guard raw != rawTitle else { return }
+        guard TitleParser.isNews(raw, previous: rawTitle) else { return }
         rawTitle = raw
         signals.lastTitleChange = Date()
         title = TitleParser.parse(raw)
         signals.titleActivity = title.activity
+        signals.titleReportsWaiting = TitleParser.reportsWaiting(raw)
     }
 
     func exited() { signals.exited = true }
@@ -52,6 +53,7 @@ final class SessionStatus {
             rawTitle = ""
             title = ParsedTitle(topic: "", activity: .unknown)
             signals.titleActivity = .unknown
+            signals.titleReportsWaiting = false
         }
         signals.commandRunning = !info.isShell && agent == nil
         signals.promptVisible = agent != nil && PermissionPrompt.isVisible(screen.components(separatedBy: "\n"))

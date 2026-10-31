@@ -383,6 +383,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
             rawTitle = ""
             parsedTitle = ParsedTitle(topic: "", activity: .unknown)
             signals.titleActivity = .unknown
+            signals.titleReportsWaiting = false
         }
         foregroundName = name
         cwd = dir
@@ -495,11 +496,12 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     }
 
     func setTerminalTitle(source: AgentTerminalView, title: String) {
-        guard title != rawTitle else { return }
+        guard TitleParser.isNews(title, previous: rawTitle) else { return }
         rawTitle = title
         signals.lastTitleChange = Date()
         parsedTitle = TitleParser.parse(title)
         signals.titleActivity = parsedTitle.activity
+        signals.titleReportsWaiting = TitleParser.reportsWaiting(title)
         tick(now: Date())
         onChange?()
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.8 — 2026-10-31
+- Fixed: A Grok tab that finishes while you're in another tab shows done instead of needs you. It shows needs you when Grok is waiting for your answer.
+- Fixed: A Grok tab keeps showing working while Grok runs a long command or waits on a subagent, including right after agterm reopens. Before, it could look finished while Grok was still going.
+
 ## 1.1.0-beta.7 — 2026-10-31
 - Added: agterm Remote keeps working while your Mac is off. Tabs you moved to the cloud stay on your phone with the same pairing: you can watch them, read the agent's conversation, type, answer its prompts, and get notified when it finishes or needs you. Once your Mac is back, it takes the phone over again. New tabs still open only from the Mac. This needs the phone remote turned on in Settings.
 - Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.
