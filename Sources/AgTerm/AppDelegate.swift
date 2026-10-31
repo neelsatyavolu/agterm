@@ -110,7 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let stopsKeptTeamAgents = !endSessionsOnQuit && !Updater.shared.isRelaunchingForUpdate
         let teamAgents = stopsKeptTeamAgents ? controller?.teamAgentsStopping(TeamAccounts.shared.teamAgentsByTab) ?? [] : []
         // Agents kept in the helper don't stop on a plain quit, but they do when the Mac turns off.
-        let moving = endSessionsOnQuit ? [] : cloudMoveItems()
+        // An update's relaunch is back in seconds, so it doesn't offer the cloud.
+        let moving = endSessionsOnQuit || Updater.shared.isRelaunchingForUpdate ? [] : cloudMoveItems()
         guard !running.isEmpty || !teamAgents.isEmpty || !moving.isEmpty else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "Quit agterm?"

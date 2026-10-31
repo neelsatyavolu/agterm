@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0-beta.4 — 2026-10-30
+- Fixed: Installing an update while agents are working no longer asks whether to move them to the cloud; they keep running through the relaunch.
+
 ## 1.1.0-beta.3 — 2026-10-30
 - Added: A tab moving to or from the cloud says so on the tab, with a bar showing how much of its folder has been copied.
 - Changed: Move to Cloud copies much faster, and leaves out build caches (.next, .turbo, .nuxt, .svelte-kit, __pycache__) as well as node_modules.
