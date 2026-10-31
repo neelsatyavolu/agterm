@@ -64,11 +64,20 @@ private struct EntryView: View {
                     .textSelection(.enabled)
             }
         case "assistant":
-            Text(Self.markdown(entry.text ?? ""))
-                .font(.system(size: 16, design: .serif))
-                .foregroundStyle(Ink.fg)
-                .lineSpacing(3)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(ChatMarkdown.blocks(entry.text ?? "").enumerated()), id: \.offset) { _, block in
+                    switch block {
+                    case .text(let text):
+                        Text(Self.markdown(text))
+                            .font(.system(size: 16, design: .serif))
+                            .foregroundStyle(Ink.fg)
+                            .lineSpacing(3)
+                            .textSelection(.enabled)
+                    case .table(let table):
+                        TableView(table: table)
+                    }
+                }
+            }
         case "thinking":
             Text(entry.text ?? "")
                 .font(.system(size: 14, design: .serif).italic())
@@ -101,9 +110,57 @@ private struct EntryView: View {
         }
     }
 
-    /// Inline markdown (bold, code, links); block syntax stays as typed.
+    /// Inline markdown (bold, code, links). `ChatMarkdown` splits tables out first; other block
+    /// syntax stays as typed.
     static func markdown(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
+    }
+}
+
+/// A table from a reply, fitted to the screen width: long cells wrap.
+private struct TableView: View {
+    let table: ChatMarkdown.Table
+
+    var body: some View {
+        Grid(alignment: .topLeading, horizontalSpacing: 14, verticalSpacing: 8) {
+            GridRow {
+                ForEach(table.header.indices, id: \.self) { column in
+                    Text(EntryView.markdown(table.header[column]))
+                        .font(Ink.mono(12, .medium))
+                        .foregroundStyle(Ink.fg3)
+                        .multilineTextAlignment(textAlignment(column))
+                        .gridColumnAlignment(gridAlignment(column))
+                }
+            }
+            ForEach(table.rows.indices, id: \.self) { row in
+                Rectangle().fill(Ink.border).frame(height: 1).gridCellUnsizedAxes(.horizontal)
+                GridRow {
+                    ForEach(table.rows[row].indices, id: \.self) { column in
+                        Text(EntryView.markdown(table.rows[row][column]))
+                            .font(.system(size: 15, design: .serif))
+                            .foregroundStyle(Ink.fg)
+                            .multilineTextAlignment(textAlignment(column))
+                    }
+                }
+            }
+        }
+        .textSelection(.enabled)
+    }
+
+    private func gridAlignment(_ column: Int) -> HorizontalAlignment {
+        switch table.alignments[column] {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+    }
+
+    private func textAlignment(_ column: Int) -> TextAlignment {
+        switch table.alignments[column] {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
     }
 }
