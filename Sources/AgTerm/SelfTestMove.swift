@@ -54,6 +54,7 @@ extension SelfTest {
                     report("node_modules left out", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/node_modules"]))?.status == 1)
                     report("git-ignored folder left out", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/cache"]))?.status == 1)
                     report("ignored .env left on this Mac", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/.env"]))?.status == 1)
+                    report("cloud setup ran before the agent", (try? cloud.run(["/usr/bin/env", "test", "-f", moveRepo + "/setup-ran"]))?.status == 0)
                     report("tab no longer shows the move", controller.cloudState.moving.isEmpty)
                     snapshot(window, "\(outDir)/moved-tab.png")
                     let sessionID = moved.view.link.sessionID ?? "?"
@@ -80,26 +81,30 @@ extension SelfTest {
     static let moveRoot = "/private/tmp/agmove"
     static let moveRepo = moveRoot + "/proj"
 
-    /// A git repo with a file, a node_modules, and a folder and a .env its .gitignore lists, and the
-    /// fake Claude built here and on the machine.
+    /// A git repo with a commit, a node_modules, a folder and a .env its .gitignore lists, and a
+    /// cloud setup script that leaves `setup-ran` behind, and the fake Claude built here and on
+    /// the machine.
     /// Returns the local fake's path.
     static func prepareMoveFixture(_ cloud: CloudHost) -> String? {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../scripts/fake-claude.c").standardized.path
         let fm = FileManager.default
         try? fm.removeItem(atPath: moveRoot)
-        for dir in [moveRepo + "/node_modules/junk", moveRepo + "/cache", moveRoot + "/bin"] {
+        for dir in [moveRepo + "/node_modules/junk", moveRepo + "/cache", moveRepo + "/.agterm", moveRoot + "/bin"] {
             try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
         }
         fm.createFile(atPath: moveRepo + "/notes.txt", contents: Data("from the Mac\n".utf8))
         fm.createFile(atPath: moveRepo + "/node_modules/junk/x.js", contents: Data("x\n".utf8))
-        fm.createFile(atPath: moveRepo + "/.gitignore", contents: Data("cache/\n.env\n".utf8))
+        fm.createFile(atPath: moveRepo + "/.gitignore", contents: Data("cache/\n.env\nsetup-ran\n".utf8))
+        fm.createFile(atPath: moveRepo + "/" + CloudSetup.customScript, contents: Data("echo ran >> setup-ran\n".utf8))
         fm.createFile(atPath: moveRepo + "/cache/big.bin", contents: Data("built\n".utf8))
         fm.createFile(atPath: moveRepo + "/.env", contents: Data("KEY=1\n".utf8))
-        let git = Process()
-        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        git.arguments = ["-C", moveRepo, "init", "-q"]
-        guard (try? git.run()) != nil else { return nil }
-        git.waitUntilExit()
+        for arguments in [["init", "-q"], ["add", "-A"], ["-c", "user.name=agterm", "-c", "user.email=test@agterm", "commit", "-qm", "start"]] {
+            let git = Process()
+            git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            git.arguments = ["-C", moveRepo] + arguments
+            guard (try? git.run()) != nil else { return nil }
+            git.waitUntilExit()
+        }
         let fake = moveRoot + "/bin/claude"
         let cc = Process()
         cc.executableURL = URL(fileURLWithPath: "/usr/bin/cc")

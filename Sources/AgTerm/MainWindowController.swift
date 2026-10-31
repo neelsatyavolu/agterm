@@ -247,6 +247,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         move.onProgress = { [weak self] share in
             self?.showMoving(tabs, share < 1 ? "Copying to the cloud · \(Int(share * 100))%" : "Starting in the cloud…", progress: share)
         }
+        move.confirmLargeCopy = { [weak self] bytes, answer in self?.confirmLargeCopy(bytes, answer) }
         move.run(items) { [weak self] outcome in
             self?.window?.subtitle = ""
             self?.showMoving(tabs, nil)
@@ -259,10 +260,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                                      tabID: "cloud")
             case .failed(let reason):
                 Notifier.shared.post(title: "Couldn't move tabs to the cloud", body: reason, tabID: "cloud")
+            case .cancelled:
+                break
             }
             done(outcome)
             _ = move
         }
+    }
+
+    /// A big first copy takes minutes; the user decides before any agent stops.
+    private func confirmLargeCopy(_ bytes: Int64, _ answer: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Copy \(CloudCopySize.describe(bytes)) to the cloud?"
+        alert.informativeText = "The first move takes about \(CloudCopySize.minutes(bytes)) min; later moves send only what changed. "
+            + "Files your .gitignore lists are already left out. To leave out more, add them to .gitignore."
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Cancel")
+        answer(alert.runModal() == .alertFirstButtonReturn)
     }
 
     /// Puts `new` where `old` is and ends `old`'s shell.

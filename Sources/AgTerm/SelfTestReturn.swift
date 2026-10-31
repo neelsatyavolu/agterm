@@ -53,8 +53,11 @@ extension SelfTest {
     /// adds a file to the repo; then, as when the Mac wakes, the tab comes home by itself, resumes
     /// the same conversation with the cloud's part of the transcript, and the file comes with it.
     /// (Here `claude` is your real one, in a fresh login shell, so only the command is checked.)
+    /// With `AGTERM_RETURN_CONFLICT=1` the repo also changes on this Mac meanwhile: that change
+    /// stays, and the cloud's comes back as a patch in the repo's git folder instead.
     /// Writes `returned-tab.png`.
     static func returnCheck(_ controller: MainWindowController, outDir: String) {
+        let conflict = ProcessInfo.processInfo.environment["AGTERM_RETURN_CONFLICT"] == "1"
         var passed = true
         func report(_ name: String, _ ok: Bool) {
             print("return: \(name):", ok)
@@ -79,6 +82,7 @@ extension SelfTest {
                 waitFor({ controller.tabBar.cloud == .bringBack }) { report("cloud button offers the way back", $0) }
                 let made = try? cloud.run(["/usr/bin/env", "sh", "-c", "echo from-the-cloud > '\(moveRepo)/made-in-cloud.txt'"])
                 report("cloud machine changed the repo", made?.status == 0)
+                if conflict { try? "changed on the Mac\n".write(toFile: moveRepo + "/notes.txt", atomically: true, encoding: .utf8) }
                 // As when the Mac wakes.
                 controller.returnFromCloud()
                 let transcript = NSHomeDirectory() + "/.claude/projects/" + moveRepo.replacingOccurrences(of: "/", with: "-") + "/\(id).jsonl"
@@ -87,7 +91,16 @@ extension SelfTest {
                     report("came home by itself, resuming the same conversation", back)
                     let lines = (try? String(contentsOfFile: transcript, encoding: .utf8))?.split(separator: "\n").count ?? 0
                     report("with the cloud's part of the transcript (\(lines) lines)", lines == 2)
-                    report("the cloud's change came too", FileManager.default.fileExists(atPath: moveRepo + "/made-in-cloud.txt"))
+                    if conflict {
+                        let notes = try? String(contentsOfFile: moveRepo + "/notes.txt", encoding: .utf8)
+                        report("this Mac's change kept", notes == "changed on the Mac\n")
+                        report("the cloud's change not copied over it", !FileManager.default.fileExists(atPath: moveRepo + "/made-in-cloud.txt"))
+                        let patches = ((try? FileManager.default.contentsOfDirectory(atPath: moveRepo + "/.git")) ?? []).filter { $0.hasSuffix(".patch") }
+                        let patch = patches.first.flatMap { try? String(contentsOfFile: moveRepo + "/.git/" + $0, encoding: .utf8) } ?? ""
+                        report("the cloud's change saved as a patch", patch.contains("made-in-cloud.txt") && patch.contains("+from-the-cloud"))
+                    } else {
+                        report("the cloud's change came too", FileManager.default.fileExists(atPath: moveRepo + "/made-in-cloud.txt"))
+                    }
                     snapshot(window, "\(outDir)/returned-tab.png")
                     // The return waits up to 30 s for the agent to start, which the real one won't here.
                     waitFor({ controller.tabBar.cloud == .moveUp }, timeout: 45) { report("cloud button offers the move again", $0) }

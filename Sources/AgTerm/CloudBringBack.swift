@@ -3,9 +3,10 @@ import AgTermSessionKit
 import Foundation
 
 /// Bring Back, the reverse of `CloudMove`: each cloud tab's agent stops at the end of its turn,
-/// its repo and the agents' conversations come back from the cloud machine (a file changed here
-/// since is kept), and a local tab takes its place, resuming the conversation. Main queue,
-/// except the copying.
+/// its repo and the agents' conversations come back from the cloud machine, and a local tab takes
+/// its place, resuming the conversation. A repo that changed on this Mac while it was in the cloud
+/// (`CloudRepoState`) is left alone: the cloud's changes come back as a patch beside it instead.
+/// Main queue, except the copying.
 final class CloudBringBack {
     private struct Frozen {
         let tab: TerminalSession
@@ -67,16 +68,43 @@ final class CloudBringBack {
                 return CloudMovePlan.folder(cwd: tab.cwd, gitRoot: root, hasAgent: tab.hasAgent, home: home)
             })
             let state = frozen.contains(where: \.hasAgent) ? [home + "/.claude/projects", home + "/.codex/sessions"] : []
+            var patches: [(folder: String, patch: String)] = []
             do {
-                try CloudSync.pull(folders: folders, files: state, from: cloud)
+                let changedHere = folders.filter { folder in
+                    CloudRepoState.recorded(folder).map { $0.fingerprint != CloudRepoState.current(folder)?.fingerprint } ?? false
+                }
+                for folder in changedHere {
+                    if let patch = try Self.savePatch(for: folder, from: cloud) { patches.append((folder, patch)) }
+                }
+                try CloudSync.pull(folders: folders.filter { !changedHere.contains($0) }, files: state, from: cloud)
+                folders.forEach(CloudRepoState.forget)
             } catch {
                 return DispatchQueue.main.async {
                     self.restartThere(frozen)
                     done(.failed("\(error)"))
                 }
             }
-            DispatchQueue.main.async { self.reopen(frozen, done: done) }
+            DispatchQueue.main.async {
+                for (folder, patch) in patches {
+                    Notifier.shared.post(title: "Kept this Mac's changes to \((folder as NSString).lastPathComponent)",
+                                         body: "It changed here while it was in the cloud, so the cloud's changes are saved in \(patch). "
+                                            + "Run git apply on that file to add them.", tabID: "cloud")
+                }
+                self.reopen(frozen, done: done)
+            }
         }
+    }
+
+    /// The cloud's changes to `folder` since it moved, saved in its git folder here; nil if the
+    /// cloud changed nothing.
+    private static func savePatch(for folder: String, from cloud: CloudHost) throws -> String? {
+        guard let base = CloudRepoState.recorded(folder)?.base, let gitDir = CloudRepoState.gitDir(folder) else { return nil }
+        let patch = try CloudSync.changes(in: folder, since: base, on: cloud)
+        guard !patch.isEmpty else { return nil }
+        let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate, .withTime])
+        let path = gitDir + "/agterm-cloud-\(stamp).patch"
+        try Data(patch.utf8).write(to: URL(fileURLWithPath: path))
+        return path
     }
 
     /// Local tabs in their places, then a report once their agents run, as `CloudMove` does.

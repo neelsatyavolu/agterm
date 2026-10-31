@@ -1,5 +1,6 @@
 import AgTermCore
 import AgTermSessionKit
+import CryptoKit
 import Foundation
 
 /// Copies folders and files to and from the cloud machine at the same paths, with macOS's rsync
@@ -102,6 +103,34 @@ enum CloudSync {
                          options: ["--update"], via: cloud)
             }
         }
+    }
+
+    /// Puts a repo's dependency setup (`CloudSetup`) on the machine; returns the line a cloud tab
+    /// types to run it, or nil when the repo needs none.
+    static func installSetup(for folder: String, on cloud: CloudHost) throws -> String? {
+        var files = Set((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [])
+        if FileManager.default.fileExists(atPath: folder + "/" + CloudSetup.customScript) { files.insert(CloudSetup.customScript) }
+        guard let script = CloudSetup.script(folder: folder, steps: CloudSetup.steps(files: files)) else { return nil }
+        let name = SHA256.hash(data: Data(folder.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
+        let result = try cloud.run(["/usr/bin/env", "sh", "-c", "mkdir -p \"$HOME/.agterm/setup\" && printf %s \"$1\" > \"$HOME/.agterm/setup/$2.sh\"",
+                                    "sh", script, name])
+        guard result.status == 0 else { throw Failure(description: "couldn't set up \(folder) on the cloud machine: \(result.stderr)") }
+        return "sh ~/.agterm/setup/\(name).sh"
+    }
+
+    /// The cloud's changes to a repo since `base`, as a binary git patch: its commits, edits, and
+    /// new and deleted files. A scratch index leaves the repo there as it is.
+    static func changes(in folder: String, since base: String, on cloud: CloudHost) throws -> String {
+        let script = """
+            cd "$1" || exit 1
+            index=$(mktemp) || exit 1
+            trap 'rm -f "$index"' EXIT
+            cp "$(git rev-parse --git-dir)/index" "$index" 2>/dev/null
+            GIT_INDEX_FILE="$index" git add -A . && GIT_INDEX_FILE="$index" git diff --binary --cached "$2"
+            """
+        let result = try cloud.run(["/usr/bin/env", "sh", "-c", script, "sh", folder, base], timeout: 120)
+        guard result.status == 0 else { throw Failure(description: "couldn't read the cloud's changes to \(folder): \(result.stderr)") }
+        return result.stdout
     }
 
     private static func makeFolder(_ path: String, on cloud: CloudHost) throws {

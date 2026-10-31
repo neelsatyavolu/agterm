@@ -31,6 +31,8 @@ final class CloudMove {
     enum Outcome {
         case moved(Int)
         case failed(String)
+        /// The user chose not to copy that much.
+        case cancelled
     }
 
     /// A tab once its agent or command has stopped: how to bring the agent back (in the cloud,
@@ -46,6 +48,9 @@ final class CloudMove {
     private let replace: (TerminalSession, TerminalSession) -> Void
     /// The share of the files copied so far, 0 to 1, on the main queue.
     var onProgress: ((Double) -> Void)?
+    /// Asked, before anything stops, whether to copy this many bytes when it is more than
+    /// `CloudCopySize.askAbove`; nil copies without asking.
+    var confirmLargeCopy: ((Int64, @escaping (Bool) -> Void) -> Void)?
 
     /// `isOpen` says whether a tab is still there (it may be closed mid-move); `replace` puts the
     /// cloud tab where the local one was and ends the local shell.
@@ -72,6 +77,20 @@ final class CloudMove {
         guard !items.isEmpty else { return done(.moved(0)) }
         // Checked before anything stops: agents mustn't be stopped for a move that can't happen.
         if let problem = problem() { return done(.failed(problem)) }
+        guard let confirm = confirmLargeCopy else { return start(items, done: done) }
+        let folders = CloudMovePlan.roots(items.compactMap(\.folder))
+        DispatchQueue.global(qos: .userInitiated).async {
+            let bytes = folders.reduce(Int64(0)) {
+                $0 + CloudSync.size(of: $1, excluding: CloudMovePlan.excluded, ignored: CloudSync.gitIgnored(in: $1))
+            }
+            DispatchQueue.main.async {
+                guard bytes > CloudCopySize.askAbove else { return self.start(items, done: done) }
+                confirm(bytes) { go in go ? self.start(items, done: done) : done(.cancelled) }
+            }
+        }
+    }
+
+    private func start(_ items: [Item], done: @escaping (Outcome) -> Void) {
         var frozen: [Frozen] = []
         for item in items {
             freeze(item) { tab in
@@ -122,9 +141,15 @@ final class CloudMove {
         let onProgress = onProgress
         onProgress?(0)
         DispatchQueue.global(qos: .userInitiated).async {
+            var setups: [String: String] = [:]
             do {
                 try CloudSync.push(folders: folders, files: state, to: cloud) { share in
                     DispatchQueue.main.async { onProgress?(share) }
+                }
+                for folder in folders {
+                    // Bring Back compares against this to see whether the Mac's copy changed meanwhile.
+                    CloudRepoState.remember(folder)
+                    setups[folder] = try CloudSync.installSetup(for: folder, on: cloud)
                 }
             } catch {
                 return DispatchQueue.main.async {
@@ -132,13 +157,14 @@ final class CloudMove {
                     done(.failed("\(error)"))
                 }
             }
-            DispatchQueue.main.async { self.reopen(frozen, done: done) }
+            DispatchQueue.main.async { self.reopen(frozen, setups: setups, done: done) }
         }
     }
 
-    /// Opens the cloud tabs, then reports once their agents run there, so quitting right after
-    /// can't catch an agent before it has started.
-    private func reopen(_ frozen: [Frozen], done: @escaping (Outcome) -> Void) {
+    /// Opens the cloud tabs, then reports once their agents run there (or their dependencies
+    /// install, which the machine finishes alone), so quitting right after can't catch an agent
+    /// before it has started. `setups` are lines that install a repo's dependencies, by folder.
+    private func reopen(_ frozen: [Frozen], setups: [String: String], done: @escaping (Outcome) -> Void) {
         var opened: [(tab: TerminalSession, resumes: Bool)] = []
         var failures: [String] = []
         for tab in frozen {
@@ -147,8 +173,10 @@ final class CloudMove {
             guard isOpen(old) else { continue }
             var saved = old.snapshot()
             saved.resume = nil
+            let setup = tab.item.folder.flatMap { folder in setups.first { folder == $0.key || folder.hasPrefix($0.key + "/") }?.value }
+            let command = [setup, tab.resume].compactMap { $0 }.joined(separator: "; ")
             do {
-                let moved = try TerminalSession(cloud: cloud, cwd: old.cwd, saved: saved, command: tab.resume)
+                let moved = try TerminalSession(cloud: cloud, cwd: old.cwd, saved: saved, command: command.isEmpty ? nil : command)
                 replace(old, moved)
                 opened.append((moved, tab.resume != nil))
             } catch {
@@ -157,7 +185,7 @@ final class CloudMove {
             }
         }
         let agents = opened.filter(\.resumes).map(\.tab)
-        Self.wait(upTo: 30, until: { agents.allSatisfy { $0.pollProcess(); return $0.agentName != nil } }) { started in
+        Self.wait(upTo: 30, until: { agents.allSatisfy { $0.pollProcess(); return $0.agentName != nil || $0.isRunningProgram } }) { started in
             if !started { failures.append("An agent didn't start again in the cloud; check its tab.") }
             done(failures.isEmpty ? .moved(opened.count) : .failed(failures.joined(separator: "\n")))
         }
