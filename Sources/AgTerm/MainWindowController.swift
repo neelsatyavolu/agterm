@@ -247,7 +247,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             switch outcome {
             case .moved(let count):
                 Notifier.shared.post(title: "Moved \(count) tab\(count == 1 ? "" : "s") to the cloud",
-                                     body: "You can turn off this Mac; they keep running and come back when you return.", tabID: "cloud")
+                                     body: CloudReturn.movedAway
+                                        ? "You can turn off this Mac; they keep running and come back when you return."
+                                        : "It keeps running there. Right-click the tab and choose Bring Back from Cloud to bring it back.",
+                                     tabID: "cloud")
             case .failed(let reason):
                 Notifier.shared.post(title: "Couldn't move tabs to the cloud", body: reason, tabID: "cloud")
             }
@@ -280,6 +283,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     #if DEBUG
+    func tabMenuItemForTest(_ index: Int, _ title: String) -> NSMenuItem? {
+        menu(for: sessions[index]).items.first { $0.title == title }
+    }
+
     func restoreTabForTest(_ saved: SavedTab) { addTab(cwd: saved.cwd, restoring: saved) }
     var selectedTabCardForTest: NSView { tabBar.selectedCardForTest }
     var selectedTabIDForTest: String { sessions[selected].tabID }
@@ -357,6 +364,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
             ("Show in Finder", #selector(showInFinderFromMenu(_:))),
             nil,
+        ] + (!CloudAccount.isEnabled || session.signals.exited ? [] : [
+            session.isCloud ? ("Bring Back from Cloud", #selector(bringBackTabFromMenu(_:))) : ("Move to Cloud", #selector(moveTabToCloudFromMenu(_:))),
+            nil,
+        ]) + [
             ("Close Tab", #selector(closeTabFromMenu(_:))),
         ]
         for entry in entries {
@@ -548,8 +559,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private func render() {
         updateCloudButton()
         tabBar.update(sessions.enumerated().map { i, s in
-            TabModel(topic: s.topic, folder: s.isCloud ? "cloud · " + s.folder : s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
-                     status: s.status, selected: i == selected)
+            TabModel(topic: s.topic, folder: s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
+                     status: s.status, selected: i == selected, inCloud: s.isCloud)
         })
         if sessions.indices.contains(selected) { window?.title = sessions[selected].topic }
     }

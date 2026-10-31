@@ -50,6 +50,25 @@ extension MainWindowController {
         }
     }
 
+    /// Right-click → Move to Cloud: just this tab. It stays there until you bring it back.
+    @objc func moveTabToCloudFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession, !cloudState.busy else { return }
+        guard let cloud = CloudHost.configured else { return SettingsWindowController.shared.show(pane: "Cloud") }
+        cloudState.busy = true
+        updateCloudButton()
+        moveToCloud(CloudMove.preflight([session]), cloud: cloud) { [weak self] _ in
+            self?.cloudState.busy = false
+            self?.updateCloudButton()
+        }
+    }
+
+    /// Right-click → Bring Back from Cloud: just this tab.
+    @objc func bringBackTabFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession, !cloudState.busy,
+              let cloud = CloudHost.configured else { return }
+        bringBack([session], cloud: cloud, grace: 20)
+    }
+
     /// Brings `tabs` home; an agent mid-turn gets `grace` seconds before it is stopped.
     func bringBack(_ tabs: [TerminalSession], cloud: CloudHost, grace: TimeInterval, done: ((CloudMove.Outcome) -> Void)? = nil) {
         cloudState.busy = true

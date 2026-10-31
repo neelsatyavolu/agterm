@@ -114,6 +114,18 @@ final class TabCardView: NSView {
             label.draw(at: NSPoint(x: x, y: Self.line2Y + 1.5))
             x += ceil(label.size().width) + 8
         }
+        if model.inCloud, let cloud = Self.cloudSymbol() {
+            // A cloud before the folder: this tab's shell runs on the cloud machine.
+            let size = cloud.size
+            let tinted = NSImage(size: size, flipped: false) { rect in
+                cloud.draw(in: rect)
+                Theme.accent.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: NSRect(x: x, y: Self.line2Y + 1, width: size.width, height: size.height))
+            x += ceil(size.width) + 5
+        }
         let diff = diffText(model)
         let diffWidth = diff.map { ceil($0.size().width) + 8 } ?? 0
         let folder = text(model.folder, Theme.metaFont, Theme.fg3)
@@ -225,6 +237,11 @@ final class TabCardView: NSView {
         let diff = text("+\(added)", Theme.metaFont, Theme.ok)
         diff.append(text(" −\(removed)", Theme.metaFont, Theme.danger))
         return diff
+    }
+
+    private static func cloudSymbol() -> NSImage? {
+        NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "In the cloud")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
     }
 
     private func text(_ string: String, _ font: NSFont, _ color: NSColor) -> NSMutableAttributedString {

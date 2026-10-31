@@ -15,6 +15,8 @@ struct TabModel: Equatable {
     var agentDiff: DiffCount?
     var status: TabStatus
     var selected: Bool
+    /// The shell runs on the cloud machine (agterm Cloud).
+    var inCloud = false
 }
 
 protocol TabBarDelegate: AnyObject {

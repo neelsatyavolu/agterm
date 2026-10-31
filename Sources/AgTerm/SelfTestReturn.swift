@@ -4,6 +4,50 @@ import AgTermSessionKit
 import AppKit
 
 extension SelfTest {
+    /// One tab at a time: `AGTERM_TABCLOUD_CHECK=1 AGTERM_SELFTEST=<dir>` with a cloud machine set.
+    /// Right-click → Move to Cloud moves only that tab, which shows the cloud mark
+    /// (`one-tab-in-cloud.png`); Bring Back from Cloud brings it home.
+    static func tabCloudCheck(_ controller: MainWindowController, outDir: String) {
+        var passed = true
+        func report(_ name: String, _ ok: Bool) {
+            print("tabcloud: \(name):", ok)
+            passed = passed && ok
+        }
+        guard let window = controller.window, CloudHost.configured != nil else {
+            print("tabcloud: needs AGTERM_CLOUD")
+            exit(1)
+        }
+        window.setContentSize(NSSize(width: 980, height: 360))
+        controller.showWindow(nil)
+        controller.newTab()
+        let first = controller.sessions[0]
+        func act(_ index: Int, _ title: String) {
+            guard let item = controller.tabMenuItemForTest(index, title), let action = item.action else {
+                return report("menu has \(title)", false)
+            }
+            NSApp.sendAction(action, to: item.target, from: item)
+        }
+        after(1.5) {
+            act(1, "Move to Cloud")
+            waitFor({ controller.sessions.count == 2 && controller.sessions[1].isCloud }, timeout: 30) { moved in
+                report("only that tab moved", moved && !first.isCloud && controller.sessions[0] === first)
+                report("the rest stay here, so the button still offers the move", controller.tabBar.cloud == .moveUp)
+                report("no automatic return for a tab you chose to move", !CloudReturn.movedAway)
+                report("its menu offers the way back", controller.tabMenuItemForTest(1, "Bring Back from Cloud") != nil)
+                controller.select(1)
+                after(1) {
+                    snapshot(window, "\(outDir)/one-tab-in-cloud.png")
+                    act(1, "Bring Back from Cloud")
+                    waitFor({ controller.sessions.count == 2 && !controller.sessions[1].isCloud }, timeout: 60) { back in
+                        report("brought back", back)
+                        controller.sessions.forEach { $0.terminate() }
+                        after(1) { exit(passed ? 0 : 1) }
+                    }
+                }
+            }
+        }
+    }
+
     /// Away and back: `AGTERM_RETURN_CHECK=1 AGTERM_SELFTEST=<dir>` with a cloud machine set, as for
     /// `moveCheck`. A fake Claude whose turn is done moves with the cloud button; the cloud machine
     /// adds a file to the repo; then, as when the Mac wakes, the tab comes home by itself, resumes
