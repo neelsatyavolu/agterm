@@ -56,6 +56,7 @@ extension SelfTest {
                     report("ignored .env left on this Mac", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/.env"]))?.status == 1)
                     report("cloud setup ran before the agent", (try? cloud.run(["/usr/bin/env", "test", "-f", moveRepo + "/setup-ran"]))?.status == 0)
                     report("tab no longer shows the move", controller.cloudState.moving.isEmpty)
+                    checkPhoneHandoff(cloud, tabID: moved.tabID, report: report)
                     snapshot(window, "\(outDir)/moved-tab.png")
                     let sessionID = moved.view.link.sessionID ?? "?"
                     // ⌘Q, minus the process exit: the cloud agent must keep going.
@@ -63,7 +64,7 @@ extension SelfTest {
                     controller.window?.orderOut(nil)
                     after(2) {
                         checkStillRunning(cloud, id: sessionID, report: report) {
-                            _ = try? cloud.run(["/usr/bin/env", "sh", "-c", "rm -rf \(moveRoot) ~/.claude/projects/*agmove*"])
+                            _ = try? cloud.run(["/usr/bin/env", "sh", "-c", "rm -rf \(moveRoot) ~/.claude/projects/*agmove* ~/.agterm/setup"])
                             try? FileManager.default.removeItem(atPath: moveRoot)
                             for project in (try? FileManager.default.contentsOfDirectory(atPath: NSHomeDirectory() + "/.claude/projects")) ?? []
                             where project.contains("agmove") {
@@ -116,6 +117,21 @@ extension SelfTest {
               let built = try? cloud.run(["/usr/bin/env", "sh", "-c", "mkdir -p ~/bin && $(command -v cc || command -v clang) -o ~/bin/claude '\(source)'"]),
               built.status == 0 else { return nil }
         return fake
+    }
+
+    /// The phone handoff reaches the machine readable only by its owner, and goes away again.
+    private static func checkPhoneHandoff(_ cloud: CloudHost, tabID: String, report: (String, Bool) -> Void) {
+        let handoff = CloudPhoneHandoff(desktopId: "selftest", desktopSecret: String(repeating: "s", count: 40), relay: AgTermWire.defaultRelay,
+                                        deviceName: "agterm Cloud for selftest", theme: "ink", home: NSHomeDirectory(),
+                                        tabs: [.init(id: tabID, name: nil)])
+        let path = "$HOME/" + CloudPhoneHandoff.path
+        let written = (try? CloudSync.writePhoneHandoff(handoff, to: cloud)) != nil
+        let read = try? cloud.run(["/usr/bin/env", "sh", "-c", "stat -c %a \"\(path)\" && cat \"\(path)\""])
+        let lines = read?.stdout.split(separator: "\n", maxSplits: 1).map(String.init) ?? []
+        let back = lines.count == 2 ? try? JSONDecoder().decode(CloudPhoneHandoff.self, from: Data(lines[1].utf8)) : nil
+        report("phone handoff written to the machine, owner-only", written && lines.first == "600" && back == handoff)
+        let removed = (try? CloudSync.writePhoneHandoff(nil, to: cloud)) != nil
+        report("phone handoff removed", removed && (try? cloud.run(["/usr/bin/env", "sh", "-c", "test -e \"\(path)\""]))?.status == 1)
     }
 
     /// Attaches to the moved shell as a new app would, and asks what runs there.

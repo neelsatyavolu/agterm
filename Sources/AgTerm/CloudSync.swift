@@ -118,6 +118,20 @@ enum CloudSync {
         return "sh ~/.agterm/setup/\(name).sh"
     }
 
+    /// Writes the phone handoff to the machine (only its owner can read it), or removes it. The
+    /// secret goes over stdin, never on a command line, which `ps` shows.
+    static func writePhoneHandoff(_ handoff: CloudPhoneHandoff?, to cloud: CloudHost) throws {
+        let path = "$HOME/" + CloudPhoneHandoff.path
+        let result: (status: Int32, stdout: String, stderr: String)
+        if let handoff {
+            let write = "umask 077 && mkdir -p \"$(dirname \"\(path)\")\" && cat > \"\(path).new\" && mv \"\(path).new\" \"\(path)\""
+            result = try cloud.run(["/usr/bin/env", "sh", "-c", write], input: try JSONEncoder().encode(handoff))
+        } else {
+            result = try cloud.run(["/usr/bin/env", "sh", "-c", "rm -f \"\(path)\""])
+        }
+        guard result.status == 0 else { throw Failure(description: "couldn't update \(CloudPhoneHandoff.path) on the cloud machine: \(result.stderr)") }
+    }
+
     /// The cloud's changes to a repo since `base`, as a binary git patch: its commits, edits, and
     /// new and deleted files. A scratch index leaves the repo there as it is.
     static func changes(in folder: String, since base: String, on cloud: CloudHost) throws -> String {

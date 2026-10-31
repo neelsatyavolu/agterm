@@ -38,6 +38,12 @@ final class HostedSession {
     var onExit: ((HostedSession) -> Void)?
     /// Called whenever the shell writes something.
     var onOutput: (() -> Void)?
+    /// What the phone shows for it while the Mac is off (`CloudPhone`).
+    let status = SessionStatus()
+    /// The Mac tab this session belongs to (its `AGTERM_TAB_ID`), else the session's own id.
+    var tabID: String {
+        request.env.first { $0.hasPrefix("AGTERM_TAB_ID=") }.map { String($0.dropFirst("AGTERM_TAB_ID=".count)) } ?? id
+    }
 
     private let masterFd: Int32
     private let queue: DispatchQueue
@@ -64,6 +70,7 @@ final class HostedSession {
         cwd = request.cwd
         self.queue = queue
         terminal = Self.makeTerminal(cols: Int(request.cols), rows: Int(request.rows), delegate: terminalDelegate)
+        terminalDelegate.status = status
     }
 
     /// The headless terminal that keeps a session's screen.
@@ -125,14 +132,17 @@ final class HostedSession {
             writer = PtyWriter(fd: fd)
         }
         guard let writer else { return }
+        status.input([UInt8](bytes))
         writer.write([UInt8](bytes)[...])
         guard writer.pendingBytes > Self.inputPauseAbove else { return }
         connection.pauseReading()
         writer.whenPending(atMost: Self.inputResumeAt, on: queue) { [weak connection] in connection?.resumeReading() }
     }
 
-    private func type(_ text: String) {
+    /// Types `text` into the shell, as the phone does.
+    func type(_ text: String) {
         guard !exited else { return }
+        status.input(Array(text.utf8))
         if writer == nil {
             let fd = fcntl(masterFd, F_DUPFD_CLOEXEC, 0)
             guard fd >= 0 else { return }
@@ -148,6 +158,16 @@ final class HostedSession {
         guard ioctl(masterFd, Self.setWindowSize, &window) == 0 else { return }
         syncSize()
     }
+
+    /// The live screen for the phone.
+    func screenSnapshot(theme: String) -> ScreenSnapshot {
+        ScreenCapture.snapshot(terminal, showsCursor: status.agent == nil, theme: theme)
+    }
+
+    func screenText() -> String { ScreenCapture.text(terminal) }
+
+    /// Whether the program asked for application cursor keys (arrows send `ESC O`).
+    var applicationCursor: Bool { terminal.applicationCursor }
 
     /// What the pty has in the foreground, looked up on this machine.
     func foreground() -> ForegroundInfo {
@@ -260,6 +280,7 @@ final class HostedSession {
 
     private func received(_ bytes: Data) {
         onOutput?()
+        status.output()
         if let input = pendingInput {
             pendingInput = nil
             queue.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.type(input + "\r") }
@@ -291,6 +312,7 @@ final class HostedSession {
         var size = winsize()
         guard ioctl(masterFd, Self.getWindowSize, &size) == 0, size.ws_col > 0, size.ws_row > 0 else { return }
         if Int(size.ws_col) != terminal.cols || Int(size.ws_row) != terminal.rows {
+            status.resized()
             terminal.resize(cols: Int(size.ws_col), rows: Int(size.ws_row))
         }
     }
@@ -309,6 +331,7 @@ final class HostedSession {
 
     private func finish(status: Int32) {
         exited = true
+        self.status.exited()
         exitWatcher?.cancel()
         exitWatcher = nil
         writer?.close()
@@ -332,7 +355,11 @@ final class HostedSession {
 }
 
 /// The headless terminal's delegate. Replies to terminal queries are dropped: the attached
-/// app's own terminal answers them.
+/// app's own terminal answers them. Titles and bells go to the session's status.
 private final class HeadlessDelegate: TerminalDelegate {
+    weak var status: SessionStatus?
+
     func send(source: Terminal, data: ArraySlice<UInt8>) {}
+    func setTerminalTitle(source: Terminal, title: String) { status?.titleChanged(title) }
+    func bell(source: Terminal) { status?.bell() }
 }

@@ -17,6 +17,11 @@ public final class SessionServer {
     /// With no sessions and no clients for this long, the server stops; nil never stops (a
     /// cloud machine's helper, which the gateway reaches).
     public var idleExitAfter: TimeInterval? = 10
+    /// A cloud machine's `CloudPhoneHandoff`: with it, the phone reaches these sessions while
+    /// the Mac is off (`CloudPhone`). Set before `start()`.
+    public var phoneHandoffPath: String?
+    /// How long the Mac must be gone before the phone is served from here.
+    public var phoneMacGoneAfter = CloudPhoneRule.macGoneAfter
 
     private let socketPath: String
     private let build: String
@@ -31,6 +36,9 @@ public final class SessionServer {
     private var idleToken = 0
     /// The last time a shell wrote something or a client came or went.
     private var lastActivity = Date()
+    /// When the last client left (or the server started): when the Mac was last here.
+    private var lastClientLeft = Date()
+    private var phone: CloudPhone?
 
     public init(socketPath: String, build: String) {
         self.socketPath = socketPath
@@ -52,6 +60,7 @@ public final class SessionServer {
         try queue.sync {
             try listen()
             if let statePath { SessionKeeper.take(from: statePath).forEach(restore) }
+            if let phoneHandoffPath { startPhone(handoff: phoneHandoffPath) }
         }
         queue.async { self.noteActivity() }
     }
@@ -202,6 +211,7 @@ public final class SessionServer {
 
     private func dropClient(_ client: WireConnection, key: ObjectIdentifier) {
         clients[key] = nil
+        if clients.isEmpty { lastClientLeft = Date() }
         greeted.remove(key)
         detachEverywhere(client)
         noteActivity()
@@ -228,9 +238,21 @@ public final class SessionServer {
         }
     }
 
+    private func startPhone(handoff path: String) {
+        let host = CloudPhone.Host(
+            sessions: { [weak self] in self.map { Array($0.sessions.values) } ?? [] },
+            macConnected: { [weak self] in self?.clients.isEmpty == false },
+            macLastSeen: { [weak self] in self?.lastClientLeft ?? Date() },
+            touch: { [weak self] in self?.lastActivity = Date() })
+        phone = CloudPhone(queue: queue, host: host, handoffPath: path, build: build, macGoneAfter: phoneMacGoneAfter)
+        phone?.start()
+    }
+
     private func shutdown() {
         guard !stopped else { return }
         stopped = true
+        phone?.stop()
+        phone = nil
         listener?.cancel()
         listener = nil
         unlink(socketPath)

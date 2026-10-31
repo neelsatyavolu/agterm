@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.1.0-beta.7 — 2026-10-31
+- Added: agterm Remote keeps working while your Mac is off. Tabs you moved to the cloud stay on your phone with the same pairing: you can watch them, read the agent's conversation, type, answer its prompts, and get notified when it finishes or needs you. Once your Mac is back, it takes the phone over again. New tabs still open only from the Mac. This needs the phone remote turned on in Settings.
 - Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.
 
 ## 1.1.0-beta.6 — 2026-10-30

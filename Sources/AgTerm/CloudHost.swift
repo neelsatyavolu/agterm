@@ -83,11 +83,12 @@ final class CloudHost: SessionEndpoint, CustomStringConvertible {
         }
     }
 
-    /// Runs `argv` with no input and waits for it; returns its status and output.
+    /// Runs `argv` with `input` on its stdin and waits for it; returns its status and output.
     @discardableResult
-    func run(_ argv: [String], timeout: TimeInterval = 30) throws -> (status: Int32, stdout: String, stderr: String) {
+    func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 30) throws -> (status: Int32, stdout: String, stderr: String) {
         let connection = try exec(argv)
         defer { connection.close() }
+        if !input.isEmpty { try connection.send(.input(input)) }
         try connection.send(.input(Data()))
         var stdout = "", stderr = ""
         while true {

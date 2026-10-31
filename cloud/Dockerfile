@@ -12,7 +12,7 @@ RUN swift build -c release --product agterm-sessions --static-swift-stdlib \
 FROM ubuntu:24.04
 # What agents and moved projects expect to find; anything else is installed by the user.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        bash ca-certificates curl git rsync openssh-client build-essential python3 python3-venv \
+        bash ca-certificates openssl curl git rsync openssh-client build-essential python3 python3-venv \
         nodejs npm less vim-tiny locales tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen \

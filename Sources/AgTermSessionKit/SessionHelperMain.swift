@@ -1,3 +1,4 @@
+import AgTermCore
 import Foundation
 
 /// The sessions helper's entry point: `agterm --sessions-helper --socket <path> --build <id>`.
@@ -23,6 +24,7 @@ public enum SessionHelperMain {
             if let gateway {
                 server.idleExitAfter = nil
                 server.statePath = value(of: "--state", in: arguments)
+                server.phoneHandoffPath = NSHomeDirectory() + "/" + CloudPhoneHandoff.path
                 try server.start()
                 // Kept here: nothing else holds it, and dispatchMain never returns.
                 let running = gateway(socketPath)

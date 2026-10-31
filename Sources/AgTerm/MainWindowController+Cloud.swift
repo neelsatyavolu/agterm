@@ -24,6 +24,8 @@ final class CloudState {
     /// Tabs on their way to or from the cloud, with what each shows meanwhile.
     var moving: [ObjectIdentifier: (label: String, progress: Double?)] = [:]
     fileprivate var wakeObserver: NSObjectProtocol?
+    /// Handoff updates, in order, so an older one never lands after a newer one.
+    fileprivate let phoneUpdates = DispatchQueue(label: "agterm.cloud-phone-handoff", qos: .utility)
 }
 
 extension MainWindowController {
@@ -86,6 +88,7 @@ extension MainWindowController {
         let back = CloudBringBack(cloud: cloud, isOpen: { [weak self] in self?.sessions.contains($0) == true },
                                   replace: { [weak self] old, new in self?.replaceTab(old, with: new) })
         back.run(tabs, grace: grace) { [weak self] outcome in
+            self?.syncPhoneToCloud()
             self?.cloudState.busy = false
             self?.window?.subtitle = ""
             self?.showMoving(tabs, nil)
@@ -95,6 +98,22 @@ extension MainWindowController {
             }
             done?(outcome)
             _ = back
+        }
+    }
+
+    /// Lets the cloud machine answer the phone for its tabs while this Mac is off, with this
+    /// Mac's relay identity (`CloudPhoneHandoff`); removes it when the phone remote is off or no
+    /// tab is left there.
+    func syncPhoneToCloud() {
+        guard let cloud = CloudHost.configured else { return }
+        let tabs = sessions.filter { $0.isCloud && !$0.signals.exited }.map { CloudPhoneHandoff.Tab(id: $0.tabID, name: $0.name) }
+        let handoff = tabs.isEmpty ? nil : RemoteClient.shared.cloudHandoff(tabs: tabs)
+        cloudState.phoneUpdates.async {
+            do {
+                try CloudSync.writePhoneHandoff(handoff, to: cloud)
+            } catch {
+                NSLog("agterm: couldn't update the cloud's phone access: %@", "\(error)")
+            }
         }
     }
 

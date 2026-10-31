@@ -145,7 +145,7 @@ final class ExecSession {
         keepAlive = nil
     }
 
-    private static func spawn(path: String, argv: [String], env: [String], stdio: [Int32]) throws -> pid_t {
+    static func spawn(path: String, argv: [String], env: [String], stdio: [Int32]) throws -> pid_t {
         #if canImport(Darwin)
         var actions: posix_spawn_file_actions_t?
         var attributes: posix_spawnattr_t?

@@ -41,6 +41,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             self.window?.makeKeyAndOrderFront(nil)
         }
         RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
+        RemoteClient.shared.onEnabledChange = { [weak self] in self?.syncPhoneToCloud() }
         RemoteClient.shared.openTab = { [weak self] folder, command in
             guard let self else { return nil }
             self.addTab(cwd: folder, restoring: nil, command: command)
@@ -253,6 +254,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             self?.showMoving(tabs, nil)
             switch outcome {
             case .moved(let count):
+                self?.syncPhoneToCloud()
                 Notifier.shared.post(title: "Moved \(count) tab\(count == 1 ? "" : "s") to the cloud",
                                      body: CloudReturn.movedAway
                                         ? "You can turn off this Mac; they keep running and come back when you return."

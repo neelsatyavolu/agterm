@@ -11,6 +11,7 @@ public enum WebSocketTransport {
     static let chunk = 64 * 1024
     private static let maxHeader = 16 * 1024
     private static let handshakeTimeout: Int = 10
+    static let silentLimit: Int = 90
 
     public enum Failure: Error, Equatable {
         case badHandshake
@@ -31,7 +32,9 @@ public enum WebSocketTransport {
             case .upgrade(let key):
                 writeAll(tcp, Array(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                     + "Sec-WebSocket-Accept: \(accept(key))\r\n\r\n").utf8))
-                setBlocking(tcp, timeout: 0)
+                // A client that went away without closing (a Mac put to sleep) is dropped once
+                // it has been silent this long; apps ping every 25 s.
+                setBlocking(tcp, timeout: silentLimit)
                 pump(tcp, leftover: rest, masking: false, ready: ready)
             case .invalid:
                 writeAll(tcp, Array("HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8))
@@ -90,7 +93,7 @@ public enum WebSocketTransport {
     }
 
     /// The header up to its blank line, and whatever came after it.
-    private static func readHeader(_ fd: Int32) -> (String, [UInt8])? {
+    static func readHeader(_ fd: Int32) -> (String, [UInt8])? {
         var bytes: [UInt8] = []
         var buffer = [UInt8](repeating: 0, count: 4096)
         let end: [UInt8] = [13, 10, 13, 10]
@@ -132,6 +135,8 @@ public enum WebSocketTransport {
     struct FrameReader {
         private var buffer: [UInt8] = []
         private var start = 0
+        /// Whether the frame `next` last returned ends its message.
+        private(set) var final = true
 
         mutating func append(_ bytes: ArraySlice<UInt8>) {
             if start > 0, start == buffer.count { buffer.removeAll(keepingCapacity: true); start = 0 }
@@ -162,6 +167,7 @@ public enum WebSocketTransport {
                 for i in payload.indices { payload[i] ^= buffer[keyStart + i % 4] }
             }
             start += offset + length
+            final = first & 0x80 != 0
             if start > 1024 * 1024 { buffer.removeFirst(start); start = 0 }
             return (opcode, payload)
         }
