@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0-beta.7 — 2026-10-31
+- Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.
+
 ## 1.1.0-beta.6 — 2026-10-30
 - Added: A tab moved to the cloud installs its project's dependencies there before the agent continues (npm, pnpm, yarn, bun, or pip with requirements.txt), and skips that on later moves until the lockfile changes. A repo can give its own steps in .agterm/cloud-setup.sh.
 - Added: Moving more than 1 GB to the cloud asks first, with how long the copy will take, before any agent stops.

@@ -185,7 +185,7 @@ enum AgentIntegration {
             id = settings.accounts.first { $0.provider == provider && AccountStore.home($0.id).path == home }?.id
                 ?? (TeamPool.isLocalID(folder) && AccountStore.home(folder).path == home ? folder : AccountStore.external)
         } else {
-            id = settings.autoSwitch ? AccountStore.loadRouting().active[provider.rawValue] ?? AccountStore.native : AccountStore.native
+            id = settings.autoSwitch ? AccountStore.loadRouting().active[provider.rawValue] ?? AccountStore.native : settings.home(provider)
         }
         if id == AccountStore.teamRoute {
             fputs("agterm: your \(provider.title) logins are out of usage, so borrowing one from your team…\n", stderr)

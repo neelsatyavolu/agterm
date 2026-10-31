@@ -62,6 +62,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_RETURN_CHECK"] == "1" { return returnCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_TABCLOUD_CHECK"] == "1" { return tabCloudCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_BETA_CHECK"] == "1" { return betaCheck(outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_ACCOUNTS_CHECK"] == "1" { return accountsCheck(outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true

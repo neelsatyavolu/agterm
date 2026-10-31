@@ -99,6 +99,27 @@ final class AccountPickerTests: XCTestCase {
         XCTAssertNil(AccountPicker.next(candidates, excluding: ["native"], now: now))
         XCTAssertEqual(AccountPicker.next(candidates, excluding: ["native"], now: now.addingTimeInterval(61)), "a")
     }
+
+    func testNewSessionsStayOnTheChosenLoginWhileItHasUsage() {
+        let candidates = [
+            AccountPicker.Candidate(id: "native", reading: reading(0)),
+            AccountPicker.Candidate(id: "a", reading: reading(60)),
+        ]
+        XCTAssertEqual(AccountPicker.forNewSessions(candidates, home: "a", autoSwitch: true, now: now), "a")
+        XCTAssertEqual(AccountPicker.forNewSessions(candidates, home: "native", autoSwitch: true, now: now), "native")
+    }
+
+    func testNewSessionsLeaveAUsedUpChosenLoginOnlyWhenSwitching() {
+        let candidates = [
+            AccountPicker.Candidate(id: "native", reading: reading(40)),
+            AccountPicker.Candidate(id: "a", reading: reading(100)),
+            AccountPicker.Candidate(id: "b", reading: reading(10)),
+        ]
+        XCTAssertEqual(AccountPicker.forNewSessions(candidates, home: "a", autoSwitch: true, now: now), "b")
+        XCTAssertEqual(AccountPicker.forNewSessions(candidates, home: "a", autoSwitch: false, now: now), "a")
+        let allOut = candidates.map { AccountPicker.Candidate(id: $0.id, reading: reading(100)) }
+        XCTAssertNil(AccountPicker.forNewSessions(allOut, home: "a", autoSwitch: true, now: now))
+    }
 }
 
 final class CodexResumeTests: XCTestCase {

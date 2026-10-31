@@ -40,10 +40,31 @@ final class AccountStore: ObservableObject {
     /// Routing for new sessions: borrow a team login (every login of yours is out).
     static let teamRoute = "team"
 
-    struct Settings: Codable {
+    struct Settings: Codable, Equatable {
         var autoSwitch = true
         var continueAfterSwitch = true
         var accounts: [StoredAccount] = []
+        /// Provider → the login you chose for new sessions; absent means your own.
+        var preferred: [String: String] = [:]
+
+        init() {}
+
+        // Older files have no `preferred`; a missing key must not reset everything else.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            autoSwitch = try container.decodeIfPresent(Bool.self, forKey: .autoSwitch) ?? true
+            continueAfterSwitch = try container.decodeIfPresent(Bool.self, forKey: .continueAfterSwitch) ?? true
+            accounts = try container.decodeIfPresent([StoredAccount].self, forKey: .accounts) ?? []
+            preferred = try container.decodeIfPresent([String: String].self, forKey: .preferred) ?? [:]
+        }
+
+        /// The login new sessions of `provider` start on: the one you chose if it's still added
+        /// and switched to, else your own.
+        func home(_ provider: AccountProvider) -> String {
+            guard let id = preferred[provider.rawValue],
+                  accounts.contains(where: { $0.id == id && $0.provider == provider && $0.enabled }) else { return AccountStore.native }
+            return id
+        }
     }
 
     @Published private(set) var settings: Settings
@@ -69,10 +90,18 @@ final class AccountStore: ObservableObject {
     func update(_ change: (inout Settings) -> Void) {
         var next = settings
         change(&next)
-        guard next.accounts != settings.accounts || next.autoSwitch != settings.autoSwitch
-            || next.continueAfterSwitch != settings.continueAfterSwitch else { return }
+        guard next != settings else { return }
         settings = next
         Self.write(next, to: Self.settingsURL)
+    }
+
+    /// Starts new sessions of `provider` on `id` (`native` for your own login), switching to it
+    /// again if you'd turned that off.
+    func prefer(_ id: String, provider: AccountProvider) {
+        update { settings in
+            settings.preferred[provider.rawValue] = id == Self.native ? nil : id
+            if let index = settings.accounts.firstIndex(where: { $0.id == id }) { settings.accounts[index].enabled = true }
+        }
     }
 
     /// Adds a login, or updates it in place.
@@ -90,7 +119,10 @@ final class AccountStore: ObservableObject {
     /// signs out first to remove that too.
     func remove(_ id: String) {
         guard let account = account(id) else { return }
-        update { $0.accounts.removeAll { $0.id == id } }
+        update { settings in
+            settings.accounts.removeAll { $0.id == id }
+            settings.preferred = settings.preferred.filter { $0.value != id }
+        }
         var routing = Self.loadRouting()
         routing.active = routing.active.filter { $0.value != id }
         Self.saveRouting(routing)
