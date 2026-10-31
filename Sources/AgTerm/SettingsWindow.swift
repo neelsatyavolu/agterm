@@ -128,6 +128,7 @@ private struct GeneralPane: View {
                     LabeledContent("Version \(Self.version)") {
                         Button("Check Now") { Updater.shared.checkForUpdates(nil) }
                     }
+                    BetaUpdatesRow(channel: .shared) { Updater.shared.checkForUpdates(nil) }
                 } header: {
                     Text("Updates")
                 } footer: {

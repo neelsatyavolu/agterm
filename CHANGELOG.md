@@ -2,6 +2,7 @@
 
 ## 1.1.0-beta.1 — 2026-10-30
 - Added: agterm Cloud (beta). The cloud button beside + moves every tab to a cloud machine, so agents keep working while this Mac is off, and brings them back when you return. Set it up in Settings → Cloud ($12 a month for 100 hours).
+- Added: Beta updates. Paste a beta key in Settings → General → Updates and agterm installs beta builds as well as stable releases, whichever is newer. Leave Beta goes back to stable releases.
 - Fixed: A Grok tab no longer flips back to working after Grok finishes, such as when Grok names the conversation a few seconds later or while you type your next message. Its title also drops the trailing "- grok".
 - Fixed: Dropping a dragged tab leaves it where you dropped it, instead of the tabs appearing to swap a second time.
 - Fixed: While you drag a tab, the tabs it passes over no longer light up as if the mouse were over them.
