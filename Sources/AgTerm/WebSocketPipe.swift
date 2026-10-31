@@ -2,11 +2,13 @@ import AgTermSessionKit
 import Foundation
 
 /// A WebSocket to a cloud machine's gateway, as a socket `WireConnection` can use. URLSession
-/// does TLS; two loops move bytes between the WebSocket and one end of a socketpair, each waiting
-/// for the other side to take the last chunk, which is the backpressure. A ping every 25 s keeps
+/// does TLS; two loops move bytes between the WebSocket and one end of a socketpair. Up to
+/// `inFlight` chunks go out unconfirmed, so a far machine isn't held to a chunk per round trip;
+/// that limit, and the reader taking what arrives, is the backpressure. A ping every 25 s keeps
 /// proxies from closing a quiet connection.
 final class WebSocketPipe: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
     private static let chunk = 64 * 1024
+    private static let inFlight = 32
     private static let pingInterval: TimeInterval = 25
 
     /// Opens `request` (ws:// or wss://) and returns the socket carrying the plain stream.
@@ -87,21 +89,27 @@ final class WebSocketPipe: NSObject, URLSessionWebSocketDelegate, @unchecked Sen
         }
     }
 
-    /// Socket → WebSocket, a chunk at a time, each sent before the next is read.
+    /// Socket → WebSocket, a chunk at a time, with up to `inFlight` not yet confirmed.
     private func sendLoop() {
         var buffer = [UInt8](repeating: 0, count: Self.chunk)
-        let sent = DispatchSemaphore(value: 0)
+        // Made empty and then filled: libdispatch traps on freeing a semaphore below its starting
+        // value, as this one is if the loop ends with sends out.
+        let slots = DispatchSemaphore(value: 0)
+        for _ in 0..<Self.inFlight { slots.signal() }
         while true {
             let count = read(inner, &buffer, buffer.count)
             if count < 0 && errno == EINTR { continue }
-            guard count > 0 else { return end() }
-            var failed = false
-            task.send(.data(Data(buffer[0..<count]))) { error in
-                failed = error != nil
-                sent.signal()
+            guard count > 0 else {
+                // The last chunks go out before the socket closes.
+                for _ in 0..<Self.inFlight { slots.wait() }
+                return end()
             }
-            sent.wait()
-            if failed { return end() }
+            slots.wait()
+            guard isOpen else { return }
+            task.send(.data(Data(buffer[0..<count]))) { [self] error in
+                if error != nil { end() }
+                slots.signal()
+            }
         }
     }
 

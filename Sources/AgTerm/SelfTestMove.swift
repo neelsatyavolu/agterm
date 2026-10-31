@@ -34,6 +34,11 @@ extension SelfTest {
             let items = CloudMove.preflight([local])
             report("preflight: \(items.first?.summary ?? "nothing")", items.first?.agent == "claude" && items.first?.folder == moveRepo)
             let started = Date()
+            // The tab says what the move is doing while it runs.
+            after(2) {
+                report("tab shows the move", controller.cloudState.moving[ObjectIdentifier(local)] != nil)
+                snapshot(window, "\(outDir)/moving-tab.png")
+            }
             controller.moveToCloud(items, cloud: cloud) { outcome in
                 if case .failed(let reason) = outcome { print("move: failed:", reason) }
                 report(String(format: "moved in %.0fs", Date().timeIntervalSince(started)), { if case .moved(1) = outcome { return true } else { return false } }())
@@ -47,6 +52,7 @@ extension SelfTest {
                     report("local shell ended", localShell > 0 && kill(localShell, 0) != 0)
                     report("repo copied", (try? cloud.run(["/usr/bin/env", "test", "-f", moveRepo + "/notes.txt"]))?.status == 0)
                     report("node_modules left out", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/node_modules"]))?.status == 1)
+                    report("tab no longer shows the move", controller.cloudState.moving.isEmpty)
                     snapshot(window, "\(outDir)/moved-tab.png")
                     let sessionID = moved.view.link.sessionID ?? "?"
                     // ⌘Q, minus the process exit: the cloud agent must keep going.

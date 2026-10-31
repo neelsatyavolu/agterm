@@ -21,6 +21,8 @@ enum CloudReturn {
 final class CloudState {
     var busy = false
     var returning = false
+    /// Tabs on their way to or from the cloud, with what each shows meanwhile.
+    var moving: [ObjectIdentifier: (label: String, progress: Double?)] = [:]
     fileprivate var wakeObserver: NSObjectProtocol?
 }
 
@@ -62,6 +64,12 @@ extension MainWindowController {
         }
     }
 
+    /// Marks `tabs` as moving on their cards, or clears the mark with nil.
+    func showMoving(_ tabs: [TerminalSession], _ label: String?, progress: Double? = nil) {
+        for tab in tabs { cloudState.moving[ObjectIdentifier(tab)] = label.map { ($0, progress) } }
+        render()
+    }
+
     /// Right-click → Bring Back from Cloud: just this tab.
     @objc func bringBackTabFromMenu(_ sender: NSMenuItem) {
         guard let session = sender.representedObject as? TerminalSession, !cloudState.busy,
@@ -74,11 +82,13 @@ extension MainWindowController {
         cloudState.busy = true
         updateCloudButton()
         window?.subtitle = "Bringing tabs back from the cloud…"
+        showMoving(tabs, "Bringing back from the cloud…")
         let back = CloudBringBack(cloud: cloud, isOpen: { [weak self] in self?.sessions.contains($0) == true },
                                   replace: { [weak self] old, new in self?.replaceTab(old, with: new) })
         back.run(tabs, grace: grace) { [weak self] outcome in
             self?.cloudState.busy = false
             self?.window?.subtitle = ""
+            self?.showMoving(tabs, nil)
             self?.updateCloudButton()
             if case .failed(let reason) = outcome {
                 Notifier.shared.post(title: "Couldn't bring tabs back from the cloud", body: reason, tabID: "cloud")

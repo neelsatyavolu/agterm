@@ -4,7 +4,7 @@ import Foundation
 /// cloud machine, so transcripts and saved folders keep working there unchanged.
 public enum CloudMovePlan {
     /// Rebuildable, OS-specific folders: Mac builds of them don't run on Linux anyway.
-    public static let excluded = ["node_modules", ".build", "target", ".venv", "DerivedData"]
+    public static let excluded = ["node_modules", ".build", "target", ".venv", "DerivedData", ".next", ".turbo", ".nuxt", ".svelte-kit", "__pycache__"]
 
     /// Your agent setup that goes with the agents; never their logins or settings files, which
     /// hold machine paths and sometimes keys.

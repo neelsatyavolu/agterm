@@ -240,10 +240,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// Moves `items` and reports how it went (a notification, and `done`).
     func moveToCloud(_ items: [CloudMove.Item], cloud: CloudHost, done: @escaping (CloudMove.Outcome) -> Void) {
         window?.subtitle = "Moving to the cloud…"
+        let tabs = items.map(\.session)
+        showMoving(tabs, items.contains { $0.agent != nil } ? "Waiting to move…" : "Moving to the cloud…")
         let move = CloudMove(cloud: cloud, isOpen: { [weak self] in self?.sessions.contains($0) == true },
                              replace: { [weak self] old, new in self?.replaceTab(old, with: new) })
+        move.onProgress = { [weak self] share in
+            self?.showMoving(tabs, share < 1 ? "Copying to the cloud · \(Int(share * 100))%" : "Starting in the cloud…", progress: share)
+        }
         move.run(items) { [weak self] outcome in
             self?.window?.subtitle = ""
+            self?.showMoving(tabs, nil)
             switch outcome {
             case .moved(let count):
                 Notifier.shared.post(title: "Moved \(count) tab\(count == 1 ? "" : "s") to the cloud",
@@ -556,11 +562,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// Moving to or from the cloud, and bringing tabs home (MainWindowController+Cloud).
     let cloudState = CloudState()
 
-    private func render() {
+    func render() {
         updateCloudButton()
         tabBar.update(sessions.enumerated().map { i, s in
             TabModel(topic: s.topic, folder: s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
-                     status: s.status, selected: i == selected, inCloud: s.isCloud)
+                     status: s.status, selected: i == selected, inCloud: s.isCloud,
+                     moving: cloudState.moving[ObjectIdentifier(s)]?.label, movingProgress: cloudState.moving[ObjectIdentifier(s)]?.progress)
         })
         if sessions.indices.contains(selected) { window?.title = sessions[selected].topic }
     }

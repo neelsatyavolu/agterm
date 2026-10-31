@@ -17,6 +17,10 @@ struct TabModel: Equatable {
     var selected: Bool
     /// The shell runs on the cloud machine (agterm Cloud).
     var inCloud = false
+    /// On its way to or from the cloud: what the tab shows in place of its folder.
+    var moving: String?
+    /// How much of the move is done, 0 to 1, shown as a bar along the card's foot.
+    var movingProgress: Double?
 }
 
 protocol TabBarDelegate: AnyObject {

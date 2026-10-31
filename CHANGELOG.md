@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0-beta.3 — 2026-10-30
+- Added: A tab moving to or from the cloud says so on the tab, with a bar showing how much of its folder has been copied.
+- Changed: Move to Cloud copies much faster, and leaves out build caches (.next, .turbo, .nuxt, .svelte-kit, __pycache__) as well as node_modules.
+- Fixed: Moving a tab no longer stops partway through when the copy finishes reading its input.
+- Fixed: In Settings → Cloud, the hours limit field no longer has a squeezed "hours" label beside it.
+
 ## 1.1.0-beta.2 — 2026-10-30
 - Added: Right-click a tab and choose Move to Cloud to move just that tab, or Bring Back from Cloud to bring it home. Tabs in the cloud show a cloud next to their folder.
 - Fixed: Opening agterm from inside one of its tabs no longer stops Claude from saving conversations, and tab status no longer flips between working and done afterwards.

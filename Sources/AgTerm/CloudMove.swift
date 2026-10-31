@@ -44,6 +44,8 @@ final class CloudMove {
     private let cloud: CloudHost
     private let isOpen: (TerminalSession) -> Bool
     private let replace: (TerminalSession, TerminalSession) -> Void
+    /// The share of the files copied so far, 0 to 1, on the main queue.
+    var onProgress: ((Double) -> Void)?
 
     /// `isOpen` says whether a tab is still there (it may be closed mid-move); `replace` puts the
     /// cloud tab where the local one was and ends the local shell.
@@ -117,9 +119,13 @@ final class CloudMove {
         let folders = CloudMovePlan.roots(frozen.compactMap(\.item.folder))
         let state = frozen.flatMap(\.state) + (frozen.contains { $0.item.agent != nil } ? CloudMovePlan.userConfig(home: home) : [])
         let cloud = cloud
+        let onProgress = onProgress
+        onProgress?(0)
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try CloudSync.push(folders: folders, files: state, to: cloud)
+                try CloudSync.push(folders: folders, files: state, to: cloud) { share in
+                    DispatchQueue.main.async { onProgress?(share) }
+                }
             } catch {
                 return DispatchQueue.main.async {
                     self.restartHere(frozen)

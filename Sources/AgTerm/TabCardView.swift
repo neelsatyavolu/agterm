@@ -114,7 +114,7 @@ final class TabCardView: NSView {
             label.draw(at: NSPoint(x: x, y: Self.line2Y + 1.5))
             x += ceil(label.size().width) + 8
         }
-        if model.inCloud, let cloud = Self.cloudSymbol() {
+        if model.inCloud || model.moving != nil, let cloud = Self.cloudSymbol() {
             // A cloud before the folder: this tab's shell runs on the cloud machine.
             let size = cloud.size
             let tinted = NSImage(size: size, flipped: false) { rect in
@@ -125,6 +125,17 @@ final class TabCardView: NSView {
             }
             tinted.draw(in: NSRect(x: x, y: Self.line2Y + 1, width: size.width, height: size.height))
             x += ceil(size.width) + 5
+        }
+        if let moving = model.moving {
+            if let share = model.movingProgress {
+                // Across the foot of the card, where the selected tab's accent line runs.
+                let track = NSRect(x: Self.padX, y: 5, width: bounds.width - 2 * Self.padX, height: 2)
+                Theme.fg4.withAlphaComponent(0.35).setFill()
+                track.fill()
+                Theme.accent.setFill()
+                NSRect(x: track.minX, y: track.minY, width: track.width * min(1, max(0, share)), height: track.height).fill()
+            }
+            return draw(text(moving, Theme.metaFont, Theme.accent), x: x, y: Self.line2Y, maxX: rightEdge)
         }
         let diff = diffText(model)
         let diffWidth = diff.map { ceil($0.size().width) + 8 } ?? 0
