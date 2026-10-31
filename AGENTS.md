@@ -31,10 +31,12 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |
-| Publish a release | `scripts/release.sh` (maintainer only) |
+| Publish a release | `scripts/release.sh` (maintainer only; `--dry-run` writes the appcasts in `dist/release` and publishes nothing) |
+| Cut a beta | Set `VERSION` to `1.1.0-beta.1` (next: `-beta.2`), add its CHANGELOG section, commit, `scripts/release.sh`: a GitHub prerelease plus the `beta-feed` appcast |
+| Make a beta key | `scripts/beta-key.sh [--days N] "<tester name>"` (key pair in 1Password "agterm Beta Key Signing Key"; `--init` made it, once) |
 
 ## Self-tests
-- `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`.
+- `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`; the beta updates row (`AGTERM_BETA_CHECK=1`, optionally with `AGTERM_BETA_KEY=<key>` to check a real key) in `SelfTestBeta.swift`.
 - Quitting leaves tab shells running in the sessions helper (`agterm --sessions-helper`), so self-tests end the helper's sessions when they exit.
 - PNG snapshots land in the `AGTERM_SELFTEST` directory; look at them after UI changes.
 - Add a check there for any UI change you can't cover with a unit test.
@@ -53,6 +55,8 @@ The sessions helper outlives app updates: someone who keeps tabs open keeps the 
 - Every user-visible change adds a bullet under the next version's `## <version> — <YYYY-MM-DD>` section, in the same commit as the change.
 - Bullets start with `- Added:`, `- Fixed:` or `- Changed:` and describe what the user sees, not the code.
 - To release: bump `VERSION`, date the section, commit, then run `scripts/release.sh`. It stops if `CHANGELOG.md` has no section for `VERSION`.
+- Betas: `VERSION` and the section heading are `1.1.0-beta.N` (`## 1.1.0-beta.1 — 2026-10-30`); the section lists what changed since the previous beta or stable release. Stable builds hide beta sections, so the `1.1.0` section repeats every change from its betas that shipped. Beta builds show both.
+- Beta updates: testers paste a key from `scripts/beta-key.sh` into Settings → General (`BetaChannel`), and Sparkle then reads the `beta-feed` release's appcast, which lists the newest beta and the newest stable build. Stable apps read the latest release's appcast, which never has betas. `bundle.sh` writes a beta's CFBundleVersion as `1.1.0b1`, because Sparkle ignores everything after a "-" (`ReleaseVersion`). The beta download link is `https://github.com/neelsatyavolu/agterm/releases/download/beta-feed/agterm.zip`.
 
 ## Conventions
 - Match the existing style: short doc comments on types and non-obvious functions, small files, no speculative abstractions.
