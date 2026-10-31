@@ -174,16 +174,21 @@ final class AccountStore: ObservableObject {
 
     // MARK: Account folders
 
-    static var nativeClaudeHome: URL {
-        URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"] ?? NSHomeDirectory() + "/.claude")
-    }
+    static var nativeClaudeHome: URL { native("CLAUDE_CONFIG_DIR", default: ".claude") }
 
-    static var nativeCodexHome: URL {
-        URL(fileURLWithPath: ProcessInfo.processInfo.environment["CODEX_HOME"] ?? NSHomeDirectory() + "/.codex")
-    }
+    static var nativeCodexHome: URL { native("CODEX_HOME", default: ".codex") }
 
-    static var nativeGrokHome: URL {
-        URL(fileURLWithPath: ProcessInfo.processInfo.environment["GROK_HOME"] ?? NSHomeDirectory() + "/.grok")
+    static var nativeGrokHome: URL { native("GROK_HOME", default: ".grok") }
+
+    /// Your own folder: the variable if you set one, else the default in your home. agterm
+    /// opened from a tab whose agent runs on one of these logins inherits the variable pointing
+    /// at that login's folder; taken as yours, every shared item would be linked to itself.
+    private static func native(_ variable: String, default name: String) -> URL {
+        if let set = ProcessInfo.processInfo.environment[variable], !set.isEmpty,
+           !URL(fileURLWithPath: set).standardizedFileURL.path.hasPrefix(dir.standardizedFileURL.path + "/") {
+            return URL(fileURLWithPath: set)
+        }
+        return URL(fileURLWithPath: NSHomeDirectory() + "/" + name)
     }
 
     static func nativeHome(_ provider: AccountProvider) -> URL {
@@ -222,7 +227,8 @@ final class AccountStore: ObservableObject {
         if provider == .grok { try? fm.createDirectory(at: native.appendingPathComponent("sessions"), withIntermediateDirectories: true) }
         for name in shared(provider) {
             let target = native.appendingPathComponent(name), link = home.appendingPathComponent(name)
-            guard fm.fileExists(atPath: target.path) else { continue }
+            // Never a link to itself (a loop that fails every read and write through it).
+            guard target.standardizedFileURL.path != link.standardizedFileURL.path, fm.fileExists(atPath: target.path) else { continue }
             if (try? fm.destinationOfSymbolicLink(atPath: link.path)) == target.path { continue }
             if (try? link.checkResourceIsReachable()) == true || (try? fm.attributesOfItem(atPath: link.path)) != nil {
                 try? fm.removeItem(at: link)
@@ -275,8 +281,11 @@ final class AccountStore: ObservableObject {
     /// login. A login's own copy starts empty, so a switched session would stop at the theme
     /// picker or lose its tools; copy those over, never the account or its caches.
     static func syncClaudeState(to home: URL) {
-        let nativeFile = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].map { $0 + "/.claude.json" } ?? NSHomeDirectory() + "/.claude.json"
-        guard let data = FileManager.default.contents(atPath: nativeFile),
+        // Claude keeps .claude.json in CLAUDE_CONFIG_DIR when that is set, else in your home.
+        let folder = nativeClaudeHome
+        let nativeFile = folder.path == NSHomeDirectory() + "/.claude" ? NSHomeDirectory() + "/.claude.json" : folder.path + "/.claude.json"
+        guard nativeFile != home.appendingPathComponent(".claude.json").path,
+              let data = FileManager.default.contents(atPath: nativeFile),
               let native = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
         let url = home.appendingPathComponent(".claude.json")
         var mine = (FileManager.default.contents(atPath: url.path)).flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]

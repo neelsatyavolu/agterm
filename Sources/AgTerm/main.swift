@@ -1,3 +1,4 @@
+import AgTermCore
 import AgTermSessionKit
 import AppKit
 
@@ -17,6 +18,10 @@ if arguments.count >= 2, arguments[1] == CloudPipe.flag {
     CloudPipe.run(arguments)
 }
 
+// Opened from inside a tab or an agent: forget that session before any tab inherits it.
+for name in InheritedEnvironment.toDrop(ProcessInfo.processInfo.environment, accountsDir: AccountStore.dir.path) {
+    unsetenv(name)
+}
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
