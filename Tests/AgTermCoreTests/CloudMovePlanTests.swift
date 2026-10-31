@@ -50,4 +50,11 @@ final class CloudMovePlanTests: XCTestCase {
                        "/Users/neel/.claude/projects/-Users-neel-code-app")
         XCTAssertNil(CloudMovePlan.claudeProject(sessionID: "zzz", home: home, projects: ["-Users-neel-code-app"], exists: files.contains))
     }
+
+    func testIgnoreRulesAnchorWhatGitIgnores() {
+        let output = [".derived/", ".claude/", "Packages/Core/.build/", ".DS_Store", ".env", "api/.env.local", "logs[1]/", ""].joined(separator: "\0")
+        XCTAssertEqual(CloudMovePlan.ignoreRules(gitIgnored: output),
+                       ["/.derived/", "/.claude/", "/Packages/Core/.build/", "/.DS_Store", "/.env", "/api/.env.local", "/logs\\[1]/"])
+        XCTAssertEqual(CloudMovePlan.ignoreRules(gitIgnored: ""), [])
+    }
 }

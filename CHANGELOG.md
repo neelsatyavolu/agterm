@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0-beta.5 — 2026-10-30
+- Changed: Move to Cloud copies only what git keeps track of, plus new files git doesn't ignore. Build output, caches and anything else your .gitignore lists stay on this Mac, so a repo with gigabytes of build files moves in seconds. Ignored .env files stay here too, and Bring Back leaves the cloud's own build files behind.
+
 ## 1.1.0-beta.4 — 2026-10-30
 - Fixed: Installing an update while agents are working no longer asks whether to move them to the cloud; they keep running through the relaunch.
 

@@ -12,13 +12,16 @@ enum CloudSync {
 
     private static let rsync = "/usr/bin/rsync"
 
-    /// `folders` are copied without `CloudMovePlan.excluded`; `files` (files or folders) whole.
-    /// Paths that don't exist here are skipped. `progress` gets the share sent so far, 0 to 1,
-    /// on a background queue; files the machine already has go faster than it says.
+    /// `folders` are copied without `CloudMovePlan.excluded` or what git ignores in them; `files`
+    /// (files or folders) whole. Paths that don't exist here are skipped. `progress` gets the
+    /// share sent so far, 0 to 1, on a background queue; files the machine already has go
+    /// faster than it says.
     static func push(folders: [String], files: [String], to cloud: CloudHost, progress: ((Double) -> Void)? = nil) throws {
         let folders = folders.filter(isDirectory)
         let files = files.filter { FileManager.default.fileExists(atPath: $0) }
-        let total = folders.reduce(0) { $0 + size(of: $1, excluding: CloudMovePlan.excluded) } + files.reduce(0) { $0 + size(of: $1, excluding: []) }
+        let ignored = Dictionary(uniqueKeysWithValues: folders.map { ($0, gitIgnored(in: $0)) })
+        let total = folders.reduce(0) { $0 + size(of: $1, excluding: CloudMovePlan.excluded, ignored: ignored[$1] ?? "") }
+            + files.reduce(0) { $0 + size(of: $1, excluding: []) }
         var done: Int64 = 0
         // Each copy reports from its own timer thread, on top of what the copies before it sent.
         let report = { (base: Int64) in
@@ -26,7 +29,8 @@ enum CloudSync {
         }
         for folder in folders {
             try makeFolder(folder, on: cloud)
-            let sent = try copy([folder + "/"], to: "cloud:" + folder + "/", excluding: CloudMovePlan.excluded, via: cloud, progress: report(done))
+            let sent = try copy([folder + "/"], to: "cloud:" + folder + "/", excluding: CloudMovePlan.excluded,
+                                rules: CloudMovePlan.ignoreRules(gitIgnored: ignored[folder] ?? ""), via: cloud, progress: report(done))
             done += sent
         }
         for path in files {
@@ -43,18 +47,40 @@ enum CloudSync {
         }
     }
 
-    /// Bytes in the files under `path`, leaving out folders named in `excluded`.
-    static func size(of path: String, excluding excluded: [String]) -> Int64 {
+    /// What git ignores in `folder` (`CloudMovePlan.ignoreRules` takes it); empty outside a repo.
+    static func gitIgnored(in folder: String) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", folder] + gitIgnoredArguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "" }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : ""
+    }
+
+    private static let gitIgnoredArguments = ["ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z"]
+
+    /// Bytes in the files under `path`, leaving out folders named in `excluded` and what `ignored`
+    /// (`gitIgnored(in:)`) lists, as the copy does.
+    static func size(of path: String, excluding excluded: [String], ignored: String = "") -> Int64 {
         let url = URL(fileURLWithPath: path)
         let keys: [URLResourceKey] = [.isDirectoryKey, .totalFileAllocatedSizeKey, .fileSizeKey]
         guard isDirectory(path) else { return Int64((try? url.resourceValues(forKeys: Set(keys)))?.fileSize ?? 0) }
         guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return 0 }
         let skip = Set(excluded)
+        let root = url.standardizedFileURL.path + "/"
+        let rules = Set(CloudMovePlan.ignoreRules(gitIgnored: ignored).map { String($0.dropFirst()) })
         var total: Int64 = 0
         for case let file as URL in walker {
             guard let values = try? file.resourceValues(forKeys: Set(keys)) else { continue }
+            let relative = String(file.standardizedFileURL.path.dropFirst(root.count))
             if values.isDirectory == true {
-                if skip.contains(file.lastPathComponent) { walker.skipDescendants() }
+                if skip.contains(file.lastPathComponent) || rules.contains(relative + "/") { walker.skipDescendants() }
+            } else if rules.contains(relative) {
+                continue
             } else {
                 total += Int64(values.fileSize ?? 0)
             }
@@ -69,7 +95,11 @@ enum CloudSync {
         for (paths, excluded) in [(folders, CloudMovePlan.excluded), (files, [])] {
             for folder in paths where (try? cloud.run(["/usr/bin/env", "test", "-d", folder]))?.status == 0 {
                 try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
-                try copy(["cloud:" + folder + "/"], to: folder + "/", excluding: excluded, options: ["--update"], via: cloud)
+                // What git ignores there (builds made in the cloud) stays there.
+                let ignored = excluded.isEmpty ? "" : (try? cloud.run(["/usr/bin/env", "git", "-C", folder] + gitIgnoredArguments, timeout: 60))
+                    .flatMap { $0.status == 0 ? $0.stdout : nil } ?? ""
+                try copy(["cloud:" + folder + "/"], to: folder + "/", excluding: excluded, rules: CloudMovePlan.ignoreRules(gitIgnored: ignored),
+                         options: ["--update"], via: cloud)
             }
         }
     }
@@ -81,15 +111,19 @@ enum CloudSync {
 
     /// `sources` and `destination` name the cloud side as `cloud:<path>`. Returns the bytes sent.
     @discardableResult
-    private static func copy(_ sources: [String], to destination: String, excluding excluded: [String], options: [String] = [],
-                             via cloud: CloudHost, progress: ((Int64) -> Void)? = nil) throws -> Int64 {
+    /// `rules` are rsync exclude patterns, such as `CloudMovePlan.ignoreRules`.
+    private static func copy(_ sources: [String], to destination: String, excluding excluded: [String], rules: [String] = [],
+                             options: [String] = [], via cloud: CloudHost, progress: ((Int64) -> Void)? = nil) throws -> Int64 {
         guard let binary = Bundle.main.executableURL?.path, !binary.contains(" ") else {
             throw Failure(description: "agterm's path has a space, which rsync's -e can't take")
         }
+        let ruleFile = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-rules-\(UUID().uuidString)").path
+        FileManager.default.createFile(atPath: ruleFile, contents: Data(rules.map { $0 + "\n" }.joined().utf8))
+        defer { try? FileManager.default.removeItem(atPath: ruleFile) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: rsync)
-        process.arguments = ["-a"] + options + excluded.flatMap { ["--exclude", $0] } + ["-e", "\(binary) \(CloudPipe.flag)"]
-            + sources + [destination]
+        process.arguments = ["-a"] + options + excluded.flatMap { ["--exclude", $0] } + ["--exclude-from=" + ruleFile]
+            + ["-e", "\(binary) \(CloudPipe.flag)"] + sources + [destination]
         var environment = ProcessInfo.processInfo.environment.merging(cloud.environment) { $1 }
         let counter = FileManager.default.temporaryDirectory.appendingPathComponent("agterm-sent-\(UUID().uuidString)").path
         FileManager.default.createFile(atPath: counter, contents: nil)

@@ -41,6 +41,22 @@ public enum CloudMovePlan {
         return projects.sorted().map { base + $0 }.first { exists($0 + "/" + sessionID + ".jsonl") }
     }
 
+    /// What git ignores in a repo, as rsync rules anchored to the repo: build output, caches and
+    /// agent worktrees stay behind, wherever the project puts them. `ignored` is the output of
+    /// `git ls-files -o -i --exclude-standard --directory -z` run in the repo (folders end in "/").
+    /// Ignored `.env` files and keys stay on the Mac too, as with Claude Code's cloud sessions.
+    public static func ignoreRules(gitIgnored ignored: String) -> [String] {
+        ignored.split(separator: "\0").map(String.init).filter { !$0.isEmpty }.map { "/" + escaped($0) }
+    }
+
+    /// A name rsync takes literally: `*`, `?`, `[` and `\` are pattern characters to it.
+    private static func escaped(_ path: String) -> String {
+        path.reduce(into: "") { out, c in
+            if "*?[\\".contains(c) { out.append("\\") }
+            out.append(c)
+        }
+    }
+
     /// Drops empty, `.` and `..` parts. Unlike `standardizingPath` it never looks at the disk,
     /// which would turn /private/tmp into /tmp on a Mac: the cloud machine must get the same path.
     private static func standardized(_ path: String) -> String {
