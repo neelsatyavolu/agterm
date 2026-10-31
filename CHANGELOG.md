@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-beta.2 — 2026-10-30
+- Added: Right-click a tab and choose Move to Cloud to move just that tab, or Bring Back from Cloud to bring it home. Tabs in the cloud show a cloud next to their folder.
+- Fixed: Opening agterm from inside one of its tabs no longer stops Claude from saving conversations, and tab status no longer flips between working and done afterwards.
+
 ## 1.1.0-beta.1 — 2026-10-30
 - Added: agterm Cloud (beta). The cloud button beside + moves every tab to a cloud machine, so agents keep working while this Mac is off, and brings them back when you return. Set it up in Settings → Cloud ($12 a month for 100 hours).
 - Added: Beta updates. Paste a beta key in Settings → General → Updates and agterm installs beta builds as well as stable releases, whichever is newer. Leave Beta goes back to stable releases.
