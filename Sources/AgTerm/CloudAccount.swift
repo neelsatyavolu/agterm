@@ -37,6 +37,8 @@ final class CloudAccount: ObservableObject {
         let hoursIncluded: Double?
         let hoursMax: Double?
         let capped: Bool
+        /// The maker's own account: no subscription, no limit.
+        let free: Bool?
         let machine: Machine?
     }
 

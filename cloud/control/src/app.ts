@@ -55,6 +55,7 @@ interface UserRow {
   overage_reported: number;
   capped: number;
   canceled_at: number | null;
+  free: number;
 }
 
 class Failure extends Error {
@@ -131,6 +132,7 @@ async function status(user: UserRow, deps: Deps) {
     hoursIncluded: deps.config.includedHours,
     hoursMax: deps.config.maxHours,
     capped: user.capped === 1,
+    free: user.free === 1,
     machine: user.machine ? { id: user.machine, state: await deps.fly.machineState(user.machine), region: user.region } : null,
   };
 }
@@ -271,11 +273,11 @@ export async function hourly(deps: Deps): Promise<void> {
       }
       const from = Math.max(user.metered_until ?? now, user.period_start ?? 0);
       const used = user.seconds_used + runningSeconds(await deps.fly.events(user.machine!), from, now);
-      const over = used >= limitHours(user, deps.config) * 3600;
+      const over = !user.free && used >= limitHours(user, deps.config) * 3600;
       // Whole hours past the included ones, sent once each; a part hour isn't billed.
       const overage = Math.floor(Math.max(0, used - deps.config.includedHours * 3600) / 3600);
       let reported = user.overage_reported;
-      if (overage > reported && user.stripe_customer) {
+      if (overage > reported && user.stripe_customer && !user.free) {
         await deps.stripe.meterEvent(deps.config.meterEvent, user.stripe_customer, overage - reported, `${user.id}-${user.period_start}-${overage}`);
         reported = overage;
       }

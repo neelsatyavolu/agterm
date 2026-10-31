@@ -200,6 +200,20 @@ describe("metering", () => {
     expect(machine.autostart).toBe(true);
   });
 
+  it("never stops or bills a free account", async () => {
+    await call("GET", "/v1/cloud");
+    await deps.db.prepare("UPDATE users SET status = 'active', free = 1 WHERE id = 'U1'").run();
+    await call("POST", "/v1/cloud/machine", { user: "neel", home: "/Users/neel" });
+    const machine = fly.machines.get("m1")!;
+    machine.state = "started";
+    machine.events = [{ type: "start", status: "started", timestamp: clock * 1000 }];
+    clock += 600 * 3600;
+    await hourly(deps);
+    expect((await call("GET", "/v1/cloud")).body).toMatchObject({ plan: "active", free: true, hoursUsed: 600, capped: false });
+    expect(machine).toMatchObject({ state: "started", autostart: true });
+    expect(meterEvents.length).toBe(0);
+  });
+
   it("limits stay within the most allowed", async () => {
     expect((await call("POST", "/v1/cloud/cap", { hours: 501 })).status).toBe(400);
     expect((await call("POST", "/v1/cloud/cap", { hours: -1 })).status).toBe(400);

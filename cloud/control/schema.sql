@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   overage_reported INTEGER NOT NULL DEFAULT 0, -- hours past the included ones sent to Stripe's meter
   capped INTEGER NOT NULL DEFAULT 0, -- stopped for reaching the limit
   canceled_at INTEGER,
+  free INTEGER NOT NULL DEFAULT 0,  -- the maker's own account: active with no subscription, no limit, never billed
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS users_customer ON users(stripe_customer);

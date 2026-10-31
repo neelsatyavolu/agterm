@@ -48,6 +48,9 @@ struct CloudPane: View {
     @ViewBuilder
     private func plan(_ status: CloudAccount.Status) -> some View {
         switch status.plan {
+        case "active" where status.free == true:
+            LabeledContent("Plan", value: "Free")
+            LabeledContent("This month", value: String(format: "%.1f hours", status.hoursUsed))
         case "active":
             LabeledContent("Plan", value: "Active")
             LabeledContent("This month", value: String(format: "%.1f of %.0f hours", status.hoursUsed, status.hoursLimit))
@@ -57,6 +60,7 @@ struct CloudPane: View {
             LabeledContent("Stop the machine after") {
                 HStack {
                     TextField("hours", text: $limit, prompt: Text(String(format: "%.0f", status.hoursLimit)))
+                        .labelsHidden()
                         .frame(width: 60)
                         .onSubmit { account.setLimit(limit.isEmpty ? nil : Double(limit)) }
                     Text("hours a month")
