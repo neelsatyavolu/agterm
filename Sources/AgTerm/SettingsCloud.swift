@@ -41,6 +41,9 @@ struct CloudPane: View {
             } footer: {
                 Footnote("Sign in with your agmux account; nothing about your sessions is shared. Your tabs keep running on a cloud machine while this Mac is off. Shell → Move All Tabs to Cloud copies each tab's folder and conversation there and continues it. $12 a month for 100 hours, 20 GB and 4 GB of memory; more hours $0.10 each. Agents sign in there once; your Mac's logins are never copied.")
             }
+            if account.status?.plan == "active", account.status?.machine != nil, CloudCredentials.current != nil {
+                CloudOnePasswordSection()
+            }
         }
         .onAppear { if account.isSignedIn { account.refresh() } }
     }

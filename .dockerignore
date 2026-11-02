@@ -6,4 +6,5 @@
 !Vendor
 !Tests
 !cloud/entrypoint.sh
+!cloud/agterm-profile.sh
 Vendor/**/.build

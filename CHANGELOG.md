@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0-beta.9 — 2026-10-31
+- Fixed: A Claude Code or Codex tab moved to the cloud opens its agent there again. The cloud machine didn't have them installed, so the tab was left at a shell prompt.
+- Changed: A tab moved to the cloud shows its agent right away, and installs the project's dependencies in the background (logs in ~/.agterm/setup on the cloud machine). An agent stopped mid-turn is told the install may still be running.
+- Changed: The cloud machine has Node 24 instead of Node 18, which many current packages no longer install on, and the 1Password CLI (op).
+- Added: Settings → Cloud → 1Password takes a 1Password service account token and saves it only on your cloud machine, so agents in cloud tabs can use op.
+
 ## 1.1.0-beta.8 — 2026-10-31
 - Fixed: A Grok tab that finishes while you're in another tab shows done instead of needs you. It shows needs you when Grok is waiting for your answer.
 - Fixed: A Grok tab keeps showing working while Grok runs a long command or waits on a subagent, including right after agterm reopens. Before, it could look finished while Grok was still going.

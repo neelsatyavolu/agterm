@@ -46,15 +46,16 @@ extension SelfTest {
                     report("cloud tab took its place", false)
                     exit(1)
                 }
-                let expected = "session=\(id) lines=2 prompt=[\(CloudMove.continuePrompt)] host=Linux"
-                waitFor({ screenLine(moved, containing: expected) != nil }, timeout: 20) { resumed in
+                // The prompt, with its note about the background install, wraps onto the next line.
+                let expected = "session=\(id) lines=2 prompt=[\(CloudMove.continuePrompt) This project's"
+                waitFor({ screenLine(moved, containing: expected) != nil && screenLine(moved, containing: "host=Linux") != nil }, timeout: 20) { resumed in
                     report("same conversation continues in the cloud, transcript and prompt included", resumed)
                     report("local shell ended", localShell > 0 && kill(localShell, 0) != 0)
                     report("repo copied", (try? cloud.run(["/usr/bin/env", "test", "-f", moveRepo + "/notes.txt"]))?.status == 0)
                     report("node_modules left out", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/node_modules"]))?.status == 1)
                     report("git-ignored folder left out", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/cache"]))?.status == 1)
                     report("ignored .env left on this Mac", (try? cloud.run(["/usr/bin/env", "test", "-e", moveRepo + "/.env"]))?.status == 1)
-                    report("cloud setup ran before the agent", (try? cloud.run(["/usr/bin/env", "test", "-f", moveRepo + "/setup-ran"]))?.status == 0)
+                    report("cloud setup ran in the background", (try? cloud.run(["/usr/bin/env", "test", "-f", moveRepo + "/setup-ran"]))?.status == 0)
                     report("tab no longer shows the move", controller.cloudState.moving.isEmpty)
                     checkPhoneHandoff(cloud, tabID: moved.tabID, report: report)
                     snapshot(window, "\(outDir)/moved-tab.png")

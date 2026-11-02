@@ -21,6 +21,10 @@ public enum CloudSetup {
         }
     }
 
+    /// Where runs keep their state and locks, under the machine's home.
+    public static let stateFolder = ".agterm/setup"
+    public static let setupLockSuffix = ".lock"
+
     /// The repo's own setup script, used instead of the steps agterm knows.
     public static let customScript = ".agterm/cloud-setup.sh"
 
@@ -48,11 +52,16 @@ public enum CloudSetup {
     }
 
     /// A POSIX sh script that runs `steps` in `folder`, each only when its inputs changed since it
-    /// last succeeded there or its output is missing. Failures are reported and passed over, so
-    /// the agent still starts. Nil when there is nothing to install.
+    /// last succeeded there or its output is missing. Failures are reported and passed over.
+    /// One run per folder at a time (where `flock` exists): tabs moved together share a repo. The
+    /// machine stays up while a run holds its lock (`setupLockSuffix`), so it waits a few
+    /// seconds for the lock rather than give up on a brief check.
+    /// Nil when there is nothing to install.
     public static func script(folder: String, steps: [Step]) -> String? {
         guard !steps.isEmpty else { return nil }
-        var lines = ["cd \(quoted(folder)) || exit 0", "state=\"$HOME/.agterm/setup\"", "mkdir -p \"$state\""]
+        let lock = "\"$state/$(printf %s \(quoted(folder)) | cksum | cut -d' ' -f1)\(setupLockSuffix)\""
+        var lines = ["cd \(quoted(folder)) || exit 0", "state=\"$HOME/\(stateFolder)\"", "mkdir -p \"$state\"",
+                     "if command -v flock >/dev/null; then exec 9>\(lock); flock -w 5 9 || exit 0; fi"]
         for (index, step) in steps.enumerated() {
             let marker = "\"$state/$(printf %s \(quoted(folder + "#" + step.name)) | cksum | cut -d' ' -f1)\""
             let key = "$(cat \(step.inputs.map(quoted).joined(separator: " ")) 2>/dev/null | cksum)"

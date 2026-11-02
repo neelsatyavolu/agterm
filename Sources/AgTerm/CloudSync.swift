@@ -105,31 +105,53 @@ enum CloudSync {
         }
     }
 
-    /// Puts a repo's dependency setup (`CloudSetup`) on the machine; returns the line a cloud tab
-    /// types to run it, or nil when the repo needs none.
-    static func installSetup(for folder: String, on cloud: CloudHost) throws -> String? {
+    /// The dependency installs a repo on this Mac needs in the cloud.
+    static func setupSteps(for folder: String) -> [CloudSetup.Step] {
         var files = Set((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [])
         if FileManager.default.fileExists(atPath: folder + "/" + CloudSetup.customScript) { files.insert(CloudSetup.customScript) }
-        guard let script = CloudSetup.script(folder: folder, steps: CloudSetup.steps(files: files)) else { return nil }
+        return CloudSetup.steps(files: files)
+    }
+
+    /// Puts a repo's dependency setup (`CloudSetup`) on the machine; returns the line a cloud tab
+    /// types to start it, or nil when the repo needs none.
+    static func installSetup(for folder: String, on cloud: CloudHost) throws -> String? {
+        guard let script = CloudSetup.script(folder: folder, steps: setupSteps(for: folder)) else { return nil }
         let name = SHA256.hash(data: Data(folder.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
         let result = try cloud.run(["/usr/bin/env", "sh", "-c", "mkdir -p \"$HOME/.agterm/setup\" && printf %s \"$1\" > \"$HOME/.agterm/setup/$2.sh\"",
                                     "sh", script, name])
         guard result.status == 0 else { throw Failure(description: "couldn't set up \(folder) on the cloud machine: \(result.stderr)") }
-        return "sh ~/.agterm/setup/\(name).sh"
+        // In the background, so the agent starts at once. Its output is added to a log: another tab
+        // from the same repo may start it too, and must not wipe the running one's.
+        let log = "~/.agterm/setup/\(name).log"
+        return "echo \(CloudSetup.quoted("agterm: installing dependencies in the background (\(log))")); "
+            + "(setsid sh ~/.agterm/setup/\(name).sh >> \(log) 2>&1 < /dev/null &)"
     }
 
-    /// Writes the phone handoff to the machine (only its owner can read it), or removes it. The
-    /// secret goes over stdin, never on a command line, which `ps` shows.
+    /// Writes the phone handoff to the machine (only its owner can read it), or removes it.
     static func writePhoneHandoff(_ handoff: CloudPhoneHandoff?, to cloud: CloudHost) throws {
-        let path = "$HOME/" + CloudPhoneHandoff.path
+        try writePrivate(handoff.map { try JSONEncoder().encode($0) }, at: CloudPhoneHandoff.path, to: cloud)
+    }
+
+    /// Where the machine's login shells read `OP_SERVICE_ACCOUNT_TOKEN` from (cloud/agterm-profile.sh).
+    static let opTokenPath = ".agterm/op-token"
+
+    /// Saves the 1Password service account token on the machine, or removes it (nil).
+    static func writeOpToken(_ token: String?, to cloud: CloudHost) throws {
+        try writePrivate(token.map { Data($0.utf8) }, at: opTokenPath, to: cloud)
+    }
+
+    /// Writes `data` to `path` under the machine's home, readable only by its owner, or removes
+    /// it (nil). It goes over stdin, never on a command line, which `ps` shows.
+    private static func writePrivate(_ data: Data?, at path: String, to cloud: CloudHost) throws {
+        let path = "$HOME/" + path
         let result: (status: Int32, stdout: String, stderr: String)
-        if let handoff {
+        if let data {
             let write = "umask 077 && mkdir -p \"$(dirname \"\(path)\")\" && cat > \"\(path).new\" && mv \"\(path).new\" \"\(path)\""
-            result = try cloud.run(["/usr/bin/env", "sh", "-c", write], input: try JSONEncoder().encode(handoff))
+            result = try cloud.run(["/usr/bin/env", "sh", "-c", write], input: data)
         } else {
             result = try cloud.run(["/usr/bin/env", "sh", "-c", "rm -f \"\(path)\""])
         }
-        guard result.status == 0 else { throw Failure(description: "couldn't update \(CloudPhoneHandoff.path) on the cloud machine: \(result.stderr)") }
+        guard result.status == 0 else { throw Failure(description: "couldn't update \(path) on the cloud machine: \(result.stderr)") }
     }
 
     /// The cloud's changes to a repo since `base`, as a binary git patch: its commits, edits, and

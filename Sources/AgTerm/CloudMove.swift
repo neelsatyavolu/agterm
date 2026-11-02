@@ -9,6 +9,15 @@ import Foundation
 /// stopped. Main queue, except the copying.
 final class CloudMove {
     static let continuePrompt = "Continue where you left off."
+    /// Added for an agent whose repo installs dependencies in the background after the move.
+    static let setupNote = "This project's dependencies may still be installing in the background (logs in ~/.agterm/setup/); "
+        + "if a build or test can't find a package, wait for that to finish."
+
+    /// What an agent cut off mid-turn is told once it runs in the cloud.
+    static func prompt(folder: String?) -> String {
+        guard let folder, !CloudSync.setupSteps(for: folder).isEmpty else { return continuePrompt }
+        return continuePrompt + " " + setupNote
+    }
 
     /// One tab and what moving it involves.
     struct Item {
@@ -124,7 +133,7 @@ final class CloudMove {
         Self.wait(upTo: item.agent == nil ? 0 : 20, until: { !stillThere() || !busy() }) { _ in
             guard stillThere() else { return next(Frozen(item: item, resume: plain, state: state)) }
             // Only an agent cut off mid-turn is told to continue.
-            let resume = item.agent == nil ? nil : (busy() ? session.resumeCommand(prompt: Self.continuePrompt) : nil) ?? plain
+            let resume = item.agent == nil ? nil : (busy() ? session.resumeCommand(prompt: Self.prompt(folder: item.folder)) : nil) ?? plain
             session.signalForeground(SIGTERM)
             Self.wait(upTo: 6, until: { !session.isRunningProgram }) { stopped in
                 if !stopped, stillThere() { session.signalForeground(SIGKILL) }
@@ -161,9 +170,9 @@ final class CloudMove {
         }
     }
 
-    /// Opens the cloud tabs, then reports once their agents run there (or their dependencies
-    /// install, which the machine finishes alone), so quitting right after can't catch an agent
-    /// before it has started. `setups` are lines that install a repo's dependencies, by folder.
+    /// Opens the cloud tabs, then reports once their agents run there (dependencies install
+    /// alongside, and the machine finishes them alone), so quitting right after can't catch an
+    /// agent before it has started. `setups` are lines that install a repo's dependencies, by folder.
     private func reopen(_ frozen: [Frozen], setups: [String: String], done: @escaping (Outcome) -> Void) {
         var opened: [(tab: TerminalSession, resumes: Bool)] = []
         var failures: [String] = []

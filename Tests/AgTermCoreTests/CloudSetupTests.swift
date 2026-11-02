@@ -75,6 +75,27 @@ final class CloudSetupTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("runs"), encoding: .utf8), "x\nx\n")
     }
 
+    /// Two tabs from one repo start the setup together: the second leaves it to the first.
+    func testOneRunPerFolderAtATime() throws {
+        guard FileManager.default.fileExists(atPath: "/usr/bin/flock") else { throw XCTSkip("needs flock (Linux)") }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("setup-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let step = CloudSetup.Step(name: "slow", command: "echo x >> runs; sleep 2", inputs: [], output: nil)
+        let script = try XCTUnwrap(CloudSetup.script(folder: root.path, steps: [step]))
+        let processes = try (0..<2).map { _ in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", script]
+            process.environment = ["HOME": root.path, "PATH": "/usr/bin:/bin"]
+            process.standardOutput = FileHandle.nullDevice
+            try process.run()
+            return process
+        }
+        processes.forEach { $0.waitUntilExit() }
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("runs"), encoding: .utf8), "x\n")
+    }
+
     func testCopySizeWording() {
         XCTAssertEqual(CloudCopySize.minutes(1), 1)
         XCTAssertEqual(CloudCopySize.minutes(Int64(20 << 20) * 60 * 3), 3)

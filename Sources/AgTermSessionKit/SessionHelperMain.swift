@@ -56,12 +56,25 @@ public enum SessionHelperMain {
         let timer = DispatchSource.makeTimerSource(queue: .global())
         timer.schedule(deadline: .now() + 30, repeating: 30)
         timer.setEventHandler {
-            guard let quiet = server.quietFor, quiet >= limit else { return }
+            guard let quiet = server.quietFor, quiet >= limit, !setupRunning(in: NSHomeDirectory() + "/" + CloudSetup.stateFolder) else { return }
             server.stop()
             exit(0)
         }
         timer.resume()
         idleTimer = timer
+    }
+
+    /// Whether a dependency install after a move (`CloudSetup`) is still going: it runs outside
+    /// any tab, holding its folder's lock. Taking the lock for a moment to test it is safe, as a
+    /// run waits a few seconds for it.
+    static func setupRunning(in folder: String) -> Bool {
+        let locks = ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []).filter { $0.hasSuffix(CloudSetup.setupLockSuffix) }
+        return locks.contains { name in
+            let fd = open(folder + "/" + name, O_RDONLY | O_CLOEXEC)
+            guard fd >= 0 else { return false }
+            defer { close(fd) }
+            return flock(fd, LOCK_EX | LOCK_NB) != 0
+        }
     }
 
     nonisolated(unsafe) private static var idleTimer: DispatchSourceTimer?
