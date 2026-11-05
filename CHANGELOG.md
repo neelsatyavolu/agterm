@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — 2026-11-04
+- Added: Team sessions. In Settings → Teams & Phone, members of an agmux team can share their agent tabs with teammates who also turn it on. Their agents then see your tabs' titles, folders, branches and status, and can ask a read-only copy of a Claude Code tab a question; the copy runs on your Mac and reads only that tab's conversation and the files in its folder. If you also allow messages, a teammate's agent can type a short note into your agent, marked as coming from them. Your agents get the same tools: list_team_sessions, ask_team_session and message_team_session in consult.
+- Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.
+- Added: Beta updates. Paste a beta key in Settings → General → Updates and agterm installs beta builds as well as stable releases, whichever is newer. Leave Beta goes back to stable releases.
+- Fixed: An agent asking a copy of another Claude Code session with consult gets an answer when that session was started without permission prompts. It used to get an error.
+- Fixed: A Grok tab that finishes while you're in another tab shows done instead of needs you. It shows needs you when Grok is waiting for your answer.
+- Fixed: A Grok tab keeps showing working while Grok runs a long command or waits on a subagent, including right after agterm reopens. Before, it could look finished while Grok was still going.
+- Fixed: A Grok tab no longer flips back to working after Grok finishes, such as when Grok names the conversation a few seconds later or while you type your next message. Its title also drops the trailing "- grok".
+- Fixed: Opening agterm from inside one of its tabs no longer stops Claude from saving conversations, and tab status no longer flips between working and done afterwards.
+- Fixed: Dropping a dragged tab leaves it where you dropped it, instead of the tabs appearing to swap a second time.
+- Fixed: While you drag a tab, the tabs it passes over no longer light up as if the mouse were over them.
+
 ## 1.1.0-beta.9 — 2026-11-04
 - Fixed: A Claude Code or Codex tab moved to the cloud opens its agent there again. The cloud machine didn't have them installed, so the tab was left at a shell prompt.
 - Changed: A tab moved to the cloud shows its agent right away, and installs the project's dependencies in the background (logs in ~/.agterm/setup on the cloud machine). An agent stopped mid-turn is told the install may still be running.
