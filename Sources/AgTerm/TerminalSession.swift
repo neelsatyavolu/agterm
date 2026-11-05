@@ -306,6 +306,17 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
 
     var folder: String { PathDisplay.folder(cwd, home: NSHomeDirectory()) }
 
+    /// The conversation id of the Claude Code or Codex agent in this local tab, which consult can
+    /// copy read-only to answer a teammate's question. Call `pollProcess` first.
+    var agentConversationID: String? {
+        guard !isCloud, !signals.exited else { return nil }
+        switch agentName {
+        case "claude": return claudeSessionID
+        case "codex": return codexRollout.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
+        default: return nil
+        }
+    }
+
     /// The foreground program is something other than the shell, e.g. an agent.
     /// Reads the kernel directly so a program started under a second ago still counts.
     var isRunningProgram: Bool {

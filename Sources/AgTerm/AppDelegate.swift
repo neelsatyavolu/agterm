@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WhatsNew.showIfUpdated(in: controller, previousInstall: previousInstall)
         askForDiskAccessIfNeeded()
         TeamsSync.shared.start()
+        TeamSessions.shared.start()
         TeamAccounts.shared.start()
         UsageMonitor.shared.start()
         RemoteClient.shared.startIfEnabled()

@@ -1,10 +1,12 @@
 # Changelog
 
-## 1.1.0-beta.9 — 2026-10-31
+## 1.1.0-beta.9 — 2026-11-04
 - Fixed: A Claude Code or Codex tab moved to the cloud opens its agent there again. The cloud machine didn't have them installed, so the tab was left at a shell prompt.
 - Changed: A tab moved to the cloud shows its agent right away, and installs the project's dependencies in the background (logs in ~/.agterm/setup on the cloud machine). An agent stopped mid-turn is told the install may still be running.
 - Changed: The cloud machine has Node 24 instead of Node 18, which many current packages no longer install on, and the 1Password CLI (op).
 - Added: Settings → Cloud → 1Password takes a 1Password service account token and saves it only on your cloud machine, so agents in cloud tabs can use op.
+- Added: Team sessions. In Settings → Teams & Phone, members of an agmux team can share their agent tabs with teammates who also turn it on. Their agents then see your tabs' titles, folders, branches and status, and can ask a read-only copy of a Claude Code tab a question; the copy runs on your Mac and reads only that tab's conversation and the files in its folder. If you also allow messages, a teammate's agent can type a short note into your agent, marked as coming from them. Your agents get the same tools: list_team_sessions, ask_team_session and message_team_session in consult.
+- Fixed: An agent asking a copy of another Claude Code session with consult gets an answer when that session was started without permission prompts. It used to get an error.
 
 ## 1.1.0-beta.8 — 2026-10-31
 - Fixed: A Grok tab that finishes while you're in another tab shows done instead of needs you. It shows needs you when Grok is waiting for your answer.

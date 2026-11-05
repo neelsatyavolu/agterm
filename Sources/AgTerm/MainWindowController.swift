@@ -41,6 +41,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             self.window?.makeKeyAndOrderFront(nil)
         }
         RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
+        TeamSessions.shared.tabs = { [weak self] in self?.sessions ?? [] }
         RemoteClient.shared.onEnabledChange = { [weak self] in self?.syncPhoneToCloud() }
         RemoteClient.shared.openTab = { [weak self] folder, command in
             guard let self else { return nil }
