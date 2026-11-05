@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Foundation
 
 /// Codex and Grok logins your team shares through agmux Teams. agterm borrows one only when your

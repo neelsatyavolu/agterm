@@ -34,4 +34,12 @@ public enum AccountPicker {
                 return ra != rb ? ra < rb : a.offset > b.offset
             }?.element.id
     }
+
+    /// The login new sessions start on: `home` (your own login, or the one you chose) while it's
+    /// usable or switching is off, else the usable one with the most left; nil if none is.
+    public static func forNewSessions(_ candidates: [Candidate], home: String, autoSwitch: Bool, now: Date) -> String? {
+        let homeUsable = candidates.first { $0.id == home }?.usable(now) ?? true
+        if homeUsable || !autoSwitch { return home }
+        return next(candidates, excluding: [home], now: now)
+    }
 }

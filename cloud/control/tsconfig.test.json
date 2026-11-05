@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["@types/node"], "lib": ["es2022", "dom"] },
+  "include": ["test", "src/app.ts", "src/usage.ts", "src/webhook.ts", "src/regions.ts", "src/services.ts"]
+}

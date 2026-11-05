@@ -14,13 +14,36 @@ final class HostedSession {
     /// rather than growing the helper's memory (or getting dropped).
     private static let pauseAbove = 4 * 1024 * 1024
     private static let resumeAt = 1 * 1024 * 1024
+    /// The same for input from a client without the pty: past this much the program hasn't
+    /// taken, the client isn't read until it is down to `inputResumeAt`.
+    private static let inputPauseAbove = 1024 * 1024
+    private static let inputResumeAt = 64 * 1024
+    #if canImport(Darwin)
+    private static let getWindowSize = TIOCGWINSZ
+    private static let setWindowSize = TIOCSWINSZ
+    #else
+    private static let getWindowSize = UInt(TIOCGWINSZ)
+    private static let setWindowSize = UInt(TIOCSWINSZ)
+    #endif
 
-    let id = UUID().uuidString
+    let id: String
+    /// What started the shell, kept for `kept()`.
+    private let request: SpawnRequest
+    /// Typed once the shell first writes (its prompt): a kept agent's resume command.
+    private var pendingInput: String?
     let pid: pid_t
     let cwd: String
     let startedAt = Date()
     /// Called once the shell has exited and been reaped.
     var onExit: ((HostedSession) -> Void)?
+    /// Called whenever the shell writes something.
+    var onOutput: (() -> Void)?
+    /// What the phone shows for it while the Mac is off (`CloudPhone`).
+    let status = SessionStatus()
+    /// The Mac tab this session belongs to (its `AGTERM_TAB_ID`), else the session's own id.
+    var tabID: String {
+        request.env.first { $0.hasPrefix("AGTERM_TAB_ID=") }.map { String($0.dropFirst("AGTERM_TAB_ID=".count)) } ?? id
+    }
 
     private let masterFd: Int32
     private let queue: DispatchQueue
@@ -29,20 +52,25 @@ final class HostedSession {
     private var readSource: DispatchSourceRead?
     /// The reader is suspended once every slave has closed, until the shell is reaped.
     private var readerSuspended = false
-    private var exitSource: DispatchSourceProcess?
+    private var exitWatcher: ExitWatcher?
     private var client: WireConnection?
     /// The client whose backlog has the reader suspended.
     private var throttledBy: WireConnection?
     private var exited = false
+    /// Input from a client without the pty (`input`); made on first use.
+    private var writer: PtyWriter?
     private let readBuffer = UnsafeMutableRawPointer.allocate(byteCount: readSize, alignment: 8)
 
     var info: SessionInfo { SessionInfo(id: id, pid: pid, cwd: cwd, startedAt: startedAt, attached: client != nil) }
 
-    init(request: SpawnRequest, queue: DispatchQueue) throws {
+    init(request: SpawnRequest, queue: DispatchQueue, id: String = UUID().uuidString) throws {
         (pid, masterFd) = try PtySpawn.fork(request)
+        self.id = id
+        self.request = request
         cwd = request.cwd
         self.queue = queue
         terminal = Self.makeTerminal(cols: Int(request.cols), rows: Int(request.rows), delegate: terminalDelegate)
+        terminalDelegate.status = status
     }
 
     /// The headless terminal that keeps a session's screen.
@@ -66,14 +94,11 @@ final class HostedSession {
         reader.setEventHandler { [weak self] in self?.readPty() }
         // The master stays open until the session ends, so its number is never reused while
         // `attach` or `signal` might still use it.
-        reader.setCancelHandler { [masterFd] in Darwin.close(masterFd) }
+        reader.setCancelHandler { [masterFd] in Foundation.close(masterFd) }
         readSource = reader
         reader.resume()
 
-        let watcher = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
-        watcher.setEventHandler { [weak self] in self?.reap(blocking: true) }
-        exitSource = watcher
-        watcher.resume()
+        exitWatcher = ExitWatcher(pid: pid, queue: queue) { [weak self] in self?.reap(blocking: true) }
         // The shell may have died before the watcher was registered.
         queue.async { [weak self] in self?.reap(blocking: false) }
     }
@@ -92,6 +117,84 @@ final class HostedSession {
         try? connection.send(.replay(ScreenReplay.bytes(terminal)))
     }
 
+    func isAttached(_ connection: WireConnection) -> Bool {
+        client === connection
+    }
+
+    /// Input from `connection`, a client that has no pty descriptor. Written on the writer's own
+    /// queue, so a shell that isn't reading its input never blocks the server; past a limit the
+    /// client isn't read until the program catches up, so the backlog can't grow without end.
+    func write(_ bytes: Data, from connection: WireConnection) {
+        guard !exited, !bytes.isEmpty else { return }
+        if writer == nil {
+            let fd = fcntl(masterFd, F_DUPFD_CLOEXEC, 0)
+            guard fd >= 0 else { return }
+            writer = PtyWriter(fd: fd)
+        }
+        guard let writer else { return }
+        status.input([UInt8](bytes))
+        writer.write([UInt8](bytes)[...])
+        guard writer.pendingBytes > Self.inputPauseAbove else { return }
+        connection.pauseReading()
+        writer.whenPending(atMost: Self.inputResumeAt, on: queue) { [weak connection] in connection?.resumeReading() }
+    }
+
+    /// Types `text` into the shell, as the phone does.
+    func type(_ text: String) {
+        guard !exited else { return }
+        status.input(Array(text.utf8))
+        if writer == nil {
+            let fd = fcntl(masterFd, F_DUPFD_CLOEXEC, 0)
+            guard fd >= 0 else { return }
+            writer = PtyWriter(fd: fd)
+        }
+        writer?.write(Array(text.utf8)[...])
+    }
+
+    /// A new size from a client that has no pty descriptor; the kernel tells the foreground job.
+    func resize(_ size: WindowSize) {
+        guard !exited, size.cols > 0, size.rows > 0 else { return }
+        var window = winsize(ws_row: size.rows, ws_col: size.cols, ws_xpixel: size.width, ws_ypixel: size.height)
+        guard ioctl(masterFd, Self.setWindowSize, &window) == 0 else { return }
+        syncSize()
+    }
+
+    /// The live screen for the phone.
+    func screenSnapshot(theme: String) -> ScreenSnapshot {
+        ScreenCapture.snapshot(terminal, showsCursor: status.agent == nil, theme: theme)
+    }
+
+    func screenText() -> String { ScreenCapture.text(terminal) }
+
+    /// Whether the program asked for application cursor keys (arrows send `ESC O`).
+    var applicationCursor: Bool { terminal.applicationCursor }
+
+    /// What the pty has in the foreground, looked up on this machine.
+    func foreground() -> ForegroundInfo {
+        let group = ProcInfo.foregroundPid(ptyFd: masterFd) ?? pid
+        let isShell = group == pid
+        let argv = ProcInfo.arguments(pid: group)
+        let name = ProcInfo.name(pid: group) ?? argv.first.map { ($0 as NSString).lastPathComponent } ?? ""
+        var info = ForegroundInfo(pid: group, isShell: isShell, name: name, argv: argv,
+                                  cwd: ProcInfo.cwd(pid: group) ?? ProcInfo.cwd(pid: pid))
+        guard !isShell else { return info }
+        if let claude = ProcInfo.claudeSession(pid: group) {
+            info.claudeSessionID = claude.id
+            info.claudeBusy = claude.busy
+        }
+        guard argv.contains(where: { ($0 as NSString).lastPathComponent.hasPrefix("codex") }) else { return info }
+        info.codexSessionID = ProcInfo.openFiles(group: group) { $0.contains("/sessions/") && $0.contains("rollout-") && $0.hasSuffix(".jsonl") }
+            .lazy.compactMap(Self.firstLine).compactMap(AgentResume.codexSessionID(rolloutHeader:)).first
+        return info
+    }
+
+    private static func firstLine(_ path: String) -> String? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        let data = (try? handle.read(upToCount: 256 * 1024)) ?? Data()
+        return String(decoding: data, as: UTF8.self).split(separator: "\n", maxSplits: 1).first.map(String.init)
+    }
+
     func detach(_ connection: WireConnection) {
         if client === connection { client = nil }
         if throttledBy === connection { unthrottle() }
@@ -108,6 +211,13 @@ final class HostedSession {
             guard let self, !self.exited else { return }
             kill(self.pid, SIGKILL)
         }
+    }
+
+    /// Signals the foreground job, if it isn't the shell.
+    func signalForeground(_ signal: Int32) {
+        guard !exited else { return }
+        let group = tcgetpgrp(masterFd)
+        if group > 0, group != pid { killpg(group, signal) }
     }
 
     /// Kills the shell and its jobs now and reaps it, without telling the client.
@@ -150,7 +260,31 @@ final class HostedSession {
         return false
     }
 
+    /// This session as a stopping machine keeps it (`SessionKeeper`).
+    func kept() -> KeptSession {
+        let now = foreground()
+        var next = request
+        next.cwd = now.cwd ?? cwd
+        next.cols = UInt16(terminal.cols)
+        next.rows = UInt16(terminal.rows)
+        return KeptSession(id: id, request: next, screen: ScreenReplay.bytes(terminal), resume: SessionKeeper.resumeCommand(now))
+    }
+
+    /// A kept session's screen, shown above the new shell, and its resume command, typed at the
+    /// shell's first prompt. Call before `start()`.
+    func restore(screen: Data, resume: String?) {
+        terminal.feed(buffer: [UInt8](screen)[...])
+        terminal.feed(text: "\r\n\u{1b}[0;2m— the cloud machine restarted —\u{1b}[0m\r\n")
+        pendingInput = resume
+    }
+
     private func received(_ bytes: Data) {
+        onOutput?()
+        status.output()
+        if let input = pendingInput {
+            pendingInput = nil
+            queue.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.type(input + "\r") }
+        }
         syncSize()
         terminal.feed(buffer: [UInt8](bytes)[...])
         guard let client else { return }
@@ -176,8 +310,9 @@ final class HostedSession {
     /// The client resizes the pty directly; follow it so the screen kept here wraps the same.
     private func syncSize() {
         var size = winsize()
-        guard ioctl(masterFd, TIOCGWINSZ, &size) == 0, size.ws_col > 0, size.ws_row > 0 else { return }
+        guard ioctl(masterFd, Self.getWindowSize, &size) == 0, size.ws_col > 0, size.ws_row > 0 else { return }
         if Int(size.ws_col) != terminal.cols || Int(size.ws_row) != terminal.rows {
+            status.resized()
             terminal.resize(cols: Int(size.ws_col), rows: Int(size.ws_row))
         }
     }
@@ -196,8 +331,11 @@ final class HostedSession {
 
     private func finish(status: Int32) {
         exited = true
-        exitSource?.cancel()
-        exitSource = nil
+        self.status.exited()
+        exitWatcher?.cancel()
+        exitWatcher = nil
+        writer?.close()
+        writer = nil
         // A suspended source never runs its cancel handler, which closes the master.
         unthrottle()
         if readerSuspended { readSource?.resume() }
@@ -217,7 +355,11 @@ final class HostedSession {
 }
 
 /// The headless terminal's delegate. Replies to terminal queries are dropped: the attached
-/// app's own terminal answers them.
+/// app's own terminal answers them. Titles and bells go to the session's status.
 private final class HeadlessDelegate: TerminalDelegate {
+    weak var status: SessionStatus?
+
     func send(source: Terminal, data: ArraySlice<UInt8>) {}
+    func setTerminalTitle(source: Terminal, title: String) { status?.titleChanged(title) }
+    func bell(source: Terminal) { status?.bell() }
 }

@@ -8,11 +8,13 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | `Sources/AgTerm/` | The Mac app (AppKit, SwiftTerm) |
 | `Sources/AgTermCore/` | Logic shared with the iPhone app: no AppKit, no SwiftTerm imports |
 | `Sources/AgTermSessionKit/` | The session helper's server, socket code and entry point (shells live here, not in the app). The helper is the app's own executable run as `agterm --sessions-helper`, so it keeps agterm's code identity and privacy permissions; don't split it back into a separate binary |
+| `Sources/agterm-sessions/` | The sessions helper alone, built only on Linux, for cloud sessions (`docs/cloud-sessions-plan.md`). Keep `AgTermCore` and `AgTermSessionKit` building on Linux |
 | `Vendor/SwiftTerm/` | SwiftTerm with local changes; edit in place, keep the comments explaining each change |
 | `Mobile/` | agterm Remote (iOS); see `Mobile/README.md` |
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
 | `Tests/AgTermSessionKitTests/` | XCTest for the session helper (runs a server in-process) |
 | `site/` | agterm.xanom.co landing page (Vercel) |
+| `cloud/` | agterm Cloud: the machine image (`Dockerfile`, `entrypoint.sh`) and the control plane Worker (`control/`, TypeScript, D1); see `docs/cloud-sessions-plan.md` |
 
 ## Commands
 | Task | Command |
@@ -20,13 +22,21 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Build | `swift build` |
 | One test class | `swift test --filter ChangelogTests` |
 | All tests | `swift test` |
+| Linux tests (OrbStack/Docker) | `docker run --rm -v "$PWD":/src -v agterm-linux-build:/build -w /src swift:6.4-noble swift test --scratch-path /build` |
+| Control plane tests | `cd cloud/control && npm test && npm run typecheck` |
+| Cloud image | `docker build -f cloud/Dockerfile .` |
+| Publish the cloud image | `cloud/publish.sh`: a dated tag on Fly's builder, set as the control plane's `CLOUD_IMAGE`; stopped machines move to it within the hour, running ones keep their tabs |
+| Deploy the control plane | `cd cloud/control && npx wrangler deploy` (secrets: `FLY_API_TOKEN`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) |
+| Cloud machine for development | `scripts/cloud-dev.sh && set -a && . .build/cloud-dev.env && set +a`, then run the app (Shell → New Cloud Tab), or a self-test: `AGTERM_CLOUD_CHECK=1`, `AGTERM_MOVE_CHECK=1` or `AGTERM_RETURN_CHECK=1` with `AGTERM_SELFTEST=<dir>`. `scripts/cloud-dev.sh stop` removes it |
 | Off-screen UI self-test | `AGTERM_SELFTEST=<dir> AGTERM_FEATURE_CHECK=1 .build/debug/AgTerm` (without `AGTERM_STATE_DIR` it uses a private temp state folder and sessions helper) |
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |
-| Publish a release | `scripts/release.sh` (maintainer only) |
+| Publish a release | `scripts/release.sh` (maintainer only; `--dry-run` writes the appcasts in `dist/release` and publishes nothing) |
+| Cut a beta | Set `VERSION` to `1.1.0-beta.1` (next: `-beta.2`), add its CHANGELOG section, commit, `scripts/release.sh`: a GitHub prerelease plus the `beta-feed` appcast |
+| Make a beta key | `scripts/beta-key.sh [--days N] "<tester name>"` (key pair in 1Password "agterm Beta Key Signing Key"; `--init` made it, once) |
 
 ## Self-tests
-- `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`.
+- `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`; the beta updates row (`AGTERM_BETA_CHECK=1`, optionally with `AGTERM_BETA_KEY=<key>` to check a real key) in `SelfTestBeta.swift`.
 - Quitting leaves tab shells running in the sessions helper (`agterm --sessions-helper`), so self-tests end the helper's sessions when they exit.
 - PNG snapshots land in the `AGTERM_SELFTEST` directory; look at them after UI changes.
 - Add a check there for any UI change you can't cover with a unit test.
@@ -45,6 +55,8 @@ The sessions helper outlives app updates: someone who keeps tabs open keeps the 
 - Every user-visible change adds a bullet under the next version's `## <version> — <YYYY-MM-DD>` section, in the same commit as the change.
 - Bullets start with `- Added:`, `- Fixed:` or `- Changed:` and describe what the user sees, not the code.
 - To release: bump `VERSION`, date the section, commit, then run `scripts/release.sh`. It stops if `CHANGELOG.md` has no section for `VERSION`.
+- Betas: `VERSION` and the section heading are `1.1.0-beta.N` (`## 1.1.0-beta.1 — 2026-10-30`); the section lists what changed since the previous beta or stable release. Stable builds hide beta sections, so the `1.1.0` section repeats every change from its betas that shipped. Beta builds show both.
+- Beta updates: testers paste a key from `scripts/beta-key.sh` into Settings → General (`BetaChannel`), and Sparkle then reads the `beta-feed` release's appcast, which lists the newest beta and the newest stable build. Stable apps read the latest release's appcast, which never has betas. `bundle.sh` writes a beta's CFBundleVersion as `1.1.0b1`, because Sparkle ignores everything after a "-" (`ReleaseVersion`). The beta download link is `https://github.com/neelsatyavolu/agterm/releases/download/beta-feed/agterm.zip`.
 
 ## Conventions
 - Match the existing style: short doc comments on types and non-obvious functions, small files, no speculative abstractions.

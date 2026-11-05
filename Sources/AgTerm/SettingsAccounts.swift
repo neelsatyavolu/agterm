@@ -22,7 +22,8 @@ struct AccountsPane: View {
                 Footnote("When Claude Code or Codex stops at its usage limit, agterm sees it in the conversation within "
                          + "a second; Grok's usage is checked every minute while it runs. agterm then checks your other "
                          + "accounts and resumes the same conversation in the same tab on the one with the most left. "
-                         + "New sessions start on your own login while it has usage. Every account shares your "
+                         + "New sessions start on your own login, or the one you chose with Use for New Sessions in "
+                         + "its ⋯ menu, while it has usage. Every account shares your "
                          + "conversations, settings and MCP servers. Codex and Grok can also borrow a login your team "
                          + "shares in agmux Teams once all of yours are out.")
             }
@@ -66,22 +67,41 @@ private struct ProviderSection: View {
             AccountRow(title: "Your login", subtitle: subtitle(email: nil, plan: nil, id: AccountStore.native),
                        reading: monitor.reading(provider, AccountStore.native),
                        error: monitor.errors[UsageMonitor.key(provider, AccountStore.native)],
-                       checking: monitor.checking.contains(UsageMonitor.key(provider, AccountStore.native)))
+                       checking: monitor.checking.contains(UsageMonitor.key(provider, AccountStore.native))) {
+                if !store.accounts(provider).isEmpty {
+                    Menu {
+                        Button("Use for New Sessions") { use(AccountStore.native) }
+                            .disabled(home == AccountStore.native)
+                        Button("Check Usage") { monitor.refresh(provider, AccountStore.native) }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+            }
             ForEach(store.accounts(provider)) { account in
                 AccountRow(title: account.label, subtitle: subtitle(email: account.email, plan: account.plan, id: account.id),
                            reading: monitor.reading(provider, account.id),
                            error: monitor.errors[UsageMonitor.key(provider, account.id)],
                            checking: monitor.checking.contains(UsageMonitor.key(provider, account.id)),
-                           enabled: account.enabled) {
+                           enabled: account.enabled, note: home == account.id ? "New sessions start here" : nil) {
                     Menu {
+                        Button("Use for New Sessions") { use(account.id) }
+                            .disabled(home == account.id)
                         Button(account.enabled ? "Don't Switch to This Account" : "Switch to This Account Again") {
                             var changed = account
                             changed.enabled.toggle()
                             store.add(changed)
+                            monitor.updateRouting(provider)
                         }
                         Button("Check Usage") { monitor.refresh(provider, account.id) }
                         Divider()
-                        Button("Remove", role: .destructive) { store.remove(account.id) }
+                        Button("Remove", role: .destructive) {
+                            store.remove(account.id)
+                            monitor.updateRouting(provider)
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -107,6 +127,14 @@ private struct ProviderSection: View {
         } footer: {
             if let message = login.message[provider] { Footnote(message) }
         }
+    }
+
+    /// The login new sessions start on while it has usage.
+    private var home: String { store.settings.home(provider) }
+
+    private func use(_ id: String) {
+        store.prefer(id, provider: provider)
+        monitor.updateRouting(provider)
     }
 
     private func subtitle(email: String?, plan: String?, id: String) -> String {

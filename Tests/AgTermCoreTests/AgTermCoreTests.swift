@@ -26,6 +26,40 @@ final class TitleParserTests: XCTestCase {
                        ParsedTitle(topic: "Major load-speed performance", activity: .unknown))
     }
 
+    func testGrokTitlesSayWhenItIsIdle() {
+        // Recorded from Grok 1.0.73: the topic arrives mid-turn or seconds after it ends.
+        XCTAssertEqual(TitleParser.parse("⠋ - Waiting for response… - grok"), ParsedTitle(topic: "", activity: .working))
+        XCTAssertEqual(TitleParser.parse("⠹ - Sleep for 25 seconds… - Sleep 25 Then Write Poem - grok"),
+                       ParsedTitle(topic: "Sleep 25 Then Write Poem", activity: .working))
+        XCTAssertEqual(TitleParser.parse("grok"), ParsedTitle(topic: "", activity: .idle))
+        XCTAssertEqual(TitleParser.parse("Sleep 25 Then Write Poem - grok"),
+                       ParsedTitle(topic: "Sleep 25 Then Write Poem", activity: .idle))
+    }
+
+    func testGrokActionRequiredNeedsYou() {
+        // Grok 1.0.73's title.items default puts "⚠ Action Required" first when it waits for an answer.
+        XCTAssertEqual(TitleParser.parse("⚠ Action Required - Fix login bug - grok"),
+                       ParsedTitle(topic: "Fix login bug", activity: .waiting))
+        XCTAssertEqual(TitleParser.parse("⚠ Action Required - ⠋ - Waiting - Fix login bug - grok"),
+                       ParsedTitle(topic: "Fix login bug", activity: .waiting))
+    }
+
+    func testOnlyGrokTitlesSayWhenItNeedsYou() {
+        XCTAssertTrue(TitleParser.reportsWaiting("Fix login bug - grok"))
+        XCTAssertTrue(TitleParser.reportsWaiting("grok"))
+        XCTAssertFalse(TitleParser.reportsWaiting("✳ Fix login bug"))
+        XCTAssertFalse(TitleParser.reportsWaiting("vim notes.md"))
+    }
+
+    func testRepeatedGrokWorkingTitleIsStillWork() {
+        // Recorded from Grok 1.0.73 during `sleep 10`: the same title every 2.2 s, spinner frozen.
+        let sleeping = "⠹ - Sleep for 10 seconds… - Run sleep 10 then reply done - grok"
+        XCTAssertTrue(TitleParser.isNews(sleeping, previous: sleeping))
+        XCTAssertFalse(TitleParser.isNews("Run sleep 10 then reply done - grok", previous: "Run sleep 10 then reply done - grok"))
+        XCTAssertFalse(TitleParser.isNews("◐ Ok", previous: "◐ Ok"))
+        XCTAssertTrue(TitleParser.isNews("◑ Ok", previous: "◐ Ok"))
+    }
+
     func testPlainTitleIsUnknown() {
         XCTAssertEqual(TitleParser.parse("vim notes.md"), ParsedTitle(topic: "vim notes.md", activity: .unknown))
     }
@@ -82,6 +116,38 @@ final class StatusTests: XCTestCase {
     func testClaudeIdleIgnoresOutputNoise() {
         let s = signals { $0.titleActivity = .idle; $0.lastOutput = now }
         XCTAssertEqual(StatusRules.status(s, now: now), .idle)
+    }
+
+    func testGrokTopicArrivingAfterTheTurnIsNotWork() {
+        // Grok 1.0.73 finished at -8 s, then titled the chat while you were in another tab.
+        let s = signals {
+            $0.titleActivity = TitleParser.parse("Fix login bug - grok").activity
+            $0.lastInput = now.addingTimeInterval(-25)
+            $0.lastWorking = now.addingTimeInterval(-8)
+            $0.lastSeen = now.addingTimeInterval(-20)
+            $0.lastTitleChange = now
+            $0.lastOutput = now
+        }
+        XCTAssertEqual(StatusRules.status(s, now: now), .done)
+    }
+
+    func testGrokBellAtTheEndOfATurnIsDone() {
+        // Recorded from Grok 1.0.73 unfocused: idle title at 17.72 s, bell at 17.83 s.
+        let s = signals {
+            $0.titleActivity = .idle
+            $0.titleReportsWaiting = true
+            $0.lastInput = now.addingTimeInterval(-30)
+            $0.lastWorking = now.addingTimeInterval(-0.6)
+            $0.lastBell = now.addingTimeInterval(-0.5)
+            $0.lastSeen = now.addingTimeInterval(-20)
+        }
+        XCTAssertEqual(StatusRules.status(s, now: now), .done)
+    }
+
+    func testTitleThatSaysWaitingNeedsYouEvenWhenFocused() {
+        let s = signals { $0.titleActivity = .waiting; $0.titleReportsWaiting = true; $0.focused = true }
+        XCTAssertEqual(StatusRules.status(s, now: now), .waiting)
+        XCTAssertFalse(StatusRules.isWorking(s, now: now))
     }
 
     func testPlainOutputIsWorking() {

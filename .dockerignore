@@ -1,0 +1,10 @@
+# cloud/Dockerfile needs only the Swift package.
+*
+!Package.swift
+!Package.resolved
+!Sources
+!Vendor
+!Tests
+!cloud/entrypoint.sh
+!cloud/agterm-profile.sh
+Vendor/**/.build

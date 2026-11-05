@@ -21,7 +21,11 @@ final class TabCardView: NSView {
     var blinkOn = true {
         didSet { if blinkOn != oldValue, model?.status == .working { needsDisplay = true } }
     }
-    private var hovering = false { didSet { needsDisplay = true } }
+    private var mouseInside = false { didSet { if mouseInside != oldValue { needsDisplay = true } } }
+    /// Set by the bar while any tab is being dragged, so cards passing under the mouse
+    /// don't light up as if hovered.
+    var reordering = false { didSet { if reordering != oldValue { needsDisplay = true } } }
+    private var hovering: Bool { mouseInside && !reordering }
 
     private static let padX: CGFloat = 14
     private static let textX: CGFloat = 30
@@ -40,8 +44,15 @@ final class TabCardView: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { mouseInside = true }
+    override func mouseExited(with event: NSEvent) { mouseInside = false }
+
+    /// Enter and exit events only come when the mouse moves, not when the card slides under
+    /// a still mouse, so the bar calls this once cards settle after a drag.
+    func syncHover() {
+        guard let window else { return }
+        mouseInside = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
 
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control) {
@@ -102,6 +113,29 @@ final class TabCardView: NSView {
         if let label = statusLabel(model.status) {
             label.draw(at: NSPoint(x: x, y: Self.line2Y + 1.5))
             x += ceil(label.size().width) + 8
+        }
+        if model.inCloud || model.moving != nil, let cloud = Self.cloudSymbol() {
+            // A cloud before the folder: this tab's shell runs on the cloud machine.
+            let size = cloud.size
+            let tinted = NSImage(size: size, flipped: false) { rect in
+                cloud.draw(in: rect)
+                Theme.accent.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: NSRect(x: x, y: Self.line2Y + 1, width: size.width, height: size.height))
+            x += ceil(size.width) + 5
+        }
+        if let moving = model.moving {
+            if let share = model.movingProgress {
+                // Across the foot of the card, where the selected tab's accent line runs.
+                let track = NSRect(x: Self.padX, y: 5, width: bounds.width - 2 * Self.padX, height: 2)
+                Theme.fg4.withAlphaComponent(0.35).setFill()
+                track.fill()
+                Theme.accent.setFill()
+                NSRect(x: track.minX, y: track.minY, width: track.width * min(1, max(0, share)), height: track.height).fill()
+            }
+            return draw(text(moving, Theme.metaFont, Theme.accent), x: x, y: Self.line2Y, maxX: rightEdge)
         }
         let diff = diffText(model)
         let diffWidth = diff.map { ceil($0.size().width) + 8 } ?? 0
@@ -214,6 +248,11 @@ final class TabCardView: NSView {
         let diff = text("+\(added)", Theme.metaFont, Theme.ok)
         diff.append(text(" −\(removed)", Theme.metaFont, Theme.danger))
         return diff
+    }
+
+    private static func cloudSymbol() -> NSImage? {
+        NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "In the cloud")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold))
     }
 
     private func text(_ string: String, _ font: NSFont, _ color: NSColor) -> NSMutableAttributedString {

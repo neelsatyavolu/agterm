@@ -23,6 +23,8 @@ public enum TabStatus: Equatable, Sendable {
 /// Raw observations about one tab. Dates are wall-clock times of the last event.
 public struct StatusSignals: Equatable, Sendable {
     public var titleActivity: TitleActivity = .unknown
+    /// The title says when the agent needs you (`TitleParser.reportsWaiting`), so a bell doesn't.
+    public var titleReportsWaiting = false
     public var lastOutput: Date?
     public var lastInput: Date?
     /// Shells and TUIs redraw when the window resizes; that output isn't work.
@@ -69,10 +71,10 @@ public enum StatusRules {
     public static func status(_ s: StatusSignals, now: Date) -> TabStatus {
         if s.exited { return .exited }
         // Shown even on the tab you're looking at: the agent is stopped until you answer.
-        if s.promptVisible { return .waiting }
+        if s.promptVisible || s.titleActivity == .waiting { return .waiting }
         if isWorking(s, now: now) { return .working }
         let workSinceBell = s.lastWorking.map { $0.addingTimeInterval(-bellGrace) }
-        if !s.focused, isAfterSeen(s.lastBell, s), isAfter(s.lastBell, workSinceBell) { return .waiting }
+        if !s.focused, !s.titleReportsWaiting, isAfterSeen(s.lastBell, s), isAfter(s.lastBell, workSinceBell) { return .waiting }
         // Work you stopped yourself isn't "finished while you were away".
         let stoppedByYou = s.lastInterrupt.map { interrupt in s.lastWorking.map { interrupt >= $0.addingTimeInterval(-bellGrace) } ?? true } ?? false
         if !s.focused, !stoppedByYou, !s.commandRunning, isAfterSeen(s.lastWorking, s) { return .done }
@@ -95,7 +97,7 @@ public enum StatusRules {
             if let interrupt = s.lastInterrupt, interrupt >= (s.lastTitleChange ?? .distantPast) { return false }
             guard let changed = s.lastTitleChange else { return true }
             return now.timeIntervalSince(changed) < spinnerWindow
-        case .idle: return false
+        case .idle, .waiting: return false
         case .unknown:
             guard let out = s.lastOutput, now.timeIntervalSince(out) < outputWindow else { return false }
             if let interrupt = s.lastInterrupt, interrupt >= out.addingTimeInterval(-echoWindow) { return false }

@@ -169,6 +169,7 @@ struct ConnectionsPane: View {
     var body: some View {
         Form {
             TeamsSection(account: .shared)
+            TeamSessionsSection(account: .shared, sessions: .shared)
             PhoneSection(remote: .shared)
         }
     }

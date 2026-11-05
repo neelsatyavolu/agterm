@@ -104,16 +104,15 @@ final class UsageMonitor: ObservableObject {
         }
     }
 
-    /// New sessions start on your own login while it has usage, else on the login with the most
-    /// left, else on one borrowed from your team.
+    /// New sessions start on your own login (or the one you chose) while it has usage, else on
+    /// the login with the most left, else on one borrowed from your team.
     func updateRouting(_ provider: AccountProvider) {
-        let now = Date()
-        let all = candidates(provider)
-        var routing = AccountStore.loadRouting()
-        let nativeUsable = all.first.map { AccountPicker.next([$0], excluding: [], now: now) != nil } ?? true
+        let settings = AccountStore.shared.settings
         let team = provider.teamShareable && TeamAccounts.shared.hasBorrowable(provider) ? AccountStore.teamRoute : nil
-        let next = nativeUsable || !AccountStore.shared.settings.autoSwitch ? nil
-            : AccountPicker.next(all, excluding: [AccountStore.native], now: now) ?? team
+        let picked = AccountPicker.forNewSessions(candidates(provider), home: settings.home(provider),
+                                                  autoSwitch: settings.autoSwitch, now: Date()) ?? team
+        let next = picked == AccountStore.native ? nil : picked
+        var routing = AccountStore.loadRouting()
         guard routing.active[provider.rawValue] != next else { return }
         routing.active[provider.rawValue] = next
         AccountStore.saveRouting(routing)

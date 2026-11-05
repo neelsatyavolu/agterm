@@ -30,7 +30,7 @@ enum PtySpawn {
             sigprocmask(SIG_SETMASK, &none, nil)
             for sig in 1..<Int32(32) where sig != SIGKILL && sig != SIGSTOP { signal(sig, SIG_DFL) }
             var fd: Int32 = 3
-            while fd < lastFD { Darwin.close(fd); fd += 1 }
+            while fd < lastFD { Foundation.close(fd); fd += 1 }
             _ = chdir(cwd)
             execve(path, argv.base, env.base)
             _exit(127)

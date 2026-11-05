@@ -18,6 +18,15 @@ final class SessionWireTests: XCTestCase {
             .kill(id: "s1", signal: 15),
             .shutdownIfIdle,
             .error("boom"),
+            .input(Data("ls\r".utf8)),
+            .resize(WindowSize(cols: 120, rows: 40, width: 960, height: 640)),
+            .auth(token: "t0k"),
+            .inspect,
+            .foreground(ForegroundInfo(pid: 9, isShell: false, name: "claude", argv: ["claude", "-c"], cwd: "/w",
+                                       claudeSessionID: "abc", claudeBusy: true, codexSessionID: nil)),
+            .exec(argv: ["/bin/sh", "-c", "rsync --server ."]),
+            .stderr(Data("oops\n".utf8)),
+            .signalForeground(15),
         ]
     }
 
@@ -116,6 +125,9 @@ final class SessionWireTests: XCTestCase {
             (.spawn(SpawnRequest(executable: "a", argv: [], env: [], cwd: "/", cols: 1, rows: 1)), 4),
             (.attach(id: "s"), 5), (.attached(info), 6), (.replay(Data()), 7), (.output(Data()), 8),
             (.exited(id: "s", status: 0), 9), (.kill(id: "s", signal: 9), 10), (.shutdownIfIdle, 11), (.error("e"), 12),
+            (.input(Data()), 13), (.resize(WindowSize(cols: 1, rows: 1)), 14), (.auth(token: "t"), 15),
+            (.inspect, 16), (.foreground(ForegroundInfo(pid: 1, isShell: true, name: "sh", argv: [], cwd: nil)), 17),
+            (.exec(argv: []), 18), (.stderr(Data()), 19), (.signalForeground(2), 20),
         ]
         XCTAssertEqual(expected.count, allMessages.count)
         for (message, tag) in expected {

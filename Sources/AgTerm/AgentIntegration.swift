@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Darwin
 import Foundation
 import SQLite3
@@ -184,7 +185,7 @@ enum AgentIntegration {
             id = settings.accounts.first { $0.provider == provider && AccountStore.home($0.id).path == home }?.id
                 ?? (TeamPool.isLocalID(folder) && AccountStore.home(folder).path == home ? folder : AccountStore.external)
         } else {
-            id = settings.autoSwitch ? AccountStore.loadRouting().active[provider.rawValue] ?? AccountStore.native : AccountStore.native
+            id = settings.autoSwitch ? AccountStore.loadRouting().active[provider.rawValue] ?? AccountStore.native : settings.home(provider)
         }
         if id == AccountStore.teamRoute {
             fputs("agterm: your \(provider.title) logins are out of usage, so borrowing one from your team…\n", stderr)
@@ -246,7 +247,13 @@ enum AgentIntegration {
         if wantConsult, !existing.contains("consult"), nodeMajorVersion(node) >= 22 {
             var consultEnv = ["PATH": env["PATH"] ?? ""]
             if let project { consultEnv["AGMUX_PROJECT_ID"] = project.id }
-            servers.append(MCPServer(name: "consult", command: node, args: [bundles.consult], env: consultEnv))
+            // Signed in to agmux Teams: agterm's own consult, whose team tools reach the app here.
+            var consult = bundles.consult
+            if UserDefaults.standard.string(forKey: "teamsUserName") != nil, let shipped = shippedConsultBundle() {
+                consult = shipped
+                consultEnv["AGTERM_TEAM_SOCK"] = TeamSessions.socketPath
+            }
+            servers.append(MCPServer(name: "consult", command: node, args: [consult], env: consultEnv))
         }
         return servers
     }
@@ -262,6 +269,13 @@ enum AgentIntegration {
         let consult = dir.appendingPathComponent("agmux-consult-mcp.bundle.mjs").path
         guard FileManager.default.fileExists(atPath: memory), FileManager.default.fileExists(atPath: consult) else { return nil }
         return (memory, consult, false)
+    }
+
+    /// agterm's own copy of consult, which has the team session tools and `--answer-team-ask`.
+    static func shippedConsultBundle() -> String? {
+        guard let path = Bundle.main.resourceURL?.appendingPathComponent("mcp/agmux-consult-mcp.bundle.mjs").path,
+              FileManager.default.fileExists(atPath: path) else { return nil }
+        return path
     }
 
     /// agmux's bundled servers, if agmux is installed. AGTERM_NO_AGMUX=1 acts as if it weren't.

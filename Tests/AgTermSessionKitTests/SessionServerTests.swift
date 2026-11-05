@@ -72,6 +72,21 @@ final class SessionServerTests: XCTestCase {
         XCTAssertTrue(String(decoding: screen, as: UTF8.self).contains("MARK"))
     }
 
+    /// A cloud machine stops once nobody is connected and its shells have gone quiet.
+    func testQuietOnlyWithoutClientsAndOutput() throws {
+        let client = try connect()
+        XCTAssertNil(server.quietFor)
+        _ = try spawn(client, "sleep 0.3; echo LATE; sleep 5")
+        client.close()
+        usleep(150_000)
+        XCTAssertLessThan(try XCTUnwrap(server.quietFor), 0.5)
+        usleep(600_000)
+        // "LATE" was written after the client left.
+        XCTAssertLessThan(try XCTUnwrap(server.quietFor), 0.6)
+        usleep(500_000)
+        XCTAssertGreaterThan(try XCTUnwrap(server.quietFor), 0.4)
+    }
+
     func testListReportsWhichSessionsAreAttached() throws {
         let holder = try connect()
         defer { holder.close() }
@@ -188,10 +203,10 @@ final class SessionServerTests: XCTestCase {
         let lines = 1_500_000 // ~11 MB: past the 8 MiB backlog cap that would drop the client
         let info = try spawn(client, "seq -f %.0f 1 \(lines); echo SEQ-DONE")
         if let fd = client.takeFD() { close(fd) }
-        let before = footprint()
+        let before = processFootprint()
         Thread.sleep(forTimeInterval: 3)
         XCTAssertEqual(kill(info.pid, 0), 0, "seq finished, so nothing held it back")
-        XCTAssertLessThan(footprint() - before, 32 * 1024 * 1024, "the helper buffered the output")
+        XCTAssertLessThan(processFootprint() - before, 32 * 1024 * 1024, "the helper buffered the output")
 
         var output = Data()
         let deadline = Date().addingTimeInterval(60)
@@ -206,16 +221,6 @@ final class SessionServerTests: XCTestCase {
     }
 
     // MARK: Helpers
-
-    /// This process's physical footprint, as Activity Monitor shows it.
-    private func footprint() -> Int {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
-        }
-        return result == KERN_SUCCESS ? Int(info.phys_footprint) : 0
-    }
 
     private func connect() throws -> WireConnection {
         let client = try WireConnection.connect(path: socketPath)

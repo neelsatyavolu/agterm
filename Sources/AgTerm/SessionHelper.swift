@@ -175,7 +175,7 @@ enum SessionHelper {
     }
 
     /// A greeted connection to the helper, kept open for `list()`; each tab gets its own.
-    final class Client {
+    final class Client: SessionEndpoint {
         private static let replyTimeout: TimeInterval = 2
 
         let socket: String
@@ -231,6 +231,11 @@ enum SessionHelper {
             }
         }
 
+        func reattach(id: String) throws -> (WireConnection, Int32?) {
+            let (connection, _, fd) = try open(.attach(id: id))
+            return (connection, fd)
+        }
+
         /// False once the helper process is gone (it crashed or was killed).
         var isAlive: Bool {
             pid.map { kill($0, 0) == 0 } ?? true
@@ -238,7 +243,7 @@ enum SessionHelper {
 
         private func link(_ request: WireMessage, showReplay: Bool) throws -> HelperLink {
             let (connection, info, fd) = try open(request)
-            return HelperLink(client: self, connection: connection, info: info, ptyFd: fd, showReplay: showReplay)
+            return HelperLink(endpoint: self, connection: connection, info: info, ptyFd: fd, showReplay: showReplay)
         }
 
         fileprivate func shutDown() {

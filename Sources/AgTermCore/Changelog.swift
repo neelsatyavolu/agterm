@@ -45,10 +45,17 @@ public enum Changelog {
         return releases
     }
 
+    /// The releases a build shows: a stable build leaves out beta sections, whose changes the
+    /// stable release's own section repeats.
+    public static func shown(_ releases: [Release], current: String) -> [Release] {
+        if ReleaseVersion(current)?.isBeta == true { return releases }
+        return releases.filter { ReleaseVersion($0.version)?.isBeta != true }
+    }
+
     /// Releases newer than `lastSeen` up to `current`, in the order given. Empty on first install.
     public static func unseen(_ releases: [Release], lastSeen: String?, current: String) -> [Release] {
         guard let lastSeen else { return [] }
-        return releases.filter {
+        return shown(releases, current: current).filter {
             compare($0.version, lastSeen) == .orderedDescending
                 && compare($0.version, current) != .orderedDescending
         }
@@ -59,12 +66,16 @@ public enum Changelog {
     public static func effectiveLastSeen(stored: String?, previousInstall: Bool, releases: [Release], current: String) -> String? {
         if let stored { return stored }
         guard previousInstall else { return nil }
-        return releases.filter { compare($0.version, current) == .orderedAscending }
+        return shown(releases, current: current).filter { compare($0.version, current) == .orderedAscending }
             .max { compare($0.version, $1.version) == .orderedAscending }?.version
     }
 
-    /// Numeric per dot-component; missing components count as 0.
+    /// Numeric per dot-component; missing components count as 0. A beta (`1.1.0-beta.1`) comes
+    /// before its stable release.
     public static func compare(_ a: String, _ b: String) -> ComparisonResult {
+        if let x = ReleaseVersion(a), let y = ReleaseVersion(b) {
+            return x < y ? .orderedAscending : y < x ? .orderedDescending : .orderedSame
+        }
         let x = a.split(separator: ".").map { Int($0) ?? 0 }
         let y = b.split(separator: ".").map { Int($0) ?? 0 }
         for i in 0..<max(x.count, y.count) {

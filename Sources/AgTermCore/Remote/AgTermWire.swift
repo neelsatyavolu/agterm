@@ -31,6 +31,17 @@ public enum AgTermWire {
     public static func tabID(screenThread: String) -> String? {
         screenThread.hasPrefix(screenPrefix) ? String(screenThread.dropFirst(screenPrefix.count)) : nil
     }
+
+    /// The thread's provider as agmux names it, for the agent in a tab (nil: a plain terminal).
+    public static func provider(agent: String?) -> String {
+        switch agent {
+        case "claude": "ClaudeCode"
+        case "codex": "Codex"
+        case "grok": "Grok"
+        case let name?: name.prefix(1).uppercased() + name.dropFirst()
+        case nil: "Terminal"
+        }
+    }
 }
 
 // MARK: Pairing

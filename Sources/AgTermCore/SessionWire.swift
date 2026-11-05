@@ -56,6 +56,51 @@ public struct SessionInfo: Codable, Equatable {
     }
 }
 
+/// A terminal size, as a client without the pty (over the network) reports it with `resize`.
+public struct WindowSize: Codable, Equatable {
+    public var cols: UInt16
+    public var rows: UInt16
+    /// Pixels, which some programs read; 0 if unknown.
+    public var width: UInt16
+    public var height: UInt16
+
+    public init(cols: UInt16, rows: UInt16, width: UInt16 = 0, height: UInt16 = 0) {
+        self.cols = cols
+        self.rows = rows
+        self.width = width
+        self.height = height
+    }
+}
+
+/// What a session's pty has in the foreground, as a cloud machine's helper reports it (`inspect`):
+/// the app can't look at processes there itself.
+public struct ForegroundInfo: Codable, Equatable {
+    /// The foreground process group on that machine, or the shell's pid when it is the shell.
+    public var pid: Int32
+    public var isShell: Bool
+    public var name: String
+    public var argv: [String]
+    /// The foreground process's folder, else the shell's.
+    public var cwd: String?
+    /// Claude Code's record of its session, when Claude is in the foreground.
+    public var claudeSessionID: String?
+    public var claudeBusy: Bool?
+    /// The conversation Codex has open (its rollout file's id), when Codex is in the foreground.
+    public var codexSessionID: String?
+
+    public init(pid: Int32, isShell: Bool, name: String, argv: [String], cwd: String?,
+                claudeSessionID: String? = nil, claudeBusy: Bool? = nil, codexSessionID: String? = nil) {
+        self.pid = pid
+        self.isShell = isShell
+        self.name = name
+        self.argv = argv
+        self.cwd = cwd
+        self.claudeSessionID = claudeSessionID
+        self.claudeBusy = claudeBusy
+        self.codexSessionID = codexSessionID
+    }
+}
+
 public enum WireMessage: Equatable {
     case hello(version: Int, build: String)
     case list
@@ -71,6 +116,24 @@ public enum WireMessage: Equatable {
     case kill(id: String, signal: Int32)
     case shutdownIfIdle
     case error(String)
+    /// Keystrokes for the attached session's shell, from a client that has no pty descriptor
+    /// (one connected through the gateway); raw. Helpers before cloud sessions skip it.
+    case input(Data)
+    /// The attached session's new size, from a client that has no pty descriptor.
+    case resize(WindowSize)
+    /// A gateway client's first frame: the account token. The gateway never forwards it.
+    case auth(token: String)
+    /// Asks what the attached session has in the foreground; answered with `foreground`.
+    case inspect
+    case foreground(ForegroundInfo)
+    /// Runs a command on the gateway's machine with plain pipes, not a pty (rsync's other end,
+    /// when moving tabs). Its stdin comes as `input` (empty: end of input), its stdout goes out
+    /// as `output` and its stderr as `stderr`, then `exited`. The connection is used for nothing else.
+    case exec(argv: [String])
+    case stderr(Data)
+    /// Signals the attached session's foreground job (an agent), leaving the shell, for a client
+    /// that has no pty descriptor to find the job with.
+    case signalForeground(Int32)
 }
 
 public enum WireFrameError: Error, Equatable {
@@ -83,12 +146,14 @@ public enum WireFrame {
     private enum Tag: UInt8 {
         case hello = 1, list = 2, sessions = 3, spawn = 4, attach = 5, attached = 6
         case replay = 7, output = 8, exited = 9, kill = 10, shutdownIfIdle = 11, error = 12
+        case input = 13, resize = 14, auth = 15, inspect = 16, foreground = 17, exec = 18, stderr = 19, signalForeground = 20
     }
 
     private struct Hello: Codable { var version: Int; var build: String }
     private struct SessionID: Codable { var id: String }
     private struct Exited: Codable { var id: String; var status: Int32 }
     private struct Kill: Codable { var id: String; var signal: Int32 }
+    private struct Signal: Codable { var signal: Int32 }
 
     /// Largest payload one frame can carry. Senders split larger `output` and `replay` data
     /// into several frames, which receivers feed in order.
@@ -142,6 +207,14 @@ public enum WireFrame {
         case .kill(let id, let signal): return (.kill, json(Kill(id: id, signal: signal)))
         case .shutdownIfIdle: return (.shutdownIfIdle, Data())
         case .error(let text): return (.error, Data(text.utf8))
+        case .input(let bytes): return (.input, bytes)
+        case .resize(let size): return (.resize, json(size))
+        case .auth(let token): return (.auth, Data(token.utf8))
+        case .inspect: return (.inspect, Data())
+        case .foreground(let info): return (.foreground, json(info))
+        case .exec(let argv): return (.exec, json(argv))
+        case .stderr(let bytes): return (.stderr, bytes)
+        case .signalForeground(let signal): return (.signalForeground, json(Signal(signal: signal)))
         }
     }
 
@@ -159,6 +232,14 @@ public enum WireFrame {
         case .kill: let k: Kill = try object(payload); return .kill(id: k.id, signal: k.signal)
         case .shutdownIfIdle: return .shutdownIfIdle
         case .error: return .error(String(decoding: payload, as: UTF8.self))
+        case .input: return .input(payload)
+        case .resize: return .resize(try object(payload))
+        case .auth: return .auth(token: String(decoding: payload, as: UTF8.self))
+        case .inspect: return .inspect
+        case .foreground: return .foreground(try object(payload))
+        case .exec: return .exec(argv: try object(payload))
+        case .stderr: return .stderr(payload)
+        case .signalForeground: return .signalForeground(try object(payload, as: Signal.self).signal)
         }
     }
 

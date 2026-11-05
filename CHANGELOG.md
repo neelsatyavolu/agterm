@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.1.0 — 2026-11-04
+- Added: Team sessions. In Settings → Teams & Phone, members of an agmux team can share their agent tabs with teammates who also turn it on. Their agents then see your tabs' titles, folders, branches and status, and can ask a read-only copy of a Claude Code tab a question; the copy runs on your Mac and reads only that tab's conversation and the files in its folder. If you also allow messages, a teammate's agent can type a short note into your agent, marked as coming from them. Your agents get the same tools: list_team_sessions, ask_team_session and message_team_session in consult.
+- Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.
+- Added: Beta updates. Paste a beta key in Settings → General → Updates and agterm installs beta builds as well as stable releases, whichever is newer. Leave Beta goes back to stable releases.
+- Fixed: An agent asking a copy of another Claude Code session with consult gets an answer when that session was started without permission prompts. It used to get an error.
+- Fixed: A Grok tab that finishes while you're in another tab shows done instead of needs you. It shows needs you when Grok is waiting for your answer.
+- Fixed: A Grok tab keeps showing working while Grok runs a long command or waits on a subagent, including right after agterm reopens. Before, it could look finished while Grok was still going.
+- Fixed: A Grok tab no longer flips back to working after Grok finishes, such as when Grok names the conversation a few seconds later or while you type your next message. Its title also drops the trailing "- grok".
+- Fixed: Opening agterm from inside one of its tabs no longer stops Claude from saving conversations, and tab status no longer flips between working and done afterwards.
+- Fixed: Dropping a dragged tab leaves it where you dropped it, instead of the tabs appearing to swap a second time.
+- Fixed: While you drag a tab, the tabs it passes over no longer light up as if the mouse were over them.
+
+## 1.1.0-beta.9 — 2026-11-04
+- Fixed: A Claude Code or Codex tab moved to the cloud opens its agent there again. The cloud machine didn't have them installed, so the tab was left at a shell prompt.
+- Changed: A tab moved to the cloud shows its agent right away, and installs the project's dependencies in the background (logs in ~/.agterm/setup on the cloud machine). An agent stopped mid-turn is told the install may still be running.
+- Changed: The cloud machine has Node 24 instead of Node 18, which many current packages no longer install on, and the 1Password CLI (op).
+- Added: Settings → Cloud → 1Password takes a 1Password service account token and saves it only on your cloud machine, so agents in cloud tabs can use op.
+- Added: Team sessions. In Settings → Teams & Phone, members of an agmux team can share their agent tabs with teammates who also turn it on. Their agents then see your tabs' titles, folders, branches and status, and can ask a read-only copy of a Claude Code tab a question; the copy runs on your Mac and reads only that tab's conversation and the files in its folder. If you also allow messages, a teammate's agent can type a short note into your agent, marked as coming from them. Your agents get the same tools: list_team_sessions, ask_team_session and message_team_session in consult.
+- Fixed: An agent asking a copy of another Claude Code session with consult gets an answer when that session was started without permission prompts. It used to get an error.
+
+## 1.1.0-beta.8 — 2026-10-31
+- Fixed: A Grok tab that finishes while you're in another tab shows done instead of needs you. It shows needs you when Grok is waiting for your answer.
+- Fixed: A Grok tab keeps showing working while Grok runs a long command or waits on a subagent, including right after agterm reopens. Before, it could look finished while Grok was still going.
+
+## 1.1.0-beta.7 — 2026-10-31
+- Added: agterm Remote keeps working while your Mac is off. Tabs you moved to the cloud stay on your phone with the same pairing: you can watch them, read the agent's conversation, type, answer its prompts, and get notified when it finishes or needs you. Once your Mac is back, it takes the phone over again. New tabs still open only from the Mac. This needs the phone remote turned on in Settings.
+- Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.
+
+## 1.1.0-beta.6 — 2026-10-30
+- Added: A tab moved to the cloud installs its project's dependencies there before the agent continues (npm, pnpm, yarn, bun, or pip with requirements.txt), and skips that on later moves until the lockfile changes. A repo can give its own steps in .agterm/cloud-setup.sh.
+- Added: Moving more than 1 GB to the cloud asks first, with how long the copy will take, before any agent stops.
+- Changed: If a repo changes on this Mac while its tab is in the cloud, Bring Back keeps this Mac's files and saves the cloud's changes as a patch in the repo's .git folder, with a notification saying where, instead of mixing the two.
+
+## 1.1.0-beta.5 — 2026-10-30
+- Changed: Move to Cloud copies only what git keeps track of, plus new files git doesn't ignore. Build output, caches and anything else your .gitignore lists stay on this Mac, so a repo with gigabytes of build files moves in seconds. Ignored .env files stay here too, and Bring Back leaves the cloud's own build files behind.
+
+## 1.1.0-beta.4 — 2026-10-30
+- Fixed: Installing an update while agents are working no longer asks whether to move them to the cloud; they keep running through the relaunch.
+
+## 1.1.0-beta.3 — 2026-10-30
+- Added: A tab moving to or from the cloud says so on the tab, with a bar showing how much of its folder has been copied.
+- Changed: Move to Cloud copies much faster, and leaves out build caches (.next, .turbo, .nuxt, .svelte-kit, __pycache__) as well as node_modules.
+- Fixed: Moving a tab no longer stops partway through when the copy finishes reading its input.
+- Fixed: In Settings → Cloud, the hours limit field no longer has a squeezed "hours" label beside it.
+
+## 1.1.0-beta.2 — 2026-10-30
+- Added: Right-click a tab and choose Move to Cloud to move just that tab, or Bring Back from Cloud to bring it home. Tabs in the cloud show a cloud next to their folder.
+- Fixed: Opening agterm from inside one of its tabs no longer stops Claude from saving conversations, and tab status no longer flips between working and done afterwards.
+
+## 1.1.0-beta.1 — 2026-10-30
+- Added: agterm Cloud (beta). The cloud button beside + moves every tab to a cloud machine, so agents keep working while this Mac is off, and brings them back when you return. Set it up in Settings → Cloud ($12 a month for 100 hours).
+- Added: Beta updates. Paste a beta key in Settings → General → Updates and agterm installs beta builds as well as stable releases, whichever is newer. Leave Beta goes back to stable releases.
+- Fixed: A Grok tab no longer flips back to working after Grok finishes, such as when Grok names the conversation a few seconds later or while you type your next message. Its title also drops the trailing "- grok".
+- Fixed: Dropping a dragged tab leaves it where you dropped it, instead of the tabs appearing to swap a second time.
+- Fixed: While you drag a tab, the tabs it passes over no longer light up as if the mouse were over them.
+
 ## 1.0.9 — 2026-10-30
 - Fixed: Grok tabs show only the conversation's topic, without Grok's status ("- Thinking -", "- Waiting for response... -") in front of it.
 

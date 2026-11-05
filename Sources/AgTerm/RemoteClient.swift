@@ -31,6 +31,8 @@ final class RemoteClient: ObservableObject {
     /// Opens a tab in a folder, typing a command at its first prompt; returns the new tab's id.
     /// Set by MainWindowController.
     var openTab: (_ folder: String, _ command: String?) -> String? = { _, _ in nil }
+    /// Called when the phone remote is turned on or off. Set by MainWindowController.
+    var onEnabledChange: () -> Void = {}
     /// agmux's projects, re-read at most once a minute for the phone's New Tab folders.
     private var projects: (read: Date, paths: [String]) = (.distantPast, [])
 
@@ -84,6 +86,16 @@ final class RemoteClient: ObservableObject {
     func setEnabled(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: Self.enabledKey)
         on ? connect() : disconnect()
+        onEnabledChange()
+    }
+
+    /// What a cloud machine needs to answer the phone for these tabs while this Mac is off;
+    /// nil while the phone remote is off.
+    func cloudHandoff(tabs: [CloudPhoneHandoff.Tab]) -> CloudPhoneHandoff? {
+        guard isEnabled else { return nil }
+        return CloudPhoneHandoff(desktopId: credentials.desktopId, desktopSecret: credentials.desktopSecret, relay: Self.relayURL,
+                                 deviceName: "agterm Cloud for " + (Host.current().localizedName ?? "your Mac"),
+                                 theme: Theme.palette.id, home: NSHomeDirectory(), tabs: tabs)
     }
 
     private func connect() {
@@ -184,6 +196,7 @@ final class RemoteClient: ObservableObject {
         NSLog("agterm: the relay rejected agterm's desktop identity; turning the phone remote off")
         disconnect()
         UserDefaults.standard.set(false, forKey: Self.enabledKey)
+        onEnabledChange()
     }
 
     private func handle(_ m: [String: Any]) {
@@ -333,15 +346,7 @@ final class RemoteClient: ObservableObject {
         return object
     }
 
-    static func provider(_ agent: String?) -> String {
-        switch agent {
-        case "claude": "ClaudeCode"
-        case "codex": "Codex"
-        case "grok": "Grok"
-        case let name?: name.prefix(1).uppercased() + name.dropFirst()
-        case nil: "Terminal"
-        }
-    }
+    static func provider(_ agent: String?) -> String { AgTermWire.provider(agent: agent) }
 
     /// Thread list when it changes, upserts for finished agents (the relay turns those into
     /// "Agent finished" pushes), approvals for tabs that need you, and screens being watched.

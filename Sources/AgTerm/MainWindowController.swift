@@ -4,7 +4,7 @@ import Combine
 
 /// The single window: tab bar in the title bar, the selected terminal below.
 final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDelegate {
-    private let tabBar = TabBarView(frame: .zero)
+    let tabBar = TabBarView(frame: .zero)
     private let container = NSView()
     /// Paints the margins around the terminal; the terminal paints its own area, so a
     /// see-through background isn't layered twice.
@@ -33,6 +33,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         applyAppearance()
         restoreTabs()
         startTimers()
+        startCloudReturn()
         configureCommandBar()
         NotificationCenter.default.addObserver(forName: .agtermOpenTab, object: nil, queue: .main) { [weak self] note in
             guard let self, let command = note.userInfo?["command"] as? String else { return }
@@ -40,6 +41,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             self.window?.makeKeyAndOrderFront(nil)
         }
         RemoteClient.shared.tabs = { [weak self] in self?.sessions ?? [] }
+        TeamSessions.shared.tabs = { [weak self] in self?.sessions ?? [] }
+        RemoteClient.shared.onEnabledChange = { [weak self] in self?.syncPhoneToCloud() }
         RemoteClient.shared.openTab = { [weak self] folder, command in
             guard let self else { return nil }
             self.addTab(cwd: folder, restoring: nil, command: command)
@@ -182,7 +185,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let saved = WorkspaceStore.load()
         // Nil when the helper can't be asked: tabs that were in it come back without their agent.
         let live = SessionHelper.shared()?.list()
-        let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live)
+        // Asking wakes a stopped cloud machine, so only when there are cloud tabs to bring back.
+        let cloud = saved?.tabs.contains { $0.inCloud == true } == true ? CloudHost.configured : nil
+        let plan = LaunchTab.plan(saved: saved?.tabs ?? [], live: live, cloud: cloud?.list())
         guard !plan.isEmpty else { return newTab() }
         for tab in plan {
             switch tab {
@@ -193,6 +198,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 // The tab now has its real size; a full-screen program redraws to fit it.
                 window?.layoutIfNeeded()
                 sessions.last?.pushSize()
+            case .reattachCloud(let info, let saved):
+                if let cloud, let session = try? TerminalSession(cloud: cloud, cwd: saved?.cwd ?? info.cwd, attaching: info.id, saved: saved) {
+                    install(session)
+                    window?.layoutIfNeeded()
+                    session.pushSize()
+                } else if var saved {
+                    saved.resume = nil
+                    addTab(cwd: saved.cwd, restoring: saved)
+                }
             }
         }
         select(saved?.selected ?? 0)
@@ -203,7 +217,99 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     @objc func newTab() { addTab(cwd: currentFolder, restoring: nil) }
 
+    /// A tab whose shell runs on the cloud machine (`CloudHost.configured`), in the same folder
+    /// if the machine has it.
+    @objc func newCloudTab() {
+        guard let cloud = CloudHost.configured else { return SettingsWindowController.shared.show(pane: "Cloud") }
+        openCloudTab(cloud)
+    }
+
+    /// Shell → Move All Tabs to Cloud…: lists what will happen to each tab, then moves them.
+    @objc func moveAllToCloud() {
+        guard let cloud = CloudHost.configured else { return SettingsWindowController.shared.show(pane: "Cloud") }
+        let items = CloudMove.preflight(sessions)
+        guard !items.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Move \(items.count) tab\(items.count == 1 ? "" : "s") to the cloud?"
+        alert.informativeText = items.map(\.summary).joined(separator: "\n")
+            + "\n\nEach tab's folder and conversation are copied first. Agents finish their turn, or stop after 20 seconds and continue in the cloud."
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        moveToCloud(items, cloud: cloud) { _ in }
+    }
+
+    /// Moves `items` and reports how it went (a notification, and `done`).
+    func moveToCloud(_ items: [CloudMove.Item], cloud: CloudHost, done: @escaping (CloudMove.Outcome) -> Void) {
+        window?.subtitle = "Moving to the cloud…"
+        let tabs = items.map(\.session)
+        showMoving(tabs, items.contains { $0.agent != nil } ? "Waiting to move…" : "Moving to the cloud…")
+        let move = CloudMove(cloud: cloud, isOpen: { [weak self] in self?.sessions.contains($0) == true },
+                             replace: { [weak self] old, new in self?.replaceTab(old, with: new) })
+        move.onProgress = { [weak self] share in
+            self?.showMoving(tabs, share < 1 ? "Copying to the cloud · \(Int(share * 100))%" : "Starting in the cloud…", progress: share)
+        }
+        move.confirmLargeCopy = { [weak self] bytes, answer in self?.confirmLargeCopy(bytes, answer) }
+        move.run(items) { [weak self] outcome in
+            self?.window?.subtitle = ""
+            self?.showMoving(tabs, nil)
+            switch outcome {
+            case .moved(let count):
+                self?.syncPhoneToCloud()
+                Notifier.shared.post(title: "Moved \(count) tab\(count == 1 ? "" : "s") to the cloud",
+                                     body: CloudReturn.movedAway
+                                        ? "You can turn off this Mac; they keep running and come back when you return."
+                                        : "It keeps running there. Right-click the tab and choose Bring Back from Cloud to bring it back.",
+                                     tabID: "cloud")
+            case .failed(let reason):
+                Notifier.shared.post(title: "Couldn't move tabs to the cloud", body: reason, tabID: "cloud")
+            case .cancelled:
+                break
+            }
+            done(outcome)
+            _ = move
+        }
+    }
+
+    /// A big first copy takes minutes; the user decides before any agent stops.
+    private func confirmLargeCopy(_ bytes: Int64, _ answer: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Copy \(CloudCopySize.describe(bytes)) to the cloud?"
+        alert.informativeText = "The first move takes about \(CloudCopySize.minutes(bytes)) min; later moves send only what changed. "
+            + "Files your .gitignore lists are already left out. To leave out more, add them to .gitignore."
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Cancel")
+        answer(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    /// Puts `new` where `old` is and ends `old`'s shell.
+    func replaceTab(_ old: TerminalSession, with new: TerminalSession) {
+        guard let index = sessions.firstIndex(of: old) else { return }
+        let wasSelected = index == selected
+        let current = selected
+        install(new)
+        sessions.swapAt(index, sessions.count - 1)
+        removeTab(at: sessions.count - 1)
+        select(wasSelected ? index : current)
+    }
+
+    /// `attaching` shows a shell the machine already runs.
+    func openCloudTab(_ cloud: CloudHost, attaching id: String? = nil) {
+        do {
+            install(try TerminalSession(cloud: cloud, cwd: currentFolder, attaching: id))
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Couldn't open a cloud tab"
+            alert.informativeText = "The cloud machine at \(cloud) didn't answer: \(error)"
+            alert.runModal()
+        }
+    }
+
     #if DEBUG
+    func tabMenuItemForTest(_ index: Int, _ title: String) -> NSMenuItem? {
+        menu(for: sessions[index]).items.first { $0.title == title }
+    }
+
     func restoreTabForTest(_ saved: SavedTab) { addTab(cwd: saved.cwd, restoring: saved) }
     var selectedTabCardForTest: NSView { tabBar.selectedCardForTest }
     var selectedTabIDForTest: String { sessions[selected].tabID }
@@ -281,6 +387,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
             ("Show in Finder", #selector(showInFinderFromMenu(_:))),
             nil,
+        // With agterm Cloud hidden (stable builds), a tab already in the cloud can still come back.
+        ] + ((!CloudAccount.isEnabled && !session.isCloud) || session.signals.exited ? [] : [
+            session.isCloud ? ("Bring Back from Cloud", #selector(bringBackTabFromMenu(_:))) : ("Move to Cloud", #selector(moveTabToCloudFromMenu(_:))),
+            nil,
+        ]) + [
             ("Close Tab", #selector(closeTabFromMenu(_:))),
         ]
         for entry in entries {
@@ -466,10 +577,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             .map { "\($0.foregroundName ?? "?") in \($0.folder)" }
     }
 
-    private func render() {
+    /// Moving to or from the cloud, and bringing tabs home (MainWindowController+Cloud).
+    let cloudState = CloudState()
+
+    func render() {
+        updateCloudButton()
         tabBar.update(sessions.enumerated().map { i, s in
             TabModel(topic: s.topic, folder: s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
-                     status: s.status, selected: i == selected)
+                     status: s.status, selected: i == selected, inCloud: s.isCloud,
+                     moving: cloudState.moving[ObjectIdentifier(s)]?.label, movingProgress: cloudState.moving[ObjectIdentifier(s)]?.progress)
         })
         if sessions.indices.contains(selected) { window?.title = sessions[selected].topic }
     }

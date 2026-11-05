@@ -6,7 +6,18 @@ set -eu
 cd "$(dirname "$0")/.."
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
+# 1.0.9 or a beta such as 1.1.0-beta.1. Sparkle orders updates by CFBundleVersion and ignores
+# everything after a "-", so 1.1.0-beta.1 gets 1.1.0b1, which Sparkle puts after 1.0.9 and
+# before 1.1.0b2 and 1.1.0 (ReleaseVersion.bundleVersion; ReleaseVersionTests checks the order).
+if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+)*(-beta\.[0-9]+)?$'; then
+  echo "error: VERSION \"$VERSION\" must look like 1.0.9 or 1.1.0-beta.1" >&2
+  exit 1
+fi
+BUILD_VERSION="$(printf '%s' "$VERSION" | sed 's/-beta\./b/')"
+# Stable: the appcast of the latest GitHub release (prereleases don't count as latest).
 FEED_URL="https://github.com/neelsatyavolu/agterm/releases/latest/download/appcast.xml"
+# Beta: the newest beta and the newest stable build, used once a beta key is entered (BetaChannel).
+BETA_FEED_URL="https://github.com/neelsatyavolu/agterm/releases/download/beta-feed/appcast.xml"
 # Public half of the EdDSA key that signs updates (private half: 1Password "agterm Sparkle Update Key").
 SPARKLE_PUBLIC_KEY="9PP4QvxMnBnPLbBlDqNSB3pBnCVE93Nv1d9lPayHwzM="
 
@@ -44,13 +55,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>${VERSION}</string>
+  <key>CFBundleVersion</key><string>${BUILD_VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHumanReadableCopyright</key><string>© 2026 Neel Satyavolu. MIT License.</string>
   <key>SUFeedURL</key><string>${FEED_URL}</string>
+  <key>AGTermBetaFeedURL</key><string>${BETA_FEED_URL}</string>
   <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_KEY}</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>

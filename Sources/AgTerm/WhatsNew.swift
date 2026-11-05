@@ -30,8 +30,12 @@ enum WhatsNew {
     }
 
     /// Lines for every release at a given width, or one dim line when there is no changelog.
+    /// Stable builds leave out beta sections.
     static func allLines() -> (Int) -> [String] {
-        guard let releases = releases(), !releases.isEmpty else { return { _ in [notFound] } }
+        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        guard let all = releases() else { return { _ in [notFound] } }
+        let releases = current.map { Changelog.shown(all, current: $0) } ?? all
+        guard !releases.isEmpty else { return { _ in [notFound] } }
         return { ChangelogRender.lines(releases, columns: $0) }
     }
 

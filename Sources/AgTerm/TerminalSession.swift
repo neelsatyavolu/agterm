@@ -13,6 +13,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     }
     private(set) var foregroundName: String?
     private var foregroundPid: pid_t?
+    /// The latest look at the foreground; for a cloud tab, the cloud machine's last answer.
+    private var foreground: ForegroundInfo?
     private(set) var git: GitSummary?
     /// The coding agent in the foreground (claude, codex, grok…), if any.
     private(set) var agentName: String?
@@ -33,6 +35,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     private(set) var status: TabStatus = .idle
     let shellName: String
     private let shellPath: String
+    /// The shell runs on the cloud machine.
+    private(set) var isCloud = false
 
     /// Called when anything shown on the tab may have changed.
     var onChange: (() -> Void)?
@@ -48,7 +52,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// `restoring` brings back a tab saved at the last quit: its history, then its agent.
     /// `command` is typed at the first prompt (starting an agent from the Shell menu).
     init(cwd: String, restoring saved: SavedTab? = nil, command: String? = nil) {
-        tabID = UUID().uuidString
+        // A tab coming back from the cloud keeps its id, as one reattached here does.
+        tabID = saved?.tabID ?? UUID().uuidString
         self.cwd = cwd
         FolderIndex.shared.visit(cwd)
         shellPath = ProcInfo.loginShell()
@@ -83,6 +88,38 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
             pendingCommand = nil
             view.attach(spawnShell())
         }
+    }
+
+    /// A new shell on a cloud machine (cloud sessions), or the one it already runs as `attaching`
+    /// (`saved` is that tab as last saved). The machine picks its own login shell and environment;
+    /// this tab sends only its terminal settings and id. `command` is typed at the first prompt.
+    /// Throws if the machine can't be reached.
+    init(cloud: CloudHost, cwd: String, attaching id: String? = nil, saved: SavedTab? = nil, command: String? = nil) throws {
+        let tabID = saved?.tabID ?? UUID().uuidString
+        let view = Self.makeView()
+        let terminal = view.getTerminal()
+        let env = ["TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=agterm", "AGTERM_TAB_ID=\(tabID)",
+                   "LANG=\(ProcessInfo.processInfo.environment["LANG"] ?? "en_US.UTF-8")"]
+        let shellPath = ProcInfo.loginShell()
+        let request = SpawnRequest(executable: shellPath, argv: ["-" + (shellPath as NSString).lastPathComponent], env: env,
+                                   cwd: cwd, cols: UInt16(terminal.cols), rows: UInt16(terminal.rows))
+        let link = try id.map(cloud.attach) ?? cloud.spawn(request)
+        self.tabID = tabID
+        self.cwd = cwd
+        self.shellPath = shellPath
+        shellName = (shellPath as NSString).lastPathComponent
+        self.view = view
+        isCloud = true
+        name = saved?.name
+        super.init()
+        setUpView()
+        pendingCommand = command
+        // A tab moved here keeps the history it had on the Mac.
+        if id == nil, let saved, !saved.scrollback.isEmpty {
+            view.feed(text: saved.scrollback + "\r\n\u{1b}[0;2m— moved to the cloud —\u{1b}[0m\r\n")
+        }
+        view.attach(link)
+        link.onForeground = { [weak self] in self?.received($0) }
     }
 
     private static func makeView() -> AgentTerminalView {
@@ -154,28 +191,36 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// resume a conversation, the command that brings them back.
     func snapshot() -> SavedTab {
         pollProcess()
-        var resume: String?
-        if let fg = foregroundPid, fg != view.link.shellPid, !signals.exited {
-            let argv = ProcInfo.arguments(pid: fg)
-            resume = AgentResume.commandLine(argv: argv, claudeSessionID: ProcInfo.claudeSessionID(pid: fg))
-                ?? codexResume(argv: argv)
-                ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: argv) }
-        }
-        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resume ?? pendingCommand,
-                        sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID, name: name)
+        return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resumeCommand() ?? pendingCommand,
+                        sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID, name: name,
+                        inCloud: isCloud ? true : nil)
+    }
+
+    /// The command that brings back the agent in the foreground, with `prompt` as its first
+    /// message where the agent takes one; nil if nothing resumable runs. Call `pollProcess` first.
+    func resumeCommand(prompt: String? = nil) -> String? {
+        guard let info = foreground, !info.isShell, !signals.exited else { return nil }
+        let codexID = isCloud ? info.codexSessionID : codexRollout.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
+        return AgentResume.commandLine(argv: info.argv, claudeSessionID: info.claudeSessionID, prompt: prompt)
+            ?? codexResume(argv: info.argv, sessionID: codexID, prompt: prompt)
+            ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: info.argv) }
     }
 
     /// `codex resume <id>` for the conversation this tab's Codex has open (it keeps its rollout
     /// file open), with the options it was started with.
-    private func codexResume(argv: [String]) -> String? {
-        guard agentName == "codex", let group = foregroundGroup,
-              let rollout = ProcInfo.openFiles(group: group, matching: { $0.contains("/sessions/") && $0.hasSuffix(".jsonl") && $0.contains("rollout-") }).first,
-              let header = Self.firstLine(rollout), let id = AgentResume.codexSessionID(rolloutHeader: header) else { return nil }
+    private func codexResume(argv: [String], sessionID: String?, prompt: String?) -> String? {
+        guard agentName == "codex", let id = sessionID else { return nil }
         // The wrapper recorded your arguments for this very run; else read them off the process.
         let launch = AccountStore.launch(tabID: tabID, provider: .codex)
         let args = launch.flatMap { launch in agentStartedAt.map { abs(launch.startedAt.timeIntervalSince($0)) < 20 } == true ? launch.args : nil }
             ?? argv.firstIndex { ($0 as NSString).lastPathComponent.hasPrefix("codex") }.map { Array(argv[($0 + 1)...]) } ?? []
-        return AgentResume.codexCommandLine(userArgs: args, sessionID: id)
+        return AgentResume.codexCommandLine(userArgs: args, sessionID: id, prompt: prompt)
+    }
+
+    /// The rollout file this tab's Codex holds open (a local tab only).
+    var codexRollout: String? {
+        guard !isCloud, agentName == "codex", let group = foregroundGroup else { return nil }
+        return ProcInfo.openFiles(group: group, matching: { $0.contains("/sessions/") && $0.hasSuffix(".jsonl") && $0.contains("rollout-") }).first
     }
 
     private static func firstLine(_ path: String) -> String? {
@@ -261,6 +306,17 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
 
     var folder: String { PathDisplay.folder(cwd, home: NSHomeDirectory()) }
 
+    /// The conversation id of the Claude Code or Codex agent in this local tab, which consult can
+    /// copy read-only to answer a teammate's question. Call `pollProcess` first.
+    var agentConversationID: String? {
+        guard !isCloud, !signals.exited else { return nil }
+        switch agentName {
+        case "claude": return claudeSessionID
+        case "codex": return codexRollout.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
+        default: return nil
+        }
+    }
+
     /// The foreground program is something other than the shell, e.g. an agent.
     /// Reads the kernel directly so a program started under a second ago still counts.
     var isRunningProgram: Bool {
@@ -288,29 +344,57 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         }
     }
 
-    /// Reads the foreground process and its folder from the kernel.
+    /// Reads the foreground process and its folder from the kernel. A cloud tab asks the cloud
+    /// machine and uses its latest answer, a poll behind.
     func pollProcess() {
-        let shellPid = view.link.shellPid
-        guard !signals.exited, shellPid > 0 else { return }
-        let fg = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd) ?? shellPid
-        foregroundPid = fg
-        let name = ProcInfo.name(pid: fg)
-        updateAgent(fg == shellPid ? nil : AgentCatalog.agent(argv: ProcInfo.arguments(pid: fg)))
-        updateCommandRunning(fg != shellPid && agentName == nil)
-        updatePrompt()
-        let claude = agentName == "claude" ? ProcInfo.claudeSession(pid: fg) : nil
-        if let claude {
-            claudeSessionID = claude.id
-            TeamsClaims.shared.recordClaude(claude.id)
+        guard !signals.exited else { return }
+        if isCloud {
+            (view.link as? HelperLink)?.requestForeground()
+            if let foreground { apply(foreground) }
+            return
         }
-        updateBusy(claude?.busy)
-        let dir = ProcInfo.cwd(pid: fg) ?? ProcInfo.cwd(pid: shellPid) ?? cwd
+        let shellPid = view.link.shellPid
+        guard shellPid > 0 else { return }
+        let fg = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd) ?? shellPid
+        let isShell = fg == shellPid
+        let argv = isShell ? [] : ProcInfo.arguments(pid: fg)
+        let claude = !isShell && AgentCatalog.agent(argv: argv) == "claude" ? ProcInfo.claudeSession(pid: fg) : nil
+        let info = ForegroundInfo(pid: fg, isShell: isShell, name: ProcInfo.name(pid: fg) ?? "", argv: argv,
+                                  cwd: ProcInfo.cwd(pid: fg) ?? ProcInfo.cwd(pid: shellPid),
+                                  claudeSessionID: claude?.id, claudeBusy: claude?.busy)
+        foreground = info
+        apply(info)
+    }
+
+    /// A cloud machine's answer to `inspect`.
+    private func received(_ info: ForegroundInfo) {
+        guard isCloud else { return }
+        foreground = info
+        apply(info)
+    }
+
+    private func apply(_ info: ForegroundInfo) {
+        let shellPid = view.link.shellPid
+        let fg = info.isShell ? shellPid : info.pid
+        foregroundPid = fg
+        let name = info.name.isEmpty ? nil : info.name
+        updateAgent(info.isShell ? nil : AgentCatalog.agent(argv: info.argv))
+        updateCommandRunning(!info.isShell && agentName == nil)
+        updatePrompt()
+        let claudeID = agentName == "claude" ? info.claudeSessionID : nil
+        if let claudeID {
+            claudeSessionID = claudeID
+            TeamsClaims.shared.recordClaude(claudeID)
+        }
+        updateBusy(claudeID == nil ? nil : info.claudeBusy)
+        let dir = info.cwd ?? cwd
         guard name != foregroundName || dir != cwd else { return }
         // Back at the prompt: forget the agent's title so a stale spinner or topic doesn't stick.
-        if fg == shellPid, foregroundName != nil, foregroundName != shellName {
+        if info.isShell, foregroundName != nil, foregroundName != shellName {
             rawTitle = ""
             parsedTitle = ParsedTitle(topic: "", activity: .unknown)
             signals.titleActivity = .unknown
+            signals.titleReportsWaiting = false
         }
         foregroundName = name
         cwd = dir
@@ -374,6 +458,12 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         onChange?()
     }
 
+    /// The program in the foreground, if it isn't the shell: its process group here, or on the cloud machine.
+    var foregroundJob: pid_t? {
+        guard !signals.exited, let foreground, !foreground.isShell else { return nil }
+        return foreground.pid
+    }
+
     /// The process group in the foreground, if it isn't the shell (an agent, say).
     var foregroundGroup: pid_t? {
         guard !signals.exited, let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd),
@@ -383,6 +473,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
 
     /// Signals the job in the foreground (an agent), leaving the shell running.
     func signalForeground(_ signal: Int32) {
+        if isCloud { return (view.link as? HelperLink)?.signalForeground(signal) ?? () }
         let shell = view.link.shellPid
         guard let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd), group != shell, group > 0 else { return }
         killpg(group, signal)
@@ -416,11 +507,12 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     }
 
     func setTerminalTitle(source: AgentTerminalView, title: String) {
-        guard title != rawTitle else { return }
+        guard TitleParser.isNews(title, previous: rawTitle) else { return }
         rawTitle = title
         signals.lastTitleChange = Date()
         parsedTitle = TitleParser.parse(title)
         signals.titleActivity = parsedTitle.activity
+        signals.titleReportsWaiting = TitleParser.reportsWaiting(title)
         tick(now: Date())
         onChange?()
     }

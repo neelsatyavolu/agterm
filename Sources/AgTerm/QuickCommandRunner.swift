@@ -1,4 +1,5 @@
 import AgTermCore
+import AgTermSessionKit
 import Foundation
 
 /// Runs ⌘K's model through the agent CLI you're signed in to (no API keys), and finds which

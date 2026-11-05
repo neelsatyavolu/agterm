@@ -11,8 +11,17 @@ public enum SessionServerError: Error, Equatable {
 /// The sessions helper (`agterm --sessions-helper`): owns every tab's shell and serves the app over a Unix socket,
 /// so shells outlive app updates, quits and crashes. All state lives on one serial queue.
 public final class SessionServer {
-    /// With no sessions and no clients for this long, the server stops.
-    public var idleExitAfter: TimeInterval = 10
+    /// Where a cloud machine keeps its sessions across a stop (`SessionKeeper`); nil keeps nothing.
+    /// Set before `start()`.
+    public var statePath: String?
+    /// With no sessions and no clients for this long, the server stops; nil never stops (a
+    /// cloud machine's helper, which the gateway reaches).
+    public var idleExitAfter: TimeInterval? = 10
+    /// A cloud machine's `CloudPhoneHandoff`: with it, the phone reaches these sessions while
+    /// the Mac is off (`CloudPhone`). Set before `start()`.
+    public var phoneHandoffPath: String?
+    /// How long the Mac must be gone before the phone is served from here.
+    public var phoneMacGoneAfter = CloudPhoneRule.macGoneAfter
 
     private let socketPath: String
     private let build: String
@@ -25,6 +34,11 @@ public final class SessionServer {
     private var sessions: [String: HostedSession] = [:]
     private var stopped = false
     private var idleToken = 0
+    /// The last time a shell wrote something or a client came or went.
+    private var lastActivity = Date()
+    /// When the last client left (or the server started): when the Mac was last here.
+    private var lastClientLeft = Date()
+    private var phone: CloudPhone?
 
     public init(socketPath: String, build: String) {
         self.socketPath = socketPath
@@ -43,7 +57,11 @@ public final class SessionServer {
 
     /// Binds the socket and starts serving on the server's queue without blocking.
     public func start() throws {
-        try queue.sync { try listen() }
+        try queue.sync {
+            try listen()
+            if let statePath { SessionKeeper.take(from: statePath).forEach(restore) }
+            if let phoneHandoffPath { startPhone(handoff: phoneHandoffPath) }
+        }
         queue.async { self.noteActivity() }
     }
 
@@ -120,6 +138,16 @@ public final class SessionServer {
             guard let session = sessions[id] else { return reply(client, .error("no such session")) }
             guard (1..<32).contains(signal) else { return reply(client, .error("bad signal")) }
             session.signal(signal)
+        case .input(let bytes):
+            sessions.values.first { $0.isAttached(client) }?.write(bytes, from: client)
+        case .signalForeground(let signal):
+            guard (1..<32).contains(signal) else { return reply(client, .error("bad signal")) }
+            sessions.values.first { $0.isAttached(client) }?.signalForeground(signal)
+        case .inspect:
+            guard let session = sessions.values.first(where: { $0.isAttached(client) }) else { return reply(client, .error("not attached")) }
+            reply(client, .foreground(session.foreground()))
+        case .resize(let size):
+            sessions.values.first { $0.isAttached(client) }?.resize(size)
         case .shutdownIfIdle:
             if sessions.isEmpty { shutdown() }
         default:
@@ -149,15 +177,28 @@ public final class SessionServer {
         } catch {
             return reply(client, .error("spawn failed: \(error)"))
         }
-        session.onExit = { [weak self] session in
-            self?.sessions[session.id] = nil
-            self?.noteActivity()
-        }
-        sessions[session.id] = session
+        register(session)
         detachEverywhere(client)
         session.attach(client)
         session.start()
         noteActivity()
+    }
+
+    /// A session kept across a machine stop, back under its old id with its screen and agent.
+    private func restore(_ kept: KeptSession) {
+        guard sessions[kept.id] == nil, let session = try? HostedSession(request: kept.request, queue: queue, id: kept.id) else { return }
+        session.restore(screen: kept.screen, resume: kept.resume)
+        register(session)
+        session.start()
+    }
+
+    private func register(_ session: HostedSession) {
+        session.onExit = { [weak self] session in
+            self?.sessions[session.id] = nil
+            self?.noteActivity()
+        }
+        session.onOutput = { [weak self] in self?.lastActivity = Date() }
+        sessions[session.id] = session
     }
 
     private func reply(_ client: WireConnection, _ message: WireMessage) {
@@ -170,6 +211,7 @@ public final class SessionServer {
 
     private func dropClient(_ client: WireConnection, key: ObjectIdentifier) {
         clients[key] = nil
+        if clients.isEmpty { lastClientLeft = Date() }
         greeted.remove(key)
         detachEverywhere(client)
         noteActivity()
@@ -177,10 +219,18 @@ public final class SessionServer {
 
     // MARK: Lifetime
 
+    /// How long it has been quiet: no client connected and no shell output. Nil while a client
+    /// is connected. A working agent keeps writing (its spinner, its timer), so a cloud machine
+    /// stops only once its agents are done and nobody is looking.
+    public var quietFor: TimeInterval? {
+        queue.sync { clients.isEmpty ? Date().timeIntervalSince(lastActivity) : nil }
+    }
+
     /// Called on every change; schedules the idle exit when nothing is left.
     private func noteActivity() {
+        lastActivity = Date()
         idleToken &+= 1
-        guard !stopped, sessions.isEmpty, clients.isEmpty else { return }
+        guard !stopped, sessions.isEmpty, clients.isEmpty, let idleExitAfter else { return }
         let token = idleToken
         queue.asyncAfter(deadline: .now() + idleExitAfter) { [weak self] in
             guard let self, self.idleToken == token, self.sessions.isEmpty, self.clients.isEmpty else { return }
@@ -188,12 +238,25 @@ public final class SessionServer {
         }
     }
 
+    private func startPhone(handoff path: String) {
+        let host = CloudPhone.Host(
+            sessions: { [weak self] in self.map { Array($0.sessions.values) } ?? [] },
+            macConnected: { [weak self] in self?.clients.isEmpty == false },
+            macLastSeen: { [weak self] in self?.lastClientLeft ?? Date() },
+            touch: { [weak self] in self?.lastActivity = Date() })
+        phone = CloudPhone(queue: queue, host: host, handoffPath: path, build: build, macGoneAfter: phoneMacGoneAfter)
+        phone?.start()
+    }
+
     private func shutdown() {
         guard !stopped else { return }
         stopped = true
+        phone?.stop()
+        phone = nil
         listener?.cancel()
         listener = nil
         unlink(socketPath)
+        if let statePath { SessionKeeper.save(sessions.values.sorted { $0.startedAt < $1.startedAt }.map { $0.kept() }, to: statePath) }
         sessions.values.forEach { $0.terminate() }
         sessions = [:]
         clients.values.forEach { $0.close() }

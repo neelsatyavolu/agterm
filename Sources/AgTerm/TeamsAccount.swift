@@ -99,6 +99,7 @@ final class TeamsAccount: ObservableObject {
                         UserDefaults.standard.set(claim.user?.email, forKey: "teamsUserEmail")
                         state = .signedIn(name: name, email: claim.user?.email)
                         TeamsSync.shared.syncSoon()
+                        TeamSessions.shared.refresh()
                         return
                     }
                 }
@@ -126,6 +127,7 @@ final class TeamsAccount: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "teamsUserEmail")
         lastUpload = nil
         state = .signedOut
+        TeamSessions.shared.reset()
     }
 
     /// The server rejected the token (revoked on the web): forget it.
@@ -158,12 +160,17 @@ final class TeamsAccount: ObservableObject {
 
     /// POSTs JSON and unwraps the service's `{ok, data, error}` envelope.
     static func post<T: Decodable>(_ path: String, body: Any, token: String? = nil) async throws -> T {
+        try await send("POST", path, body: body, token: token)
+    }
+
+    /// Any method; `body` nil sends none (GET).
+    static func send<T: Decodable>(_ method: String, _ path: String, body: Any? = nil, token: String? = nil) async throws -> T {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("agterm", forHTTPHeaderField: "X-Client")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
         request.timeoutInterval = 30
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
