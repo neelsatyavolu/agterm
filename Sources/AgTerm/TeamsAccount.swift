@@ -165,7 +165,33 @@ final class TeamsAccount: ObservableObject {
 
     /// Any method; `body` nil sends none (GET).
     static func send<T: Decodable>(_ method: String, _ path: String, body: Any? = nil, token: String? = nil) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        let (data, status) = try await perform(method, path, query: [], body: body, token: token)
+        guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data) else {
+            throw TeamsError.message("Unexpected reply from agmux Teams (HTTP \(status)).")
+        }
+        guard envelope.ok, let value = envelope.data else {
+            throw TeamsError.message(envelope.error ?? "agmux Teams refused the request (HTTP \(status)).")
+        }
+        return value
+    }
+
+    /// The envelope's `data` as plain JSON objects, for replies passed on to agents unchanged.
+    static func sendRaw(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Any? = nil, token: String) async throws -> Any {
+        let (data, status) = try await perform(method, path, query: query, body: body, token: token)
+        guard let envelope = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw TeamsError.message("Unexpected reply from agmux Teams (HTTP \(status)).")
+        }
+        guard envelope["ok"] as? Bool == true, let value = envelope["data"] else {
+            throw TeamsError.message(envelope["error"] as? String ?? "agmux Teams refused the request (HTTP \(status)).")
+        }
+        return value
+    }
+
+    private static func perform(_ method: String, _ path: String, query: [URLQueryItem], body: Any?, token: String?) async throws -> (Data, Int) {
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        if !query.isEmpty { components?.queryItems = query }
+        guard let url = components?.url else { throw TeamsError.message("Bad agmux Teams address.") }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("agterm", forHTTPHeaderField: "X-Client")
@@ -175,12 +201,6 @@ final class TeamsAccount: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 { throw TeamsError.unauthorized }
-        guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data) else {
-            throw TeamsError.message("Unexpected reply from agmux Teams (HTTP \(status)).")
-        }
-        guard envelope.ok, let value = envelope.data else {
-            throw TeamsError.message(envelope.error ?? "agmux Teams refused the request (HTTP \(status)).")
-        }
-        return value
+        return (data, status)
     }
 }

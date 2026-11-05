@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — 2026-11-04
+- Added: Agents in agterm tabs coordinate with each other. consult tells every Claude Code, Codex and Grok agent how: a board per repo where they claim what they take on (a migration number, a file, a branch), ask everyone ("is anyone changing auth.ts?"), reply, and record decisions, and direct messages to one agent. They check the board when they start, before taking anything shared, and before finishing; claims expire after 4 hours unless renewed. With team sessions on, the board and the agents are shared with your teammates' agents; otherwise it covers the agents on this Mac.
+- Added: A teammate's agent can ask a Codex or Grok tab a question, as well as a Claude Code one. The read-only copy that answers has no tools, so it answers from the conversation alone.
+- Changed: Settings → Teams & Phone → Team Sessions is now "Let my agents coordinate with my team's agents".
+- Fixed: consult's list_sessions and send_message work in agterm tabs without agmux running. They list this Mac's agent tabs and type the message into the agent, marked as coming from another agent.
+
 ## 1.1.0 — 2026-11-04
 - Added: Team sessions. In Settings → Teams & Phone, members of an agmux team can share their agent tabs with teammates who also turn it on. Their agents then see your tabs' titles, folders, branches and status, and can ask a read-only copy of a Claude Code tab a question; the copy runs on your Mac and reads only that tab's conversation and the files in its folder. If you also allow messages, a teammate's agent can type a short note into your agent, marked as coming from them. Your agents get the same tools: list_team_sessions, ask_team_session and message_team_session in consult.
 - Added: In Settings → Accounts, Use for New Sessions in an account's ⋯ menu makes new Claude Code, Codex or Grok sessions start on that account instead of your own login. Tabs already running stay where they are, and automatic switching still moves off it when it runs out.

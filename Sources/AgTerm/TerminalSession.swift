@@ -306,15 +306,28 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
 
     var folder: String { PathDisplay.folder(cwd, home: NSHomeDirectory()) }
 
-    /// The conversation id of the Claude Code or Codex agent in this local tab, which consult can
-    /// copy read-only to answer a teammate's question. Call `pollProcess` first.
+    /// The conversation id of the Claude Code, Codex or Grok agent in this local tab, which consult
+    /// can copy read-only to answer a question about it. Call `pollProcess` first.
     var agentConversationID: String? {
         guard !isCloud, !signals.exited else { return nil }
         switch agentName {
         case "claude": return claudeSessionID
         case "codex": return codexRollout.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
+        case "grok":
+            // Grok doesn't say which conversation it's in; agterm gave it one when it started.
+            return launchRecord(.grok)?.sessionID
         default: return nil
         }
+    }
+
+    /// What agterm recorded when it started the agent in the foreground (login, arguments, Grok's
+    /// conversation), if it belongs to this very process: recorded just before the agent started,
+    /// so it survives agterm restarting while the agent keeps running.
+    func launchRecord(_ provider: AccountProvider) -> TabLaunch? {
+        guard let launch = AccountStore.launch(tabID: tabID, provider: provider) else { return nil }
+        let started = foregroundJob.flatMap(ProcInfo.startTime(pid:)) ?? agentStartedAt
+        guard let started, abs(launch.startedAt.timeIntervalSince(started)) < 20 else { return nil }
+        return launch
     }
 
     /// The foreground program is something other than the shell, e.g. an agent.

@@ -109,7 +109,9 @@ final class TeamSessions: ObservableObject {
 
     private func report() {
         guard enabled, let token = TeamsAccount.shared.token, let team = teamID else { return }
-        let sessions = tabs().compactMap { tab -> TeamSessionsWire.Session? in
+        // Cloud tabs stay out: agterm only learns their foreground a moment late, so it can't
+        // promise a message lands in the agent rather than at a shell prompt.
+        let sessions = tabs().filter { !$0.isCloud }.compactMap { tab -> TeamSessionsWire.Session? in
             tab.pollProcess()
             return TeamSessionsWire.session(tabID: tab.tabID, agent: tab.agentName, topic: tab.topic, cwd: tab.cwd,
                                             branch: tab.git?.branch, status: tab.status, conversation: tab.agentConversationID)
@@ -153,13 +155,14 @@ final class TeamSessions: ObservableObject {
                                                               body: body, token: token)
             }
         }
-        guard let tab = tabs().first(where: { $0.tabID == request.sessionKey }) else {
+        guard let tab = tabs().first(where: { $0.tabID == request.sessionKey && !$0.isCloud }) else {
             return finish(.failure(Self.failure("That tab was closed.")))
         }
         switch request.kind {
         case "message":
             guard acceptMessages else { return finish(.failure(Self.failure("They don't accept messages any more."))) }
-            deliver(TeamSessionsWire.typedMessage(from: request.from, body: request.body), to: tab, finish: finish)
+            deliver(TeamSessionsWire.typedMessage(from: request.from, body: request.body), to: tab,
+                    allowed: { [weak self] in self?.acceptMessages == true }, finish: finish)
         case "ask":
             tab.pollProcess()
             guard let agent = tab.agentName, TeamSessionsWire.askableAgents.contains(agent),
@@ -168,9 +171,9 @@ final class TeamSessions: ObservableObject {
             }
             let input = TeamSessionsWire.answerRequest(agent: agent, conversation: conversation, cwd: tab.cwd,
                                                        question: request.body, effort: request.effort)
-            let login = claudeLogin(tab)
+            let login = loginEnvironment(tab, agent: agent)
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = Self.answer(input, claudeConfigDir: login)
+                let result = Self.answer(input, environment: login)
                 DispatchQueue.main.async { finish(result) }
             }
         default:
@@ -178,16 +181,17 @@ final class TeamSessions: ObservableObject {
         }
     }
 
-    /// Types a teammate's message into the tab's agent: one at a time per tab, and only while the
-    /// same agent is still in the foreground, so it can never land at a shell prompt.
-    private func deliver(_ text: String, to tab: TerminalSession, finish: @escaping (Result<String, Error>) -> Void) {
+    /// Types a message into the tab's agent: one at a time per tab, and only while the same agent
+    /// is still in the foreground and `allowed` holds, so it can never land at a shell prompt.
+    func deliver(_ text: String, to tab: TerminalSession, allowed: @escaping () -> Bool,
+                 finish: @escaping (Result<String, Error>) -> Void) {
         tab.pollProcess()
-        guard let agent = tab.agentName else { return finish(.failure(Self.failure("That tab's agent has exited."))) }
+        guard !tab.isCloud, let agent = tab.agentName else { return finish(.failure(Self.failure("That tab's agent has exited."))) }
         let start = max(Date(), nextTypingAt[tab.tabID] ?? .distantPast)
         nextTypingAt[tab.tabID] = start.addingTimeInterval(1)
         let stillThere = { [weak self] () -> Bool in
             tab.pollProcess()
-            return tab.agentName == agent && self?.acceptMessages == true
+            return self != nil && tab.agentName == agent && allowed()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, start.timeIntervalSinceNow)) {
             MainActor.assumeIsolated {
@@ -207,18 +211,17 @@ final class TeamSessions: ObservableObject {
         }
     }
 
-    /// The login folder of the account this tab's Claude Code runs on, when it isn't yours, so
-    /// the copy signs in the same way the tab does.
-    private func claudeLogin(_ tab: TerminalSession) -> String? {
-        guard let launch = AccountStore.launch(tabID: tab.tabID, provider: .claude),
-              let started = tab.agentStartedAt, abs(launch.startedAt.timeIntervalSince(started)) < 20 else { return nil }
+    /// The login folder of the account this tab's agent runs on, when it isn't yours, so the copy
+    /// signs in the same way the tab does (CLAUDE_CONFIG_DIR, CODEX_HOME or GROK_HOME).
+    private func loginEnvironment(_ tab: TerminalSession, agent: String) -> [String: String] {
+        guard let provider = AccountProvider(rawValue: agent), let launch = tab.launchRecord(provider) else { return [:] }
         let home = AccountStore.home(launch.account).path
-        return FileManager.default.fileExists(atPath: home) ? home : nil
+        return FileManager.default.fileExists(atPath: home) ? [provider.homeVariable: home] : [:]
     }
 
     /// Runs consult's `--answer-team-ask` mode: one read-only copy of the conversation, with your
     /// login shell's PATH (a Dock-launched app's own PATH lacks Homebrew, nvm and ~/.local/bin).
-    private nonisolated static func answer(_ input: Data, claudeConfigDir: String?) -> Result<String, Error> {
+    private nonisolated static func answer(_ input: Data, environment login: [String: String]) -> Result<String, Error> {
         let path = QuickCommandRunner.shared.searchPath
         let node = path.split(separator: ":").map { $0 + "/node" }.first { FileManager.default.isExecutableFile(atPath: $0) }
         guard let bundle = AgentIntegration.shippedConsultBundle(), let node else {
@@ -229,7 +232,7 @@ final class TeamSessions: ObservableObject {
         process.arguments = [bundle, "--answer-team-ask"]
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = path
-        if let claudeConfigDir { environment["CLAUDE_CONFIG_DIR"] = claudeConfigDir }
+        environment.merge(login) { _, tab in tab }
         process.environment = environment
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         process.standardInput = stdin
@@ -269,6 +272,7 @@ final class TeamSessions: ObservableObject {
     // MARK: consult's team tools in this Mac's tabs
 
     private func serve(_ method: String, _ params: [String: Any], _ reply: @escaping LineRPCServer.Reply) {
+        if serveLocal(method, params, reply) { return }
         guard let token = TeamsAccount.shared.token else {
             return reply(.failure(Self.failure("Sign in to agmux Teams in agterm Settings → Teams & Phone first.")))
         }
