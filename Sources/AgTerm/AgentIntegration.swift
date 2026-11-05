@@ -247,9 +247,10 @@ enum AgentIntegration {
         if wantConsult, !existing.contains("consult"), nodeMajorVersion(node) >= 22 {
             var consultEnv = ["PATH": env["PATH"] ?? ""]
             if let project { consultEnv["AGMUX_PROJECT_ID"] = project.id }
-            // Signed in to agmux Teams: agterm's own consult, whose team tools reach the app here.
+            // agterm's own consult: agents list and message this Mac's tabs, use the board and (with
+            // team sessions on) reach teammates' agents, all through the app's socket.
             var consult = bundles.consult
-            if UserDefaults.standard.string(forKey: "teamsUserName") != nil, let shipped = shippedConsultBundle() {
+            if let shipped = shippedConsultBundle() {
                 consult = shipped
                 consultEnv["AGTERM_TEAM_SOCK"] = TeamSessions.socketPath
             }
@@ -271,7 +272,7 @@ enum AgentIntegration {
         return (memory, consult, false)
     }
 
-    /// agterm's own copy of consult, which has the team session tools and `--answer-team-ask`.
+    /// agterm's own copy of consult: the board, the team session tools and `--answer-team-ask`.
     static func shippedConsultBundle() -> String? {
         guard let path = Bundle.main.resourceURL?.appendingPathComponent("mcp/agmux-consult-mcp.bundle.mjs").path,
               FileManager.default.fileExists(atPath: path) else { return nil }

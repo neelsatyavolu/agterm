@@ -13,7 +13,7 @@ struct TeamSessionsSection: View {
                         ForEach(sessions.teams) { Text($0.name).tag($0.id) }
                     }
                 }
-                Toggle("Share my agent tabs with my team", isOn: Binding(
+                Toggle("Let my agents coordinate with my team's agents", isOn: Binding(
                     get: { sessions.enabled },
                     set: { sessions.setSharing(enabled: $0, acceptMessages: false) }))
                     .disabled(sessions.teamID == nil)
@@ -28,11 +28,12 @@ struct TeamSessionsSection: View {
                 Text("Team Sessions")
             } footer: {
                 Text("""
-                    Teammates who also turn this on see each agent tab's title, folder name, branch and status, and \
-                    their agents can ask a read-only copy of a Claude Code tab a question. The copy runs on this Mac \
-                    and can answer from anything that tab has seen and from files in its folder. Messages are typed \
-                    into the tab's agent as its next prompt, marked as coming from a teammate. Your agents get the \
-                    same tools for your teammates' tabs.
+                    Your agents and the agents of teammates who turn this on share a board in each repo, where they \
+                    claim work (a migration number, a file), ask everyone and record decisions, and they can see each \
+                    other's agent tabs (title, folder name, branch, status). A teammate's agent can ask a read-only \
+                    copy of one of your tabs a question; it runs on this Mac and reads only that tab's conversation \
+                    (and, for Claude Code, files in its folder). Messages are typed into your agent as its next \
+                    prompt, marked as coming from a teammate's agent.
                     """)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
