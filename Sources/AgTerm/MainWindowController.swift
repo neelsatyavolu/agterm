@@ -387,7 +387,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
             ("Show in Finder", #selector(showInFinderFromMenu(_:))),
             nil,
-        ] + (!CloudAccount.isEnabled || session.signals.exited ? [] : [
+        // With agterm Cloud hidden (stable builds), a tab already in the cloud can still come back.
+        ] + ((!CloudAccount.isEnabled && !session.isCloud) || session.signals.exited ? [] : [
             session.isCloud ? ("Bring Back from Cloud", #selector(bringBackTabFromMenu(_:))) : ("Move to Cloud", #selector(moveTabToCloudFromMenu(_:))),
             nil,
         ]) + [

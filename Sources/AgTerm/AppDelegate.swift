@@ -132,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Local tabs a quit could move to the cloud instead, when a cloud machine is set and an agent runs in one.
     private func cloudMoveItems() -> [CloudMove.Item] {
-        guard CloudHost.configured != nil, let controller else { return [] }
+        guard CloudAccount.isEnabled, CloudHost.configured != nil, let controller else { return [] }
         let items = CloudMove.preflight(controller.sessions)
         return items.contains { $0.agent != nil } ? items : []
     }
