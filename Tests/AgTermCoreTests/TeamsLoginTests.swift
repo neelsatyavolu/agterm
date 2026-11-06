@@ -23,6 +23,14 @@ final class TeamsLoginTests: XCTestCase {
         XCTAssertEqual(LoginIdentity.claudeHash(identity: identity), "50ce3cee6e148a4ff519fb6e001851821c5c472102490285f04354fe1989fcd3")
     }
 
+    /// The same vectors agmux pins in `activity.rs` `claude_hash_contract_vectors`.
+    func testClaudeHashMatchesAgmuxContractVectors() throws {
+        let account = try XCTUnwrap(LoginIdentity.claudeIdentity(oauthAccount: ["accountUuid": uuid, "organizationUuid": "org-example"]))
+        XCTAssertEqual(LoginIdentity.claudeHash(identity: account), "16605ac4757244e77aa72283fbe8bee396257c66fe1171694ded5ca8cdd60f53")
+        let email = try XCTUnwrap(LoginIdentity.claudeIdentity(oauthAccount: ["emailAddress": "name@example.com", "organizationUuid": "org-example"]))
+        XCTAssertEqual(LoginIdentity.claudeHash(identity: email), "5e0ed78b11a6da6d2e5f9d0fe0de3c50ba4c7f1c7bf777ea49903b9fa29ab391")
+    }
+
     func testClaudeFallsBackToLowercasedEmailAndOrg() throws {
         let identity = try XCTUnwrap(LoginIdentity.claudeIdentity(oauthAccount: ["emailAddress": "Someone@Example.com", "organizationUuid": "org-1"]))
         XCTAssertEqual(LoginIdentity.claudeHash(identity: identity), "349e1b068776ac50afd332b52c016f69556d440d31b29043da0a5a66452c4f5e")
