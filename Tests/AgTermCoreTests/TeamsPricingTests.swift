@@ -73,8 +73,11 @@ final class TeamsPricingTests: XCTestCase {
             ("gpt-6-luna", Rates(input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125)),
             ("openai/gpt-6-sol", Rates(input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5)),
             ("openai/gpt-6-luna", Rates(input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125)),
-            ("claude-sonnet-5-5", Rates(input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5)),
-            ("anthropic/claude-sonnet-5.5", Rates(input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5)),
+            ("claude-sonnet-5-5", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
+            ("anthropic/claude-sonnet-5.5", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
+            ("claude-sonnet-5", Rates(input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5)),
+            ("claude-haiku-5-5", Rates(input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125)),
+            ("anthropic/claude-haiku-5.5", Rates(input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125)),
             ("claude-opus-5-5", Rates(input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5)),
             ("anthropic/claude-opus-5-5-20260922", Rates(input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5)),
             ("gpt-5.6-sol", Rates(input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5)),
@@ -199,6 +202,26 @@ final class TeamsPricingTests: XCTestCase {
 
     func testClaude1hCacheIsBilledAtTwiceInput() {
         XCTAssertEqual(cost("claude-sonnet-4-6", TokenCostSpec(cacheWrite1h: 1_000_000)), 6.0, accuracy: 1e-9)
+    }
+
+    /// Haiku 5.5 bills a whole request at 5x once its prompt, cache reads and writes
+    /// included, is over 100,000 tokens.
+    func testHaiku55LongPromptUsesHigherRateCard() {
+        let classes = (read: 1000, write: 1000, hour: 1000)
+        for prompt in [99_999, 100_000, 100_001] {
+            let spec = TokenCostSpec(pureInput: prompt - 3000, pureOutput: 10_000, cacheRead: classes.read,
+                                     cacheWrite: classes.write, cacheWrite1h: classes.hour)
+            let m = prompt > 100_000 ? 5.0 : 1.0
+            let expected = (Double(prompt - 3000) * 0.1 + 10_000 * 0.5 + 1000 * 0.01 + 1000 * 0.125 + 1000 * 0.2) / 1e6 * m
+            XCTAssertEqual(cost("claude-haiku-5-5", spec), expected, accuracy: 1e-12, "\(prompt)")
+        }
+        XCTAssertEqual(builtIn.aggregatedCost(model: "claude-haiku-5-5", TokenCostSpec(pureInput: 100_001)),
+                       .failure(.requestBoundaries))
+    }
+
+    func testSonnet55CacheReadIsHalfOfSonnet5() {
+        XCTAssertEqual(cost("claude-sonnet-5-5", TokenCostSpec(cacheRead: 1_000_000)), 0.1, accuracy: 1e-12)
+        XCTAssertEqual(cost("claude-sonnet-5", TokenCostSpec(cacheRead: 1_000_000)), 0.2, accuracy: 1e-12)
     }
 
     func testSonnet45DoesNotApplyRetiredBetaPremium() {

@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.2 — 2026-11-06
+- Fixed: Teams cost estimates price Claude Haiku 5.5, including its higher rate for prompts over 100,000 tokens, which were left out before. Claude Sonnet 5.5 cache reads are counted at $0.10 per million tokens, not $0.20.
+
 ## 1.1.1 — 2026-11-04
 - Added: Agents in agterm tabs coordinate with each other. consult tells every Claude Code, Codex and Grok agent how: a board per repo where they claim what they take on (a migration number, a file, a branch), ask everyone ("is anyone changing auth.ts?"), reply, and record decisions, and direct messages to one agent. They check the board when they start, before taking anything shared, and before finishing; claims expire after 4 hours unless renewed. With team sessions on, the board and the agents are shared with your teammates' agents; otherwise it covers the agents on this Mac.
 - Added: A teammate's agent can ask a Codex or Grok tab a question, as well as a Claude Code one. The read-only copy that answers has no tools, so it answers from the conversation alone.
