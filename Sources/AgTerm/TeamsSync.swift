@@ -154,6 +154,11 @@ final class TeamsSync {
         let changedAccounts = changes(accounts) { ["account", $0.hourUtc, $0.provider, $0.identityHash].joined(separator: "|") }
         let labelsHash = labels.isEmpty ? nil : digest(labels)
         let newLabels = labelsHash != nil && sent["account-labels"] != labelsHash
+        // The server deletes Claude emails when an owner turns sharing off, so forget what was
+        // sent; turning it back on then sends them again.
+        if labels.isEmpty, sent.removeValue(forKey: "account-labels") != nil {
+            try? JSONEncoder().encode(sent).write(to: Self.stateURL, options: .atomic)
+        }
         guard !changed.isEmpty || !changedAccounts.isEmpty || newLabels else { return }
         let size = Self.maxBucketsPerUpload
         let chunks = max(1, (changed.count + size - 1) / size, (changedAccounts.count + size - 1) / size)
