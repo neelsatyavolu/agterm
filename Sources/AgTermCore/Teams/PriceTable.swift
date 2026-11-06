@@ -26,8 +26,12 @@ enum PriceTable {
         (["claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5"],
          Rates(input: 5.0, output: 25.0, cacheRead: 0.50, cacheWrite: 6.25)),
         (["claude-opus-4-1", "claude-opus-4"], Rates(input: 15.0, output: 75.0, cacheRead: 1.50, cacheWrite: 18.75)),
-        (["claude-sonnet-5-5", "claude-sonnet-5"], Rates(input: 2.0, output: 10.0, cacheRead: 0.20, cacheWrite: 2.50)),
+        // Sonnet 5.5 cache hits are 0.05x input; Sonnet 5 keeps the standard 0.1x.
+        (["claude-sonnet-5-5"], Rates(input: 2.0, output: 10.0, cacheRead: 0.10, cacheWrite: 2.50)),
+        (["claude-sonnet-5"], Rates(input: 2.0, output: 10.0, cacheRead: 0.20, cacheWrite: 2.50)),
         (["claude-sonnet-4-6", "claude-sonnet-4-5", "claude-sonnet-4"], Rates(input: 3.0, output: 15.0, cacheRead: 0.30, cacheWrite: 3.75)),
+        // Prompts up to 100k tokens; `longContextStep` applies the 5x card above that.
+        (["claude-haiku-5-5"], Rates(input: 0.10, output: 0.50, cacheRead: 0.01, cacheWrite: 0.125)),
         (["claude-haiku-4-5"], Rates(input: 1.0, output: 5.0, cacheRead: 0.10, cacheWrite: 1.25)),
         (["claude-3-5-haiku"], Rates(input: 0.80, output: 4.0, cacheRead: 0.08, cacheWrite: 1.0)),
         (["gpt-6-astra"], Rates(input: 10.0, output: 50.0, cacheRead: 1.0, cacheWrite: 12.50)),
@@ -60,7 +64,9 @@ enum PriceTable {
         rows.flatMap { names, rates in names.map { ($0, rates) } }, uniquingKeysWith: { first, _ in first })
 
     /// Per-request long-context step: `(largest short prompt, input ×, output ×)`.
-    /// xAI switches at ≥ 200k, OpenAI above 272k; Claude has no premium.
+    /// xAI switches at ≥ 200k, OpenAI above 272k. Of Claude models only Haiku 5.5
+    /// has one: 5x on every class once the prompt (cache reads and writes included)
+    /// is over 100k.
     private static let openAILong: Set<String> = ["gpt-5.4", "gpt-5.4-2026-03-05", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol",
         "gpt-daybreak-blue-latest", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna"]
     private static let grokLong: Set<String> = ["grok-4.7", "grok-4.6", "grok-4.5", "grok-build-0.1", "grok-4.3",
@@ -75,6 +81,7 @@ enum PriceTable {
         let k = key(model)
         if openAILong.contains(k) { return (272_000, 2.0, 1.5) }
         if grokLong.contains(k) { return (199_999, 2.0, 2.0) }
+        if k == "claude-haiku-5-5" { return (100_000, 5.0, 5.0) }
         return nil
     }
 
