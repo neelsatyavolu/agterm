@@ -157,4 +157,16 @@ final class TeamsLoginTests: XCTestCase {
         XCTAssertEqual(AccountLabel.from(spans).count, AccountLabel.maxPerUpload)
         XCTAssertEqual(AccountLabel.from(spans).first?.identityHash, "h79")
     }
+
+    func testAnUnknownLoginEndsThePreviousSpan() {
+        let index = LoginSpanIndex([
+            LoginSpan(provider: "claude", sessionID: "s1", identityHash: String(repeating: "a", count: 64), label: "a@example.com", fromMs: 1_000),
+            LoginSpan(provider: "claude", sessionID: "s1", identityHash: LoginSpan.unknownLogin, label: nil, fromMs: 2_000),
+        ])
+        XCTAssertNotNil(index.span(provider: "claude", sessionID: "s1", atMs: 1_500))
+        XCTAssertNil(index.span(provider: "claude", sessionID: "s1", atMs: 2_500))
+        XCTAssertEqual(AccountLabel.from([
+            LoginSpan(provider: "claude", sessionID: "s1", identityHash: LoginSpan.unknownLogin, label: "x@example.com", fromMs: 3_000),
+        ]), [])
+    }
 }

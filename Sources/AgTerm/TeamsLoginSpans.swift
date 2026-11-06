@@ -24,12 +24,14 @@ final class TeamsLoginSpans {
     }
 
     /// Records that `sessionID` runs on the login `launch` names, from the launch on. A launch
-    /// whose login files named none leaves the session unattributed.
+    /// whose login files named none records an unknown login, so that run's usage is not
+    /// attributed rather than credited to the session's previous login.
     func record(_ provider: AccountProvider, sessionID: String, launch: TabLaunch) {
-        guard let hash = launch.identityHash, provider == .claude || provider == .codex else { return }
+        guard provider == .claude || provider == .codex else { return }
+        let hash = launch.identityHash ?? LoginSpan.unknownLogin
         let fromMs = Int64((launch.startedAt.timeIntervalSince1970 * 1000).rounded(.down))
         let span = LoginSpan(provider: provider.rawValue, sessionID: sessionID, identityHash: hash,
-                             label: provider == .claude ? launch.loginLabel : nil, fromMs: fromMs)
+                             label: provider == .claude && !hash.isEmpty ? launch.loginLabel : nil, fromMs: fromMs)
         lock.lock()
         guard !spans.contains(where: { $0.provider == span.provider && $0.sessionID == sessionID && $0.fromMs == fromMs }) else {
             lock.unlock()

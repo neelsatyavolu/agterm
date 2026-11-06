@@ -9,10 +9,14 @@ public struct LoginSpan: Codable, Equatable, Sendable {
     /// Claude's session id, or the Codex rollout file's name without `.jsonl`: the ids the
     /// transcript readers put on their events.
     public var sessionID: String
+    /// `unknownLogin` when the launch's login files named none.
     public var identityHash: String
     /// Claude only: the login's email, uploaded only to teams whose owner turned that on.
     public var label: String?
     public var fromMs: Int64
+
+    /// A run whose login couldn't be read: it ends the previous span, and its usage is not attributed.
+    public static let unknownLogin = ""
 
     public init(provider: String, sessionID: String, identityHash: String, label: String?, fromMs: Int64) {
         (self.provider, self.sessionID, self.identityHash, self.label, self.fromMs) = (provider, sessionID, identityHash, label, fromMs)
@@ -37,9 +41,10 @@ public struct LoginSpanIndex: Sendable {
         for key in bySession.keys { bySession[key]?.sort { $0.fromMs < $1.fromMs } }
     }
 
-    /// The latest span of this session that had started by `atMs`; nil means not attributed.
+    /// The latest span of this session that had started by `atMs`; nil means not attributed,
+    /// including when that span is an unknown login.
     public func span(provider: String, sessionID: String, atMs: Int64) -> LoginSpan? {
-        bySession[Self.key(provider, sessionID)]?.last { $0.fromMs <= atMs }
+        bySession[Self.key(provider, sessionID)]?.last { $0.fromMs <= atMs }.flatMap { $0.identityHash.isEmpty ? nil : $0 }
     }
 
     private static func key(_ provider: String, _ session: String) -> String { provider + "|" + session }
@@ -80,7 +85,7 @@ public struct AccountLabel: Codable, Equatable, Sendable {
     /// Claude logins' emails from the spans, the newest label per login, newest logins first.
     public static func from(_ spans: [LoginSpan]) -> [AccountLabel] {
         var newest: [String: LoginSpan] = [:]
-        for span in spans where span.provider == "claude" && !(span.label ?? "").isEmpty {
+        for span in spans where span.provider == "claude" && !span.identityHash.isEmpty && !(span.label ?? "").isEmpty {
             if let seen = newest[span.identityHash], seen.fromMs >= span.fromMs { continue }
             newest[span.identityHash] = span
         }
