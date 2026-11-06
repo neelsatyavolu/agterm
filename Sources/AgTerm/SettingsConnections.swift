@@ -13,6 +13,7 @@ struct TeamsSection: View {
         "Session, turn and tool-call counts, by kind of tool, and failed tool calls",
         "Files changed and lines added or removed, as counts only",
         "Provider and model names, and project folder names",
+        "Which Claude Code or Codex login each session used, as an opaque ID; a Claude login's email only if your team's owner turns on Shared Claude accounts",
     ]
     static let never = [
         "Prompts, replies or chat history",

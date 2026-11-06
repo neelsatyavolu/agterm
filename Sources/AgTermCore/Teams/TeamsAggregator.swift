@@ -95,6 +95,59 @@ public enum TeamsAggregator {
         return acc.sorted { $0.key < $1.key }.map(\.value)
     }
 
+    /// Per-login hourly totals: the same events as `buckets`, restricted to those whose session
+    /// had a recorded login at the time, one bucket per (hour, provider, identity hash) across
+    /// models and projects. Active time follows each session's whole timeline, so a gap is
+    /// credited to the login of the event that opened it, and unattributed time is left out.
+    public static func accountBuckets(events: [UsageEvent], spans: LoginSpanIndex, now: Date) -> [AccountBucket] {
+        struct Key: Hashable { var hour, provider, hash: String }
+        var acc: [Key: AccountBucket] = [:]
+        var timelines: [SessionID: [(at: Int64, ident: String?)]] = [:]
+        let nowMicros = TeamsTime.micros(now)
+
+        func bucket(_ key: Key) -> AccountBucket {
+            if let existing = acc[key] { return existing }
+            var b = AccountBucket()
+            (b.hourUtc, b.provider, b.identityHash) = (key.hour, key.provider, key.hash)
+            return b
+        }
+
+        for e in events {
+            let at = TeamsTime.micros(e.at)
+            guard at <= nowMicros, let provider = LoginSpan.provider(forEvent: e.provider) else { continue }
+            let hash = spans.span(provider: provider, sessionID: e.sessionID, atMs: at / 1000)?.identityHash
+            timelines[SessionID(provider: provider, session: e.sessionID), default: []].append((at, hash))
+            guard let hash else { continue }
+            let key = Key(hour: TeamsTime.hourKey(e.at), provider: provider, hash: hash)
+            var b = bucket(key)
+            b.tokensIn += e.tokensIn
+            b.tokensOut += e.tokensOut
+            b.tokensCacheRead += e.cacheRead
+            b.tokensCacheWrite += e.cacheWrite
+            b.tokensReasoning += e.reasoning
+            b.costUsd += e.costUSD
+            b.costIncomplete = b.costIncomplete || e.costIncomplete
+            if e.isTurn { b.turns += 1 }
+            acc[key] = b
+        }
+
+        for (session, timeline) in timelines {
+            for (span, hash) in sessionSpans(timeline) {
+                guard let hash else { continue }
+                for (bucketStart, slice) in splitByHour(span) {
+                    let key = Key(hour: TeamsTime.hourKey(TeamsTime.date(micros: bucketStart)), provider: session.provider, hash: hash)
+                    var b = bucket(key)
+                    b.activeMs += Int((slice.end - slice.start) / 1000)
+                    acc[key] = b
+                }
+            }
+        }
+
+        return acc.values.sorted {
+            ($0.hourUtc, $0.provider, $0.identityHash) < ($1.hourUtc, $1.provider, $1.identityHash)
+        }
+    }
+
     // MARK: - Folding
 
     private static let utc = TimeZone(identifier: "UTC") ?? TimeZone(secondsFromGMT: 0) ?? .current
@@ -145,11 +198,11 @@ public enum TeamsAggregator {
 
     /// Active spans for one session, each tagged with the identity running when it
     /// started. Each gap is capped; the last event gets a short tail.
-    static func sessionSpans(_ timeline: [(at: Int64, ident: Ident)]) -> [(Span, Ident)] {
+    static func sessionSpans<Tag>(_ timeline: [(at: Int64, ident: Tag)]) -> [(Span, Tag)] {
         // Stable sort by time, as Rust's sort_by.
         let ordered = timeline.enumerated().sorted { ($0.element.at, $0.offset) < ($1.element.at, $1.offset) }.map(\.element)
         guard let last = ordered.last else { return [] }
-        var spans: [(Span, Ident)] = []
+        var spans: [(Span, Tag)] = []
         for (a, b) in zip(ordered, ordered.dropFirst()) {
             let end = b.at - a.at > gapCapMicros ? a.at + gapCapMicros : b.at
             if end > a.at { spans.append((Span(start: a.at, end: end), a.ident)) }

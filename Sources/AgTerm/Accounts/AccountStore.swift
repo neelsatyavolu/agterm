@@ -27,6 +27,10 @@ struct TabLaunch: Codable {
     let startedAt: Date
     /// Grok: the conversation it runs, when known (it doesn't say which one itself).
     var sessionID: String? = nil
+    /// Claude/Codex: the login's identity hash (as agmux computes it), when its files say.
+    var identityHash: String? = nil
+    /// Claude: the login's email, for teams whose owner shows it.
+    var loginLabel: String? = nil
 }
 
 /// Logins live in Application Support/<bundle id>/accounts/<id>/, one folder each, pointed at

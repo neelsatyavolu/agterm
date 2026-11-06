@@ -25,6 +25,10 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     /// When the current agent started, and (for Claude) the conversation it's in.
     private(set) var agentStartedAt: Date?
     private(set) var claudeSessionID: String?
+    /// The agent process and session last joined with its login for Teams, and when a Codex
+    /// rollout was last looked for (reading open files is too slow to do on every poll).
+    private var loginRecorded: String?
+    private var codexRolloutCheckedAt: Date?
     /// Claude's session name from its transcript, shown when its terminal title is generic.
     private var transcriptTitle: String?
     /// The name given with Rename Tab…; when set it replaces the automatic title.
@@ -398,6 +402,9 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         if let claudeID {
             claudeSessionID = claudeID
             TeamsClaims.shared.recordClaude(claudeID)
+            recordLogin(.claude, pid: fg, sessionID: claudeID)
+        } else if agentName == "codex", !isCloud {
+            recordCodexLogin(pid: fg)
         }
         updateBusy(claudeID == nil ? nil : info.claudeBusy)
         let dir = info.cwd ?? cwd
@@ -412,6 +419,27 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         foregroundName = name
         cwd = dir
         onChange?()
+    }
+
+    /// Joins this run's launch record (which login the wrapper started it on) with the session it
+    /// turned out to be, once per process and session, for Teams usage by login.
+    private func recordLogin(_ provider: AccountProvider, pid: pid_t, sessionID: String) {
+        guard !isCloud else { return }
+        let key = "\(pid)|\(sessionID)"
+        guard loginRecorded != key else { return }
+        loginRecorded = key
+        if let launch = launchRecord(provider) { TeamsLoginSpans.shared.record(provider, sessionID: sessionID, launch: launch) }
+    }
+
+    /// Codex names its conversation only through the rollout file it holds open; look every 5 s
+    /// until it has one, then every 30 s (it may start a new one with /new).
+    private func recordCodexLogin(pid: pid_t) {
+        let now = Date()
+        let interval: TimeInterval = loginRecorded?.hasPrefix("\(pid)|") == true ? 30 : 5
+        if let last = codexRolloutCheckedAt, now.timeIntervalSince(last) < interval { return }
+        codexRolloutCheckedAt = now
+        guard let rollout = codexRollout else { return }
+        recordLogin(.codex, pid: pid, sessionID: ((rollout as NSString).lastPathComponent as NSString).deletingPathExtension)
     }
 
     private func updateCommandRunning(_ running: Bool) {
@@ -442,6 +470,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         agentName = agent
         agentStartedAt = agent == nil ? nil : Date()
         claudeSessionID = nil
+        codexRolloutCheckedAt = nil
         transcriptTitle = nil
         agentBaseline = nil
         agentBaselineRequested = false

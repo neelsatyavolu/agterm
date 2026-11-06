@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.3 — 2026-11-06
+- Added: agmux Teams can split your usage by login. agterm now notes which Claude Code or Codex login each session runs on, including after an automatic account switch, and sends that with the hourly totals, so the Teams dashboard shows how many tokens went through each login. Logins appear as an opaque ID; a Claude login's email is sent only when your team's owner turns on Shared Claude accounts. Sessions started before this update stay unsplit.
+
 ## 1.1.2 — 2026-11-06
 - Fixed: Teams cost estimates price Claude Haiku 5.5, including its higher rate for prompts over 100,000 tokens, which were left out before. Claude Sonnet 5.5 cache reads are counted at $0.10 per million tokens, not $0.20.
 

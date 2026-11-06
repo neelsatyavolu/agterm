@@ -210,9 +210,29 @@ enum AgentIntegration {
         }
         if id == AccountStore.native, env["AGTERM_ACCOUNT"] != nil { unsetenv(provider.homeVariable) }
         if let tab = env["AGTERM_TAB_ID"] {
-            AccountStore.recordLaunch(TabLaunch(provider: provider, account: id, args: args, startedAt: Date(), sessionID: sessionID), tabID: tab)
+            let login = loginIdentity(provider)
+            AccountStore.recordLaunch(TabLaunch(provider: provider, account: id, args: args, startedAt: Date(), sessionID: sessionID,
+                                                identityHash: login?.hash, loginLabel: login?.label), tabID: tab)
         }
         return folder
+    }
+
+    /// The login the agent is about to use, read from the files in the folder it was just pointed
+    /// at (or your own), for splitting Teams usage by login. Nil when they don't name one.
+    private static func loginIdentity(_ provider: AccountProvider) -> (hash: String, label: String?)? {
+        let dir = getenv(provider.homeVariable).map { URL(fileURLWithPath: String(cString: $0)) }
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        switch provider {
+        case .claude:
+            // Claude Code keeps its login in <CLAUDE_CONFIG_DIR>/.claude.json, else ~/.claude.json.
+            let file = (dir ?? home).appendingPathComponent(".claude.json")
+            return (try? Data(contentsOf: file)).flatMap(LoginIdentity.claude(configJSON:))
+        case .codex:
+            let file = (dir ?? home.appendingPathComponent(".codex")).appendingPathComponent("auth.json")
+            return (try? Data(contentsOf: file)).flatMap(LoginIdentity.codexHash(authJSON:)).map { ($0, nil) }
+        default:
+            return nil
+        }
     }
 
     static let memoryInstructions = """
