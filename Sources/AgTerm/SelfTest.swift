@@ -50,6 +50,7 @@ enum SelfTest {
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_SWITCH_CHECK"] { return switchCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_DRAG_CHECK"] == "1" { return dragCheck(controller) }
         if ProcessInfo.processInfo.environment["AGTERM_CD_CHECK"] == "1" { return cdCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_CLICK_CHECK"] == "1" { return clickCheck(controller) }
         if ProcessInfo.processInfo.environment["AGTERM_WHATSNEW_CHECK"] == "1" { return whatsNewCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_THEME_CHECK"] == "1" { return themeCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_TABMENU_CHECK"] == "1" { return tabMenuCheck(controller, outDir: outDir) }

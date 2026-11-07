@@ -110,6 +110,21 @@ enum AgentIntegration {
             """
         }
         let putWrappersFirst = #"[[ -n $AGTERM_BIN ]] && path=("$AGTERM_BIN" ${path:#$AGTERM_BIN})"#
+        // Added to the prompt in precmd, after themes (powerlevel10k, starship) have set it, so it survives them.
+        let promptMarks = #"""
+        # Marks the prompt (OSC 133) so clicking in the line you're typing moves the cursor there.
+        if [[ -o interactive && -z $_agterm_marks ]]; then
+          _agterm_marks=1
+          autoload -Uz add-zsh-hook
+          _agterm_precmd() {
+            print -n '\e]133;D\a'
+            [[ $PS1 == *'133;A;'* ]] || PS1=$'%{\e]133;A;cl=m\a%}'$PS1$'%{\e]133;B\a%}'
+          }
+          _agterm_preexec() { print -n '\e]133;C\a' }
+          add-zsh-hook precmd _agterm_precmd
+          add-zsh-hook preexec _agterm_preexec
+        fi
+        """#
         let finish = """
         \(putWrappersFirst)
         if [[ $AGTERM_USER_ZDOTDIR == $HOME ]]; then unset ZDOTDIR; else ZDOTDIR=$AGTERM_USER_ZDOTDIR; fi
@@ -120,7 +135,7 @@ enum AgentIntegration {
             (".zprofile", header + load(".zprofile") + "\n"),
             // /etc/zshrc set HISTFILE while ZDOTDIR pointed here; keep the user's history file.
             (".zshrc", header + #"[[ $HISTFILE == $ZDOTDIR/.zsh_history ]] && HISTFILE=${AGTERM_USER_ZDOTDIR:-$HOME}/.zsh_history"# + "\n"
-                + load(".zshrc") + "\n" + putWrappersFirst + "\n[[ -o login ]] || {\n" + finish + "\n}\n"),
+                + load(".zshrc") + "\n" + promptMarks + "\n" + putWrappersFirst + "\n[[ -o login ]] || {\n" + finish + "\n}\n"),
             (".zlogin", header + load(".zlogin") + "\n" + finish + "\n"),
         ]
     }
