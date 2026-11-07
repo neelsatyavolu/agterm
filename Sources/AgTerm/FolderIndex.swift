@@ -6,7 +6,7 @@ import Foundation
 final class FolderIndex {
     static let shared = FolderIndex()
 
-    private static let depth = 3
+    private static let depth = 4
     private static let maxFolders = 20_000
     private static let staleAfter: TimeInterval = 120
     private static let skipped: Set<String> = ["Library", "Applications", "node_modules", "Pods", "DerivedData"]
@@ -42,27 +42,21 @@ final class FolderIndex {
         queue.async {
             let home = NSHomeDirectory()
             let fullDiskAccess = DiskAccess.check(home: home) == .granted
-            var found: [String] = []
-            for top in Self.subfolders(of: home) {
+            var level = Self.subfolders(of: home).filter { top in
                 let name = (top as NSString).lastPathComponent
-                if Self.protected.contains(name), !fullDiskAccess, !visited.contains(where: { $0 == top || $0.hasPrefix(top + "/") }) { continue }
-                found.append(top)
-                Self.walk(top, depth: Self.depth - 1, into: &found)
-                if found.count >= Self.maxFolders { break }
+                return !Self.protected.contains(name) || fullDiskAccess || visited.contains { $0 == top || $0.hasPrefix(top + "/") }
+            }
+            // A level at a time, so hitting the cap drops the deepest folders, not whole top-level ones.
+            var found: [String] = []
+            for depth in 1...Self.depth where !level.isEmpty && found.count < Self.maxFolders {
+                found += level.prefix(Self.maxFolders - found.count)
+                level = depth < Self.depth ? level.flatMap(Self.subfolders(of:)) : []
             }
             self.lock.lock()
             self.scanned = found
             self.scannedAt = Date()
             self.scanning = false
             self.lock.unlock()
-        }
-    }
-
-    private static func walk(_ path: String, depth: Int, into found: inout [String]) {
-        guard depth > 0 else { return }
-        for child in subfolders(of: path) where found.count < maxFolders {
-            found.append(child)
-            walk(child, depth: depth - 1, into: &found)
         }
     }
 
