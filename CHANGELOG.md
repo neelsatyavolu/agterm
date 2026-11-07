@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.4 — 2026-11-06
+- Added: When Claude Code stops because it couldn't reach Anthropic (no internet, Wi-Fi changing, the Mac sleeping mid-response), agterm types "Continue where you left off." as soon as the connection is back, unless you've typed in the tab since. Turn it off in Settings → Agents.
+
 ## 1.1.3 — 2026-11-06
 - Added: agmux Teams can split your usage by login. agterm now notes which Claude Code or Codex login each session runs on, including after an automatic account switch, and sends that with the hourly totals, so the Teams dashboard shows how many tokens went through each login. Logins appear as an opaque ID; a Claude login's email is sent only when your team's owner turns on Shared Claude accounts. Sessions started before this update stay unsplit.
 

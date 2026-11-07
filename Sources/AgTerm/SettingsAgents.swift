@@ -7,6 +7,7 @@ struct AgentsPane: View {
     @AppStorage(AgentIntegration.launchAgentKey) private var launchAgent = AgentKind.claude.id
     @AppStorage(AgentIntegration.memoryKey) private var memory = true
     @AppStorage(AgentIntegration.consultKey) private var consult = true
+    @AppStorage(ConnectionResume.enabledKey) private var resumeAfterDrop = true
     @State private var shortcut = AgentIntegration.newAgentTabShortcut
     /// Found off the main thread, since it may wait on your shell's startup files.
     @State private var installed: [AgentKind]?
@@ -46,6 +47,16 @@ struct AgentsPane: View {
                          + "Claude Code, Codex and Grok; Shell → New Tab With Agent and right-clicking + list every agent "
                          + "you have installed. When the agent quits, the shell stays.\n\n"
                          + "Tabs show status, \"needs you\" and lines changed for \(Self.supported).")
+            }
+
+            Section {
+                Toggle("Continue Claude Code when the connection comes back", isOn: $resumeAfterDrop)
+            } header: {
+                Text("Dropped connections")
+            } footer: {
+                Footnote("When Claude Code stops because it couldn't reach Anthropic (no internet, Wi-Fi changing, the Mac "
+                         + "sleeping mid-response), agterm checks every few seconds and types \"Continue where you left off.\" "
+                         + "once it's back. It won't if you've typed in the tab since.")
             }
 
             Section {

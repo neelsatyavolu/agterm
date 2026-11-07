@@ -123,6 +123,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             guard let self else { return }
             self.sessions.forEach { $0.pollProcess() }
             AccountSwitcher.shared.poll(self.sessions)
+            ConnectionResume.shared.poll(self.sessions)
             TeamAccounts.shared.poll(self.sessions)
         }
         let slow = Timer(timeInterval: 3.0, repeats: true) { [weak self] _ in self?.pollGit() }

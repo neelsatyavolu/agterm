@@ -48,14 +48,14 @@ public enum LimitDetector {
         }
     }
 
-    private static func timestamp(_ record: [String: Any]) -> Date? {
+    static func timestamp(_ record: [String: Any]) -> Date? {
         guard let text = record["timestamp"] as? String else { return nil }
         let withFraction = ISO8601DateFormatter()
         withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return withFraction.date(from: text) ?? ISO8601DateFormatter().date(from: text)
     }
 
-    private static func object(_ line: String) -> [String: Any]? {
+    static func object(_ line: String) -> [String: Any]? {
         (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
     }
 }
