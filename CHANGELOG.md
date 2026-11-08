@@ -8,6 +8,9 @@
 - Added: Install agterm with Homebrew: `brew install --cask neel-xanom/agmux/agterm`.
 - Added: View → Command Palette (⇧⌘P). Type a few letters of any menu command or open tab, then press Return to run it or switch to that tab. Each command shows its menu and shortcut.
 - Added: Keep Mac Awake While Agents Run, in the agterm menu and Settings → Agents. While an agent tab is working, your Mac doesn't sleep on its own; it sleeps normally again once no agent is working. Turn on "Also when the lid is closed" to keep it awake with the lid shut too. That asks for an administrator's password once, to install a small helper, and agterm shows a notification when it's keeping the Mac awake on battery.
+- Changed: agterm runs its own project memory and consult servers for every agent, even with agmux installed, so you can uninstall agmux without losing memory. Repos agmux knows keep reading and writing agmux's memory where it is; nothing is copied or moved.
+- Added: OpenCode, Kilo Code, Cursor Agent and Amp started in agterm get project memory and consult too, for that run only, without changes to their settings files. OpenCode, Kilo Code and Cursor Agent are also told how to use the memory.
+- Changed: Git repos agmux doesn't know get their own memory even when agmux is installed.
 
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.

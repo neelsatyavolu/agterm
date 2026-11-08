@@ -39,7 +39,7 @@ cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -X Resources/agterm-notify.wav "$APP/Contents/Resources/"
 # What's New reads it after an update.
 cp -X CHANGELOG.md "$APP/Contents/Resources/"
-# agmux's memory and consult servers, for Macs without agmux (Resources/mcp/README.md).
+# The memory and consult servers agterm runs for its agents (Resources/mcp/README.md).
 cp -R -X Resources/mcp "$APP/Contents/Resources/"
 ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 
