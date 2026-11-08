@@ -5,6 +5,9 @@
 - Added: Window → Team Dashboard shows your agmux Teams team without agmux: tokens, estimated cost, active time and sessions over 7 to 90 days, daily usage, the monthly budget, providers and models, every member's usage and spend, and projects. Click a member to see their numbers and which Claude or Codex login did the work. Employees see their own numbers. It loads when you open it or press Refresh, and shows the last numbers it got while you're offline. Settings → Teams & Phone has a Team Dashboard… button too.
 - Added: Team owners, and managers for the logins they added, can rename, pause and remove the team's shared Codex and Grok logins in the Team Dashboard.
 - Added: Session Timeline (View → Session Timeline, ⇧⌘L, or the list button at the top right). It lists every prompt you sent in the tab with Claude Code, Codex or Grok, newest first, with whether it's running, done, failed or cancelled and how long ago. Click one to scroll the terminal to where that turn starts; it flashes briefly. In a plain shell tab it lists the commands you ran.
+- Added: Install agterm with Homebrew: `brew install --cask neel-xanom/agmux/agterm`.
+- Added: View → Command Palette (⇧⌘P). Type a few letters of any menu command or open tab, then press Return to run it or switch to that tab. Each command shows its menu and shortcut.
+- Added: Keep Mac Awake While Agents Run, in the agterm menu and Settings → Agents. While an agent tab is working, your Mac doesn't sleep on its own; it sleeps normally again once no agent is working. Turn on "Also when the lid is closed" to keep it awake with the lid shut too. That asks for an administrator's password once, to install a small helper, and agterm shows a notification when it's keeping the Mac awake on battery.
 
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.

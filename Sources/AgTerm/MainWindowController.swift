@@ -32,6 +32,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var gitPolledAt: [String: Date] = [:]
     private static let idleGitInterval: TimeInterval = 30
     private let commandBar = CommandBar()
+    /// ⇧⌘P (`MainWindowController+Palette`).
+    let commandPalette = CommandPalette()
     private let cdSuggestions = CdSuggestions()
     /// The Session Timeline panel (MainWindowController+Timeline).
     let sessionTimeline = SessionTimelineController()
@@ -177,6 +179,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private func tickStatus() {
         let now = Date()
         sessions.forEach { $0.tick(now: now) }
+        KeepAwake.shared.update(agentsBusy: sessions.contains { !$0.isCloud && $0.agentName != nil && $0.status == .working })
         tabBar.blinkOn.toggle()
         sidebar.blinkOn = tabBar.blinkOn
     }
@@ -888,6 +891,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         container.subviews.forEach { $0.needsDisplay = true }
         container.needsDisplay = true
         commandBar.refreshAppearance()
+        commandPalette.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
         window.invalidateShadow()
     }

@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UsageMonitor.shared.start()
         RemoteClient.shared.startIfEnabled()
         Analytics.start()
+        KeepAwake.shared.start()
     }
 
     /// Every other installed agent, listed when the menu opens (the PATH is found after launch).
@@ -50,6 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkForUpdates(_:)), keyEquivalent: "")
         item.target = Updater.shared
         item.isHidden = !Updater.shared.isAvailable
+        return item
+    }
+
+    private func keepAwakeItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Keep Mac Awake While Agents Run", action: #selector(KeepAwake.toggleEnabled(_:)), keyEquivalent: "")
+        item.target = KeepAwake.shared
         return item
     }
 
@@ -93,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Read the tabs before the quit lets go of them.
         let keptTabs = endSessionsOnQuit || !Updater.shared.isRelaunchingForUpdate ? nil : controller?.keptTabIDs
         controller?.quit(endingSessions: endSessionsOnQuit)
+        KeepAwake.shared.stop()
         TeamAccounts.shared.giveBackAll(keepingAgentsIn: keptTabs)
         Analytics.flushAtQuit()
     }
@@ -162,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings), ","),
             updatesItem(),
+            keepAwakeItem(),
             .separator(),
             item("Hide agterm", #selector(NSApplication.hide(_:)), "h"),
             item("Quit agterm", #selector(NSApplication.terminate(_:)), "q"),
@@ -193,6 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
         ]))
         main.addItem(submenu("View", [
+            item("Command Palette…", #selector(MainWindowController.toggleCommandPalette), "p", [.command, .shift]),
+            .separator(),
             item("Bigger", #selector(MainWindowController.biggerFont), "="),
             item("Smaller", #selector(MainWindowController.smallerFont), "-"),
             item("Actual Size", #selector(MainWindowController.resetFont), "0"),

@@ -19,6 +19,14 @@ It is a real terminal (the [SwiftTerm](https://github.com/migueldeicaza/SwiftTer
 
 Download the latest `agterm.zip` from [Releases](https://github.com/neelsatyavolu/agterm/releases/latest) or [agterm.xanom.co](https://agterm.xanom.co), unzip it and move `agterm.app` to Applications. It is signed and notarized, and updates itself through [Sparkle](https://sparkle-project.org) (Settings → General).
 
+Or with Homebrew:
+
+```sh
+brew install --cask neel-xanom/agmux/agterm
+```
+
+agterm keeps updating itself after a Homebrew install, so `brew upgrade` skips it unless you pass `--greedy`. `brew uninstall --zap --cask agterm` also removes its settings and saved tabs.
+
 macOS 14 or later.
 
 On first launch agterm asks for Full Disk Access. Programs you run in a terminal get the terminal's permissions, so without it macOS blocks agents from Desktop, Documents, Mail and other apps' data, or keeps asking.
@@ -37,6 +45,8 @@ agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own
 - **About 20 agent CLIs.** Claude Code, Codex, Grok, Gemini CLI, Antigravity, Cursor Agent, OpenCode, Kimi Code, Aider, Amp, Qwen Code, Crush, GitHub Copilot CLI, Factory Droid, Kilo Code, Cline, Goose, Auggie, Qodo, Kiro CLI, Continue and Pi all get tab status, "needs you" and lines changed.
 - **New agent tab.** ⌥⌘T opens a tab in the current folder and starts your usual agent (Settings → Agents). ⌥⌘1, ⌥⌘2 and ⌥⌘3 start Claude Code, Codex and Grok; Shell → New Tab With Agent and right-clicking + list every agent you have installed. The agent is typed at the new shell's prompt, so the shell stays when the agent quits and the tab restores like any other.
 - **Skip permission prompts.** Settings → Permissions can start each installed agent with its own bypass flag, such as `--dangerously-skip-permissions` (Claude Code, Antigravity), `--dangerously-bypass-approvals-and-sandbox` (Codex, which also turns off its sandbox), `--permission-mode bypassPermissions` (Grok), `--yolo` (Gemini, Kimi, Qwen, Crush), `--force` (Cursor), `--auto` (OpenCode) or `--yes-always` (Aider). Off by default. Runs where you pass a permission flag yourself, and subcommands like `mcp` or `login`, are left alone.
+- **⇧⌘P command palette.** Type a few letters of any menu command or open tab and press ⏎ to run it or switch to it. Each command shows its menu and shortcut.
+- **Keep Mac awake while agents run.** In the agterm menu and Settings → Agents. While an agent tab is working, agterm holds a power assertion so the Mac doesn't idle to sleep, and lets go when none is. "Also when the lid is closed" installs a root-owned helper once (an administrator's password) at `/Library/PrivilegedHelperTools/co.xanom.agterm.closed-lid`, with a sudoers rule in `/etc/sudoers.d/agterm-closed-lid` that lets you run only that file. It sets `pmset disablesleep 1` while agents work and clears it when they stop or agterm quits or crashes. It coexists with agmux's own helper. Remove it from the same place in Settings.
 - **⌘K writes a command.** Describe what you want; ⏎ puts the command at your prompt to check, ⌘⏎ runs it. It goes through the CLI you're already signed in to, at its fastest setting: Claude Haiku (about 2.5 s), Codex's Luna model at its lowest effort (about 4 s) or Grok at low effort (about 5 s). Automatic uses the first one installed. The model gets your request, the tab's folder, your shell and the tab's last 150 lines (scrollback included, up to 8,000 characters), so "fix that error" or "run that again" works. It has no tools, and the run isn't kept in the CLI's history.
 
 ## Switching accounts when an agent runs out
