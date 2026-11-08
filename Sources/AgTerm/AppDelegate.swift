@@ -188,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             moreAgentsItem(),
             .separator(),
             item("Write a Command…", #selector(MainWindowController.toggleCommandBar), "k"),
+            item("Search Conversations…", #selector(MainWindowController.searchConversations), "f", [.command, .shift]),
             .separator(),
             item("Split Right", #selector(MainWindowController.splitRight), "d"),
             item("Split Down", #selector(MainWindowController.splitDown), "d", [.command, .shift]),

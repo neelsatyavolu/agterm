@@ -405,6 +405,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         newAgentTab(agent)
     }
 
+    /// ⇧⌘F: find a past conversation and resume it in a new tab in its folder.
+    @objc func searchConversations() {
+        let search = ConversationSearchWindow.shared
+        search.openTab = { [weak self] folder, command in
+            self?.window?.makeKeyAndOrderFront(nil)
+            self?.addTab(cwd: folder, restoring: nil, command: command)
+        }
+        search.show(over: window)
+    }
+
     /// Types the agent at the new shell's first prompt, so the shell is still there when it exits
     /// and the tab saves and restores like any other.
     func newAgentTab(_ agent: AgentKind) { addTab(cwd: currentFolder, restoring: nil, command: agent.command) }
