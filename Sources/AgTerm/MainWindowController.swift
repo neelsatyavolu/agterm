@@ -372,6 +372,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func openCloudTab(_ cloud: CloudHost, attaching id: String? = nil) {
         do {
             install(try TerminalSession(cloud: cloud, cwd: currentFolder, attaching: id))
+            if id == nil { Analytics.record(.featureUsed(.cloudTab)) }
         } catch {
             let alert = NSAlert()
             alert.messageText = "Couldn't open a cloud tab"
@@ -437,6 +438,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         group.picker = slot
         group.focused = slot
         select(selected)
+        Analytics.record(.featureUsed(.split))
     }
 
     /// Puts `session` in the selected split's empty pane, or beside the pane you're typing in.
@@ -908,6 +910,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     @objc func toggleCommandBar() {
         guard commandBar.superview == nil else { return hideCommandBar() }
         guard let session = focusedSession else { return }
+        Analytics.record(.featureUsed(.commandBar))
         commandBarTarget = session
         // Added last so it sits above the terminals, including tabs opened since.
         container.addSubview(commandBar)

@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         TeamAccounts.shared.start()
         UsageMonitor.shared.start()
         RemoteClient.shared.startIfEnabled()
+        Analytics.start()
     }
 
     /// Every other installed agent, listed when the menu opens (the PATH is found after launch).
@@ -89,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let keptTabs = endSessionsOnQuit || !Updater.shared.isRelaunchingForUpdate ? nil : controller?.keptTabIDs
         controller?.quit(endingSessions: endSessionsOnQuit)
         TeamAccounts.shared.giveBackAll(keepingAgentsIn: keptTabs)
+        Analytics.flushAtQuit()
     }
 
     @objc func quitAndEndSessions() {

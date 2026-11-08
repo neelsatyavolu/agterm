@@ -470,6 +470,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     private func updateAgent(_ agent: String?) {
         guard agent != agentName else { return }
         agentName = agent
+        if let agent { Analytics.record(.agentStarted(agent)) }
         agentStartedAt = agent == nil ? nil : Date()
         claudeSessionID = nil
         codexRolloutCheckedAt = nil

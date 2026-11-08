@@ -1,0 +1,564 @@
+Lets agterm report to agmux's analytics-service (owner.agmux.dev).
+
+- Bodies may carry "app": "agmux" | "agterm" (missing = agmux, so agmux clients are unchanged).
+- New POST /v1/events takes a batch of up to 100 events; unknown names and props are dropped.
+- agterm events: agent_started {agent}, feature_used {feature}; allow-lists in src/validate.ts.
+- installs and daily_active get an app column (migrations/0003_app.sql); /api/summary?app=agterm.
+
+Apply from the agmux repo root:  git apply -p1 <this file>
+Then: cd analytics-service && npm run typecheck && npm test
+      npx wrangler d1 execute agmux-owner --remote --file=./migrations/0003_app.sql
+      npx wrangler deploy
+Run the migration before deploying: the new code writes the app column.
+
+diff -ruN -x web orig/analytics-service/README.md new/analytics-service/README.md
+--- orig/analytics-service/README.md	2026-09-13 10:48:44
++++ new/analytics-service/README.md	2026-11-08 13:52:11
+@@ -14,6 +14,25 @@
+ **Events (counters only):** `thread_created` `{provider, interactionMode}` and
+ `app_mode` `{mode}`. Unknown names and extra props are dropped.
+ 
++**agterm** reports here too, with `"app": "agterm"` on every body (a body
++without `app` is agmux). Its heartbeat is the same shape; its events go in
++batches to `POST /v1/events` (`{install_id, app, events: [{name, props}]}`, at
++most 100): `agent_started` `{agent}` (an agterm AgentKind id) and
++`feature_used` `{feature}` (`split`, `command_bar`, `cloud_tab`,
++`phone_paired`, `update_installed`). Each app has its own event names, so
++counters never mix. `GET /api/summary?app=agterm` returns agterm's numbers;
++without `app` it returns agmux's, as before. Adding an agent or feature to
++agterm means adding it to `AGTERM_AGENTS` / `AGTERM_FEATURES` in
++`src/validate.ts`; until then the server drops it.
++
++To turn this on for an existing database:
++
++```sh
++npx wrangler d1 execute agmux-owner --remote --file=./migrations/0003_app.sql
++npm run typecheck && npm test
++npx wrangler deploy
++```
++
+ ## Auth
+ 
+ The dashboard is owner-only:
+diff -ruN -x web orig/analytics-service/migrations/0003_app.sql new/analytics-service/migrations/0003_app.sql
+--- orig/analytics-service/migrations/0003_app.sql	1969-12-31 16:00:00
++++ new/analytics-service/migrations/0003_app.sql	2026-11-08 13:51:28
+@@ -0,0 +1,4 @@
++-- A second app (agterm) reports to the same service. Existing rows are agmux.
++ALTER TABLE installs ADD COLUMN app TEXT NOT NULL DEFAULT 'agmux';
++ALTER TABLE daily_active ADD COLUMN app TEXT NOT NULL DEFAULT 'agmux';
++CREATE INDEX IF NOT EXISTS idx_daily_active_app_day ON daily_active(app, day);
+diff -ruN -x web orig/analytics-service/schema.sql new/analytics-service/schema.sql
+--- orig/analytics-service/schema.sql	2026-09-13 10:36:55
++++ new/analytics-service/schema.sql	2026-11-08 13:51:26
+@@ -11,17 +11,20 @@
+   os_name TEXT,
+   os_version TEXT,
+   arch TEXT,
+-  channel TEXT
++  channel TEXT,
++  app TEXT NOT NULL DEFAULT 'agmux'
+ );
+ 
+ CREATE TABLE IF NOT EXISTS daily_active (
+   day TEXT NOT NULL,
+   install_id TEXT NOT NULL,
+   app_version TEXT,
++  app TEXT NOT NULL DEFAULT 'agmux',
+   PRIMARY KEY (day, install_id)
+ );
+ 
+ CREATE INDEX IF NOT EXISTS idx_daily_active_day ON daily_active(day);
++CREATE INDEX IF NOT EXISTS idx_daily_active_app_day ON daily_active(app, day);
+ 
+ CREATE TABLE IF NOT EXISTS daily_events (
+   day TEXT NOT NULL,
+diff -ruN -x web orig/analytics-service/src/index.ts new/analytics-service/src/index.ts
+--- orig/analytics-service/src/index.ts	2026-09-13 10:36:55
++++ new/analytics-service/src/index.ts	2026-11-08 13:51:22
+@@ -3,6 +3,7 @@
+  *
+  *   POST /v1/heartbeat   anonymous install ping
+  *   POST /v1/event       allowlisted product event
++ *   POST /v1/events      a batch of allowlisted events (agterm)
+  *   GET  /api/summary    owner-only dashboard payload
+  *   /api/auth/*          GitHub / password / dev sign-in
+  *   /*                   SPA in ./web
+@@ -16,6 +17,7 @@
+ import * as auth from "./routes/auth";
+ import { heartbeat } from "./routes/heartbeat";
+ import { event } from "./routes/event";
++import { events } from "./routes/events";
+ import { summary } from "./routes/summary";
+ 
+ type Anon = (req: Request, env: Env) => Promise<Response>;
+@@ -61,6 +63,7 @@
+   },
+   { method: "POST", pattern: /^\/v1\/heartbeat$/, anonymous: heartbeat },
+   { method: "POST", pattern: /^\/v1\/event$/, anonymous: event },
++  { method: "POST", pattern: /^\/v1\/events$/, anonymous: events },
+   { method: "GET", pattern: /^\/api\/summary$/, handler: summary },
+ ];
+ 
+diff -ruN -x web orig/analytics-service/src/ingest.ts new/analytics-service/src/ingest.ts
+--- orig/analytics-service/src/ingest.ts	2026-09-09 14:53:29
++++ new/analytics-service/src/ingest.ts	2026-11-08 13:51:10
+@@ -1,10 +1,11 @@
+ import type { Env } from "./env";
+-import { nowIso, utcDay, type EventDims } from "./validate";
++import { nowIso, utcDay, type App, type EventDims } from "./validate";
+ 
+ export async function upsertHeartbeat(
+   env: Env,
+   payload: {
+     installId: string;
++    app: App;
+     appVersion: string;
+     osName: string;
+     osVersion: string;
+@@ -17,14 +18,14 @@
+   await env.DB.prepare(
+     `INSERT INTO installs (
+        install_id, first_seen_at, last_seen_at, first_app_version, last_app_version,
+-       os_name, os_version, arch, channel
+-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
++       os_name, os_version, arch, channel, app
++     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(install_id) DO UPDATE SET
+        last_seen_at = excluded.last_seen_at,
+        first_app_version = COALESCE(installs.first_app_version, excluded.first_app_version),
+        last_app_version = excluded.last_app_version,
+        os_name = excluded.os_name, os_version = excluded.os_version,
+-       arch = excluded.arch, channel = excluded.channel`,
++       arch = excluded.arch, channel = excluded.channel, app = excluded.app`,
+   )
+     .bind(
+       payload.installId,
+@@ -36,13 +37,14 @@
+       payload.osVersion,
+       payload.arch,
+       payload.channel,
++      payload.app,
+     )
+     .run();
+ 
+   await env.DB.prepare(
+-    "INSERT OR IGNORE INTO daily_active (day, install_id, app_version) VALUES (?, ?, ?)",
++    "INSERT OR IGNORE INTO daily_active (day, install_id, app_version, app) VALUES (?, ?, ?, ?)",
+   )
+-    .bind(day, payload.installId, payload.appVersion)
++    .bind(day, payload.installId, payload.appVersion, payload.app)
+     .run();
+ }
+ 
+@@ -51,17 +53,37 @@
+   installId: string,
+   name: string,
+   dims: EventDims,
++  app: App = "agmux",
+ ): Promise<void> {
+-  const day = utcDay();
++  await touchInstall(env, installId, app);
++  await countEvent(env, name, dims);
++}
++
++/** One install touch for the whole batch, then each event's counters. */
++export async function recordEvents(
++  env: Env,
++  installId: string,
++  app: App,
++  events: { name: string; dims: EventDims }[],
++): Promise<void> {
++  if (events.length === 0) return;
++  await touchInstall(env, installId, app);
++  for (const e of events) await countEvent(env, e.name, e.dims);
++}
++
++async function touchInstall(env: Env, installId: string, app: App): Promise<void> {
+   const now = nowIso();
+   await env.DB.prepare(
+-    `INSERT INTO installs (install_id, first_seen_at, last_seen_at)
+-     VALUES (?, ?, ?)
++    `INSERT INTO installs (install_id, first_seen_at, last_seen_at, app)
++     VALUES (?, ?, ?, ?)
+      ON CONFLICT(install_id) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+   )
+-    .bind(installId, now, now)
++    .bind(installId, now, now, app)
+     .run();
++}
+ 
++async function countEvent(env: Env, name: string, dims: EventDims): Promise<void> {
++  const day = utcDay();
+   await env.DB.prepare(
+     `INSERT INTO daily_events (day, name, count) VALUES (?, ?, 1)
+      ON CONFLICT(day, name) DO UPDATE SET count = count + 1`,
+diff -ruN -x web orig/analytics-service/src/routes/event.ts new/analytics-service/src/routes/event.ts
+--- orig/analytics-service/src/routes/event.ts	2026-08-28 22:29:36
++++ new/analytics-service/src/routes/event.ts	2026-11-08 13:51:16
+@@ -11,6 +11,6 @@
+   } catch (e) {
+     throw badRequest(e instanceof Error ? e.message : "Invalid event.");
+   }
+-  await recordEvent(env, payload.installId, payload.name, payload.dims);
++  await recordEvent(env, payload.installId, payload.name, payload.dims, payload.app);
+   return empty(204);
+ }
+diff -ruN -x web orig/analytics-service/src/routes/events.ts new/analytics-service/src/routes/events.ts
+--- orig/analytics-service/src/routes/events.ts	1969-12-31 16:00:00
++++ new/analytics-service/src/routes/events.ts	2026-11-08 13:51:13
+@@ -0,0 +1,17 @@
++import type { Env } from "../env";
++import { badRequest, empty, readJson } from "../http";
++import { recordEvents } from "../ingest";
++import { parseEventBatch } from "../validate";
++
++/** POST /v1/events: a client's batch of allowlisted events (agterm sends every few minutes). */
++export async function events(req: Request, env: Env): Promise<Response> {
++  const body = await readJson<Record<string, unknown>>(req);
++  let payload;
++  try {
++    payload = parseEventBatch(body);
++  } catch (e) {
++    throw badRequest(e instanceof Error ? e.message : "Invalid events.");
++  }
++  await recordEvents(env, payload.installId, payload.app, payload.events);
++  return empty(204);
++}
+diff -ruN -x web orig/analytics-service/src/routes/summary.ts new/analytics-service/src/routes/summary.ts
+--- orig/analytics-service/src/routes/summary.ts	2026-08-28 22:29:36
++++ new/analytics-service/src/routes/summary.ts	2026-11-08 13:51:50
+@@ -1,6 +1,6 @@
+ import type { Env } from "../env";
+ import { json } from "../http";
+-import { utcDay } from "../validate";
++import { EVENT_NAMES_BY_APP, utcDay, type App } from "../validate";
+ 
+ const ALLOWED_DAYS = new Set([7, 30, 90]);
+ 
+@@ -19,6 +19,10 @@
+   const wauSince = daysAgo(7);
+   const mauSince = daysAgo(28);
+   const asOf = new Date().toISOString();
++  // ?app=agterm shows agterm; anything else (or nothing) shows agmux, as before.
++  const app: App = url.searchParams.get("app") === "agterm" ? "agterm" : "agmux";
++  const names = [...EVENT_NAMES_BY_APP[app]];
++  const inNames = names.map(() => "?").join(", ");
+ 
+   const [
+     installsTotal,
+@@ -31,41 +35,53 @@
+     events,
+     eventDims,
+   ] = await Promise.all([
+-    env.DB.prepare("SELECT COUNT(*) AS n FROM installs").first<{ n: number }>(),
++    env.DB.prepare("SELECT COUNT(*) AS n FROM installs WHERE app = ?")
++      .bind(app)
++      .first<{ n: number }>(),
+     env.DB.prepare(
+-      "SELECT COUNT(*) AS n FROM installs WHERE substr(first_seen_at, 1, 10) >= ?",
++      "SELECT COUNT(*) AS n FROM installs WHERE app = ? AND substr(first_seen_at, 1, 10) >= ?",
+     )
+-      .bind(since)
++      .bind(app, since)
+       .first<{ n: number }>(),
+     env.DB.prepare(
+-      "SELECT day, COUNT(*) AS count FROM daily_active WHERE day >= ? GROUP BY day ORDER BY day",
++      "SELECT day, COUNT(*) AS count FROM daily_active WHERE app = ? AND day >= ? GROUP BY day ORDER BY day",
+     )
+-      .bind(since)
++      .bind(app, since)
+       .all<{ day: string; count: number }>(),
+-    env.DB.prepare("SELECT COUNT(DISTINCT install_id) AS n FROM daily_active WHERE day >= ?")
+-      .bind(wauSince)
++    env.DB.prepare(
++      "SELECT COUNT(DISTINCT install_id) AS n FROM daily_active WHERE app = ? AND day >= ?",
++    )
++      .bind(app, wauSince)
+       .first<{ n: number }>(),
+-    env.DB.prepare("SELECT COUNT(DISTINCT install_id) AS n FROM daily_active WHERE day >= ?")
+-      .bind(mauSince)
++    env.DB.prepare(
++      "SELECT COUNT(DISTINCT install_id) AS n FROM daily_active WHERE app = ? AND day >= ?",
++    )
++      .bind(app, mauSince)
+       .first<{ n: number }>(),
+     env.DB.prepare(
+       `SELECT last_app_version AS app_version, COUNT(*) AS count
+-       FROM installs GROUP BY last_app_version ORDER BY count DESC LIMIT 20`,
+-    ).all<{ app_version: string | null; count: number }>(),
++       FROM installs WHERE app = ? GROUP BY last_app_version ORDER BY count DESC LIMIT 20`,
++    )
++      .bind(app)
++      .all<{ app_version: string | null; count: number }>(),
+     env.DB.prepare(
+       `SELECT os_name, os_version, COUNT(*) AS count
+-       FROM installs GROUP BY os_name, os_version ORDER BY count DESC LIMIT 20`,
+-    ).all<{ os_name: string | null; os_version: string | null; count: number }>(),
++       FROM installs WHERE app = ? GROUP BY os_name, os_version ORDER BY count DESC LIMIT 20`,
++    )
++      .bind(app)
++      .all<{ os_name: string | null; os_version: string | null; count: number }>(),
+     env.DB.prepare(
+-      "SELECT day, name, count FROM daily_events WHERE day >= ? ORDER BY day, name",
++      `SELECT day, name, count FROM daily_events
++       WHERE day >= ? AND name IN (${inNames}) ORDER BY day, name`,
+     )
+-      .bind(since)
++      .bind(since, ...names)
+       .all<{ day: string; name: string; count: number }>(),
+     env.DB.prepare(
+       `SELECT day, name, dim_key, dim_value, count
+-       FROM daily_event_dims WHERE day >= ? ORDER BY day, name, dim_key, count DESC`,
++       FROM daily_event_dims WHERE day >= ? AND name IN (${inNames})
++       ORDER BY day, name, dim_key, count DESC`,
+     )
+-      .bind(since)
++      .bind(since, ...names)
+       .all<{ day: string; name: string; dim_key: string; dim_value: string; count: number }>(),
+   ]);
+ 
+@@ -78,6 +94,7 @@
+ 
+   return json({
+     asOf,
++    app,
+     days,
+     installsTotal: Number(installsTotal?.n ?? 0),
+     installsNew: Number(installsNew?.n ?? 0),
+diff -ruN -x web orig/analytics-service/src/validate.ts new/analytics-service/src/validate.ts
+--- orig/analytics-service/src/validate.ts	2026-09-09 14:54:07
++++ new/analytics-service/src/validate.ts	2026-11-08 13:50:59
+@@ -5,6 +5,33 @@
+ 
+ export const EVENT_NAMES = new Set(["thread_created", "app_mode"]);
+ 
++/** Apps that report here. A body without `app` is agmux (clients from before the field). */
++export const APPS = new Set(["agmux", "agterm"]);
++export type App = "agmux" | "agterm";
++
++/** agterm (the macOS terminal for coding agents) events. Names never overlap agmux's. */
++export const AGTERM_EVENT_NAMES = new Set(["agent_started", "feature_used"]);
++
++export const EVENT_NAMES_BY_APP: Record<App, Set<string>> = {
++  agmux: EVENT_NAMES,
++  agterm: AGTERM_EVENT_NAMES,
++};
++
++/** agterm's AgentKind ids (agterm Sources/AgTermCore/AgentKind.swift). */
++export const AGTERM_AGENTS = new Set([
++  "claude", "codex", "grok", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
++  "amp", "qwen", "crush", "copilot", "droid", "kilo", "cline", "goose", "auggie", "qodo",
++  "kiro", "continue", "pi",
++]);
++
++/** agterm's AnalyticsFeature values (agterm Sources/AgTermCore/Analytics/AnalyticsEvent.swift). */
++export const AGTERM_FEATURES = new Set([
++  "split", "command_bar", "cloud_tab", "phone_paired", "update_installed",
++]);
++
++/** Most events one /v1/events request may carry. */
++export const MAX_BATCH = 100;
++
+ export const PROVIDERS = new Set([
+   "ClaudeCode",
+   "Codex",
+@@ -42,8 +69,16 @@
+   return s;
+ }
+ 
++export function parseApp(body: Record<string, unknown>): App {
++  if (body.app === undefined || body.app === null) return "agmux";
++  const app = clip(body.app, 16);
++  if (!app || !APPS.has(app)) throw new Error("unknown app");
++  return app as App;
++}
++
+ export function parseHeartbeat(body: Record<string, unknown>): {
+   installId: string;
++  app: App;
+   appVersion: string;
+   osName: string;
+   osVersion: string;
+@@ -61,13 +96,14 @@
+   const arch = clip(body.arch, 16) ?? "unknown";
+   const rawChannel = clip(body.channel, 16) ?? "release";
+   const channel = rawChannel === "dev" ? "dev" : "release";
+-  return { installId, appVersion, osName, osVersion, arch, channel };
++  return { installId, app: parseApp(body), appVersion, osName, osVersion, arch, channel };
+ }
+ 
+ export type EventDims = Record<string, string>;
+ 
+ export function parseEvent(body: Record<string, unknown>): {
+   installId: string;
++  app: App;
+   name: string;
+   dims: EventDims;
+ } {
+@@ -75,13 +111,44 @@
+   if (!isUuidV4(installId)) {
+     throw new Error("install_id must be a UUID v4");
+   }
++  const app = parseApp(body);
++  const event = parseOne(app, body);
++  if (!event) throw new Error("unknown event");
++  return { installId, app, ...event };
++}
++
++/**
++ * `{install_id, app, events: [{name, props}]}`. Entries with unknown names are dropped, so a
++ * newer client's extra events don't cost the rest of its batch.
++ */
++export function parseEventBatch(body: Record<string, unknown>): {
++  installId: string;
++  app: App;
++  events: { name: string; dims: EventDims }[];
++} {
++  const installId = body.install_id ?? body.installId;
++  if (!isUuidV4(installId)) {
++    throw new Error("install_id must be a UUID v4");
++  }
++  const app = parseApp(body);
++  if (!Array.isArray(body.events) || body.events.length === 0) throw new Error("events is required");
++  if (body.events.length > MAX_BATCH) throw new Error("too many events");
++  const events = body.events.flatMap((raw: unknown) => {
++    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
++    const event = parseOne(app, raw as Record<string, unknown>);
++    return event ? [event] : [];
++  });
++  return { installId, app, events };
++}
++
++function parseOne(app: App, body: Record<string, unknown>): { name: string; dims: EventDims } | null {
+   const name = clip(body.name, 32);
+-  if (!name || !EVENT_NAMES.has(name)) throw new Error("unknown event");
++  if (!name || !EVENT_NAMES_BY_APP[app].has(name)) return null;
+   const rawProps =
+     body.props && typeof body.props === "object" && !Array.isArray(body.props)
+       ? (body.props as Record<string, unknown>)
+       : {};
+-  return { installId, name, dims: sanitizeDims(name, rawProps) };
++  return { name, dims: sanitizeDims(name, rawProps) };
+ }
+ 
+ /** Keep only allowlisted enum props. Unknown keys/values are dropped. */
+@@ -96,6 +163,14 @@
+   if (name === "app_mode") {
+     const mode = clip(props.mode, 16);
+     if (mode && APP_MODES.has(mode)) dims.mode = mode;
++  }
++  if (name === "agent_started") {
++    const agent = clip(props.agent, 32);
++    if (agent && AGTERM_AGENTS.has(agent)) dims.agent = agent;
++  }
++  if (name === "feature_used") {
++    const feature = clip(props.feature, 32);
++    if (feature && AGTERM_FEATURES.has(feature)) dims.feature = feature;
+   }
+   return dims;
+ }
+diff -ruN -x web orig/analytics-service/test/agterm.test.ts new/analytics-service/test/agterm.test.ts
+--- orig/analytics-service/test/agterm.test.ts	1969-12-31 16:00:00
++++ new/analytics-service/test/agterm.test.ts	2026-11-08 13:52:22
+@@ -0,0 +1,100 @@
++import { describe, expect, it } from "vitest";
++import { event } from "../src/routes/event";
++import { events } from "../src/routes/events";
++import { heartbeat } from "../src/routes/heartbeat";
++import { summary } from "../src/routes/summary";
++import { heartbeatBody, INSTALL_ID, makeEnv } from "./helpers/d1";
++
++type TestEnv = ReturnType<typeof makeEnv>;
++const AGTERM_ID = "7d444840-9dc0-41a6-9a5e-6c0b2c8d1f3e";
++
++function post(handler: typeof events, env: TestEnv, path: string, body: unknown) {
++  return handler(
++    new Request(`https://owner.agmux.dev${path}`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify(body),
++    }),
++    env,
++  );
++}
++
++async function getSummary(env: TestEnv, query: string) {
++  const res = await summary(new Request(`https://owner.agmux.dev/api/summary?${query}`), env);
++  const body = (await res.json()) as { data: Record<string, unknown> & { events: { name: string }[] } };
++  return body.data;
++}
++
++describe("agterm reporting", () => {
++  it("stores the heartbeat's app and keeps agmux the default", async () => {
++    const env = makeEnv();
++    await post(heartbeat, env, "/v1/heartbeat", heartbeatBody());
++    await post(heartbeat, env, "/v1/heartbeat", heartbeatBody({ install_id: AGTERM_ID, app: "agterm", app_version: "1.1.8" }));
++    const rows = await env.DB.prepare("SELECT install_id, app FROM installs ORDER BY app").all<{ app: string }>();
++    expect(rows.results.map((r) => r.app)).toEqual(["agmux", "agterm"]);
++    const active = await env.DB.prepare("SELECT app FROM daily_active WHERE install_id = ?").bind(AGTERM_ID).first<{ app: string }>();
++    expect(active?.app).toBe("agterm");
++  });
++
++  it("rejects an unknown app", async () => {
++    const env = makeEnv();
++    await expect(post(heartbeat, env, "/v1/heartbeat", heartbeatBody({ app: "other" }))).rejects.toMatchObject({ status: 400 });
++  });
++
++  it("counts a batch, drops unknown names and props", async () => {
++    const env = makeEnv();
++    const res = await post(events, env, "/v1/events", {
++      install_id: AGTERM_ID,
++      app: "agterm",
++      events: [
++        { name: "agent_started", props: { agent: "claude", cwd: "/Users/me/secret" } },
++        { name: "agent_started", props: { agent: "my-private-tool" } },
++        { name: "feature_used", props: { feature: "split" } },
++        { name: "prompt_typed", props: { text: "hi" } },
++      ],
++    });
++    expect(res.status).toBe(204);
++    const counts = await env.DB.prepare("SELECT name, count FROM daily_events ORDER BY name").all<{ name: string; count: number }>();
++    expect(counts.results.map((r) => [r.name, Number(r.count)])).toEqual([["agent_started", 2], ["feature_used", 1]]);
++    const dims = await env.DB.prepare("SELECT dim_key, dim_value FROM daily_event_dims ORDER BY dim_key").all<{ dim_key: string; dim_value: string }>();
++    expect(dims.results).toEqual([
++      { dim_key: "agent", dim_value: "claude" },
++      { dim_key: "feature", dim_value: "split" },
++    ]);
++  });
++
++  it("keeps each app's events to its own names", async () => {
++    const env = makeEnv();
++    await expect(
++      post(event, env, "/v1/event", { install_id: AGTERM_ID, app: "agterm", name: "thread_created", props: {} }),
++    ).rejects.toMatchObject({ status: 400 });
++    await expect(
++      post(event, env, "/v1/event", { install_id: INSTALL_ID, name: "feature_used", props: { feature: "split" } }),
++    ).rejects.toMatchObject({ status: 400 });
++  });
++
++  it("rejects empty and oversized batches", async () => {
++    const env = makeEnv();
++    await expect(post(events, env, "/v1/events", { install_id: AGTERM_ID, app: "agterm", events: [] })).rejects.toMatchObject({ status: 400 });
++    const many = Array.from({ length: 101 }, () => ({ name: "feature_used", props: { feature: "split" } }));
++    await expect(post(events, env, "/v1/events", { install_id: AGTERM_ID, app: "agterm", events: many })).rejects.toMatchObject({ status: 400 });
++  });
++
++  it("summarizes each app separately", async () => {
++    const env = makeEnv();
++    await post(heartbeat, env, "/v1/heartbeat", heartbeatBody());
++    await post(heartbeat, env, "/v1/heartbeat", heartbeatBody({ install_id: AGTERM_ID, app: "agterm", app_version: "1.1.8" }));
++    await post(event, env, "/v1/event", { install_id: INSTALL_ID, name: "app_mode", props: { mode: "agent" } });
++    await post(events, env, "/v1/events", { install_id: AGTERM_ID, app: "agterm", events: [{ name: "feature_used", props: { feature: "split" } }] });
++
++    const agmux = await getSummary(env, "days=7");
++    expect(agmux.installsTotal).toBe(1);
++    expect(agmux.events.map((e) => e.name)).toEqual(["app_mode"]);
++
++    const agterm = await getSummary(env, "days=7&app=agterm");
++    expect(agterm.app).toBe("agterm");
++    expect(agterm.installsTotal).toBe(1);
++    expect(agterm.todayDau).toBe(1);
++    expect(agterm.events.map((e) => e.name)).toEqual(["feature_used"]);
++  });
++});
