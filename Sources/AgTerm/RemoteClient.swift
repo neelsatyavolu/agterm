@@ -234,12 +234,14 @@ final class RemoteClient: ObservableObject {
             if let thread {
                 chatLeases[thread] = Date().addingTimeInterval(AgTermWire.screenLease)
                 if m["renew"] as? Bool != true { sentTimeline[thread] = nil }
+                if let s = tab(thread) { refreshTranscript(s) }
                 sendTimeline(thread)
             }
         case "thread.subscribe":
             if let thread {
                 subscribed.insert(thread)
                 sentTimeline[thread] = nil
+                if let s = tab(thread) { refreshTranscript(s) }
                 sendTimeline(thread)
             }
         case "thread.unsubscribe":
@@ -339,7 +341,7 @@ final class RemoteClient: ObservableObject {
             lastActive: Self.iso.string(from: s.signals.lastOutput ?? Date()),
             status: s.status == .working ? "Running" : (s.status == .done ? "Done" : "Idle"),
             // The raw model id, as agmux sends it; the phone shortens it ("Opus 5.5").
-            model: transcripts[s.tabID]?.model, linesAdded: s.agentDiff?.added, linesRemoved: s.agentDiff?.removed,
+            model: s.agentUsage?.model ?? transcripts[s.tabID]?.model, linesAdded: s.agentDiff?.added, linesRemoved: s.agentDiff?.removed,
             agterm: TabInfo(status: s.status, agent: s.agentName, folder: s.folder, branch: s.git?.branch, prompt: prompt))
         guard let data = try? JSONEncoder().encode(row),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
@@ -353,7 +355,8 @@ final class RemoteClient: ObservableObject {
     private func pushUpdates() {
         guard connection == .online else { return }
         let sessions = tabs()
-        sessions.forEach(refreshTranscript)
+        // Only tabs the phone has open need their timeline; rebuilding one reads the whole transcript.
+        sessions.filter { isWatched($0.tabID) }.forEach(refreshTranscript)
         let rows = sessions.map(row)
         let options = newTabOptions(sessions)
         if let data = try? JSONSerialization.data(withJSONObject: [rows, options], options: .sortedKeys),
@@ -417,23 +420,29 @@ final class RemoteClient: ObservableObject {
                 self.transcripts[id] = result
                 if changed {
                     self.lastThreads = ""
-                    if self.subscribed.contains(id) || self.chatLeases[id] != nil { self.sendTimeline(id) }
+                    if self.isWatched(id) { self.sendTimeline(id) }
                 }
             }
         }
     }
 
+    private func isWatched(_ thread: String) -> Bool {
+        subscribed.contains(thread) || chatLeases[thread] != nil
+    }
+
     private func sendTimeline(_ thread: String) {
         guard let s = tab(thread) else { return }
+        // A transcript still loading sends when it's read, rather than the screen first.
+        if transcripts[thread] == nil, refreshing.contains(thread) { return }
         if let transcript = transcripts[thread], !transcript.entries.isEmpty {
+            let digest = "t:\(transcript.path.path):\(transcript.modified.timeIntervalSince1970)"
+            guard sentTimeline[thread] != digest else { return }
             let encoder = JSONEncoder()
             var entries = transcript.entries.compactMap { try? JSONSerialization.jsonObject(with: encoder.encode($0)) }
             // The relay drops frames over 1 MiB; keep the newest entries that fit.
             while entries.count > 1, ((try? JSONSerialization.data(withJSONObject: entries))?.count ?? 0) > 900_000 {
                 entries.removeFirst(max(1, entries.count / 10))
             }
-            let digest = "t:\(transcript.path.path):\(transcript.modified.timeIntervalSince1970)"
-            guard sentTimeline[thread] != digest else { return }
             sentTimeline[thread] = digest
             return send(["type": "timeline.snapshot", "threadId": thread, "entries": entries])
         }

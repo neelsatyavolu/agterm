@@ -28,6 +28,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var appearanceSubscription: AnyCancellable?
     private let git = GitPoller()
     private let transcripts = TranscriptDiff()
+    /// When each folder was last asked of git. Idle folders are asked only every `idleGitInterval`.
+    private var gitPolledAt: [String: Date] = [:]
+    private static let idleGitInterval: TimeInterval = 30
     private let commandBar = CommandBar()
     private let cdSuggestions = CdSuggestions()
     /// The tab the open command bar answers for; its command only ever goes there.
@@ -175,9 +178,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         sidebar.blinkOn = tabBar.blinkOn
     }
 
-    /// One git call per distinct folder, fanned out to every tab in it.
+    /// One git call per distinct folder, fanned out to every tab in it. A folder whose tabs printed
+    /// nothing since the last call is skipped, apart from a slow check for edits made elsewhere.
     private func pollGit() {
-        for path in Set(sessions.map(\.cwd)) {
+        let now = Date()
+        let paths = Set(sessions.map(\.cwd))
+        gitPolledAt = gitPolledAt.filter { paths.contains($0.key) }
+        for path in paths {
+            let last = gitPolledAt[path] ?? .distantPast
+            let active = sessions.contains { $0.cwd == path && ($0.signals.lastOutput ?? .distantPast) > last }
+            guard active || now.timeIntervalSince(last) >= Self.idleGitInterval else { continue }
+            gitPolledAt[path] = now
             git.refresh(path: path) { [weak self] summary in
                 self?.sessions.filter { $0.cwd == path }.forEach { $0.updateGit(summary) }
             }

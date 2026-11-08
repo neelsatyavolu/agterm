@@ -68,6 +68,21 @@ public struct MCPServer: Equatable, Sendable {
 
 /// The extra arguments agterm adds when you start an agent, the same ones agmux passes.
 public enum AgentLaunch {
+    /// `path` and each folder above it, ending at "/". Empty for a relative path, such as the ""
+    /// the working directory reads as when it was deleted or macOS privacy blocks it: walking a
+    /// relative URL up only appends "..", forever.
+    public static func folders(upFrom path: String) -> [String] {
+        guard path.hasPrefix("/") else { return [] }
+        var dir = (path as NSString).standardizingPath, folders = [dir]
+        while dir != "/" {
+            let parent = (dir as NSString).deletingLastPathComponent
+            guard parent != dir, !parent.isEmpty else { break }
+            dir = parent
+            folders.append(dir)
+        }
+        return folders
+    }
+
     /// Claude Code subcommands that don't start a session.
     static let claudeSubcommands: Set<String> = [
         "mcp", "config", "update", "doctor", "install", "migrate-installer", "setup-token", "plugin", "plugins",

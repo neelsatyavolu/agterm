@@ -10,6 +10,16 @@ public enum ClaudeTranscript {
     /// and to recognise `/subagents` transcripts.
     public static func parse(lines: String, sessionID: String, fallbackDir: String,
                              prices: PriceCatalog = .builtIn) -> [UsageEvent] {
+        var parser = Parser(sessionID: sessionID, fallbackDir: fallbackDir, prices: prices)
+        for raw in rustLines(lines) { parser.feed(raw) }
+        return parser.events
+    }
+
+    /// `parse`, a line at a time.
+    public struct Parser: TranscriptLineParser {
+        let sessionID: String
+        let fallbackDir: String
+        let prices: PriceCatalog
         var out: [UsageEvent] = []
         var cwdSeen: String?
         // Tool results arrive on the user line after the assistant message that
@@ -20,13 +30,19 @@ public enum ClaudeTranscript {
         // One response's blocks span several lines; a repeated block is still one call.
         var seenToolIDs: Set<String> = []
 
-        for raw in rustLines(lines) {
+        public init(sessionID: String, fallbackDir: String, prices: PriceCatalog = .builtIn) {
+            self.sessionID = sessionID
+            self.fallbackDir = fallbackDir
+            self.prices = prices
+        }
+
+        public mutating func feed(_ raw: String) {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.isEmpty, let v = JSONValue.parse(line) else { continue }
+            guard !line.isEmpty, let v = JSONValue.parse(line) else { return }
 
             if let cwd = v["cwd"]?.string, !cwd.isEmpty { cwdSeen = cwd }
 
-            let results = toolResults(v)
+            let results = ClaudeTranscript.toolResults(v)
             if !results.isEmpty {
                 if let last = out.indices.last {
                     out[last].tools = out[last].tools.adding(results)
@@ -35,22 +51,22 @@ public enum ClaudeTranscript {
                 }
             }
 
-            if let type = v["type"]?.string, type != "assistant" { continue }
+            if let type = v["type"]?.string, type != "assistant" { return }
             guard let usage = v.pointer("/message/usage") ?? v["usage"],
-                  let at = v["timestamp"]?.string.flatMap(TeamsTime.parse) else { continue }
+                  let at = v["timestamp"]?.string.flatMap(TeamsTime.parse) else { return }
             let model = ((v.pointer("/message/model") ?? v["model"])?.string ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             // `<synthetic>` marks messages Claude Code makes itself; no real model.
-            if model.isEmpty || model.hasPrefix("<") { continue }
+            if model.isEmpty || model.hasPrefix("<") { return }
 
-            let tokensIn = count(usage, "input_tokens")
-            let tokensOut = count(usage, "output_tokens")
-            let cacheRead = count(usage, "cache_read_input_tokens")
-            let cacheWrite = count(usage, "cache_creation_input_tokens")
-            if tokensIn + tokensOut + cacheRead + cacheWrite == 0 { continue }
+            let tokensIn = ClaudeTranscript.count(usage, "input_tokens")
+            let tokensOut = ClaudeTranscript.count(usage, "output_tokens")
+            let cacheRead = ClaudeTranscript.count(usage, "cache_read_input_tokens")
+            let cacheWrite = ClaudeTranscript.count(usage, "cache_creation_input_tokens")
+            if tokensIn + tokensOut + cacheRead + cacheWrite == 0 { return }
             let hourWrite = min(max(usage.pointer("/cache_creation/ephemeral_1h_input_tokens")?.int ?? 0, 0), cacheWrite)
 
-            var tools = toolUses(v, seen: &seenToolIDs)
+            var tools = ClaudeTranscript.toolUses(v, seen: &seenToolIDs)
             if !pendingResults.isEmpty {
                 tools = tools.adding(pendingResults)
                 pendingResults = ToolTally()
@@ -71,7 +87,7 @@ public enum ClaudeTranscript {
             event.isTurn = true
             event.tools = tools
             event.toolCalls = tools.calls
-            event.claudeRowKey = rowKey(v)
+            event.claudeRowKey = ClaudeTranscript.rowKey(v)
             event.isSidechain = v["isSidechain"]?.bool ?? false
             event.isSubagentPath = fallbackDir.contains("/subagents") || fallbackDir.contains("\\subagents")
 
@@ -80,23 +96,26 @@ public enum ClaudeTranscript {
                     event.tools = out[index].tools.adding(event.tools)
                     event.toolCalls = event.tools.calls
                     out[index] = event
-                    continue
+                    return
                 }
                 keyed[key] = out.count
             }
             out.append(event)
         }
 
-        // Results trailing the last usage line still belong to the session.
-        if !pendingResults.isEmpty, let last = out.indices.last {
-            out[last].tools = out[last].tools.adding(pendingResults)
+        public var events: [UsageEvent] {
+            var out = out
+            // Results trailing the last usage line still belong to the session.
+            if !pendingResults.isEmpty, let last = out.indices.last {
+                out[last].tools = out[last].tools.adding(pendingResults)
+            }
+            // `cwd` often appears only after the first usage line; backfill early events.
+            if let cwd = cwdSeen {
+                let key = TeamsLabels.projectKey(workDir: cwd, private: false)
+                for i in out.indices where out[i].projectKey.isEmpty { out[i].projectKey = key }
+            }
+            return out
         }
-        // `cwd` often appears only after the first usage line; backfill early events.
-        if let cwd = cwdSeen {
-            let key = TeamsLabels.projectKey(workDir: cwd, private: false)
-            for i in out.indices where out[i].projectKey.isEmpty { out[i].projectKey = key }
-        }
-        return out
     }
 
     /// Drops duplicate requests that appear in both a parent transcript and a fork,

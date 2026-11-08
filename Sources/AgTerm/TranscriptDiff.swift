@@ -35,24 +35,27 @@ struct AgentUsage: Equatable {
 final class TranscriptDiff {
     private let queue = DispatchQueue(label: "agterm.transcript-diff", qos: .utility)
     private var inFlight = Set<String>()
-    /// Parsed totals per transcript, reused while the file is unchanged.
-    private var cache: [String: (modified: Date, usage: AgentUsage)] = [:]
+    /// Per transcript: how far it has been read, the parser's state there, and its totals.
+    /// Agents only append, so each poll reads just the new lines.
+    private var tails: [String: (offset: UInt64, parser: any TranscriptLineParser, usage: AgentUsage)] = [:]
+    /// Where each Claude session's transcript was found, so polls don't list ~/.claude/projects.
+    private var claudePaths: [String: URL] = [:]
     private var titleCache: [String: (modified: Date, title: String?)] = [:]
     private let lock = NSLock()
 
     /// Claude Code: the session's transcript under ~/.claude/projects.
     func claude(sessionID: String, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "claude:" + sessionID, completion: completion) {
-            guard let file = Self.claudeTranscript(sessionID) else { return nil }
-            return self.total(file) { ClaudeTranscript.parse(lines: $0, sessionID: sessionID, fallbackDir: "") }
+            guard let file = self.claudeFile(sessionID) else { return nil }
+            return self.total(file) { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "") }
         }
     }
 
     /// Claude Code: the session's name from its transcript, for when the terminal title has none.
     func claudeTitle(sessionID: String, completion: @escaping (String?) -> Void) {
         run(key: "claude-title:" + sessionID, completion: completion) {
-            guard let file = Self.claudeTranscript(sessionID),
-                  let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
+            guard let file = self.claudeFile(sessionID),
+                  let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date else { return nil }
             self.lock.lock()
             let hit = self.titleCache[file.path]
             self.lock.unlock()
@@ -70,7 +73,7 @@ final class TranscriptDiff {
     func codex(cwd: String, since start: Date, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "codex:" + cwd, completion: completion) {
             guard let file = Self.codexRollout(cwd: cwd, since: start) else { return nil }
-            return self.total(file) { CodexTranscript.parse(lines: $0, sessionID: file.deletingPathExtension().lastPathComponent) }
+            return self.total(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent) }
         }
     }
 
@@ -86,18 +89,36 @@ final class TranscriptDiff {
         }
     }
 
-    private func total(_ file: URL, parse: (String) -> [UsageEvent]) -> AgentUsage? {
-        guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
+    private func total(_ file: URL, parser makeParser: () -> any TranscriptLineParser) -> AgentUsage? {
+        // Not URL.resourceValues: it caches on the URL, and cached URLs are reused.
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? UInt64 else { return nil }
         lock.lock()
-        let hit = cache[file.path]
+        var tail = tails[file.path]
         lock.unlock()
-        if let hit, hit.modified == modified { return hit.usage }
-        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
-        let usage = AgentUsage(parse(text))
+        if let hit = tail, hit.offset == size { return hit.usage }
+        // A shorter file was replaced or rewritten: start over.
+        if tail == nil || size < tail!.offset { tail = (0, makeParser(), AgentUsage()) }
+        guard var (offset, parser, _) = tail, let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        guard (try? handle.seek(toOffset: offset)) != nil, let chunk = try? handle.readToEnd() else { return nil }
+        offset += UInt64(parser.feed(chunk: chunk))
+        let usage = AgentUsage(parser.events)
         lock.lock()
-        cache[file.path] = (modified, usage)
+        tails[file.path] = (offset, parser, usage)
         lock.unlock()
         return usage
+    }
+
+    private func claudeFile(_ sessionID: String) -> URL? {
+        lock.lock()
+        let known = claudePaths[sessionID]
+        lock.unlock()
+        if let known, FileManager.default.fileExists(atPath: known.path) { return known }
+        let found = Self.claudeTranscript(sessionID)
+        lock.lock()
+        claudePaths[sessionID] = found
+        lock.unlock()
+        return found
     }
 
     static func claudeTranscript(_ sessionID: String) -> URL? {

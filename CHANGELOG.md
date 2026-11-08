@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.7 — 2026-11-08
+- Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
+- Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.
+
 ## 1.1.6 — 2026-11-07
 - Changed: Split Right (⌘D) and Split Down (⇧⌘D) open an empty pane that lists your other tabs. Pick one, or click a tab in the tab bar or sidebar, to show it there, or choose New Shell. Every tab in a split keeps its own place in the tabs and is highlighted while the split is on screen; the one you're typing in has the accent bar.
 - Added: Right-click a tab that isn't on screen and choose Show to the Right or Show Below to put it beside the current tab. Shell → Unsplit, or Unsplit on a split tab's menu, puts every pane back in a tab of its own; Move to Own Tab does it for one. Nothing closes.

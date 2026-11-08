@@ -362,12 +362,10 @@ enum AgentIntegration {
                     }
                 }
             }
-            var dir = URL(fileURLWithPath: cwd)
-            while dir.path != "/" {
-                if let mcp = json(dir.appendingPathComponent(".mcp.json").path) {
+            for dir in AgentLaunch.folders(upFrom: cwd) where dir != "/" {
+                if let mcp = json(dir + "/.mcp.json") {
                     names.formUnion((mcp["mcpServers"] as? [String: Any])?.keys ?? [:].keys)
                 }
-                dir.deleteLastPathComponent()
             }
             return names
         case "codex":

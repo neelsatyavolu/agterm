@@ -107,3 +107,16 @@ final class StandaloneProjectTests: XCTestCase {
         XCTAssertEqual(a?.id.count, "agterm-".count + 16)
     }
 }
+
+final class FoldersUpTests: XCTestCase {
+    func testWalksUpToRoot() {
+        XCTAssertEqual(AgentLaunch.folders(upFrom: "/a/b/../c/"), ["/a/c", "/a", "/"])
+        XCTAssertEqual(AgentLaunch.folders(upFrom: "/"), ["/"])
+    }
+
+    /// An unreadable working directory reads as ""; walking it once grew a path of "../" forever.
+    func testRelativeOrEmptyPathIsSkipped() {
+        XCTAssertEqual(AgentLaunch.folders(upFrom: ""), [])
+        XCTAssertEqual(AgentLaunch.folders(upFrom: "rel/dir"), [])
+    }
+}

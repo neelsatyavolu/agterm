@@ -47,7 +47,7 @@ public enum CodexTranscript {
 
 /// Line-by-line state for one rollout. Tool calls sit on their own lines ahead of
 /// the usage line that closes the turn, so they are held until it arrives.
-private struct CodexRolloutParser {
+struct CodexRolloutParser {
     let prices: PriceCatalog
     var out: [UsageEvent] = []
     var eventTurns: [(turn: String, native: Bool)] = []
