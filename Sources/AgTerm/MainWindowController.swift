@@ -33,6 +33,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private static let idleGitInterval: TimeInterval = 30
     private let commandBar = CommandBar()
     private let cdSuggestions = CdSuggestions()
+    /// The Session Timeline panel (MainWindowController+Timeline).
+    let sessionTimeline = SessionTimelineController()
     /// The tab the open command bar answers for; its command only ever goes there.
     private weak var commandBarTarget: TerminalSession?
     private var timers: [Timer] = []
@@ -104,6 +106,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         window.contentView = content
         tabBar.delegate = self
         sidebar.delegate = self
+        setUpSessionTimeline()
         container.onResize = { [weak self] path, ratio in self?.resizePanes(path, ratio) }
         panePicker.isHidden = true
         panePicker.onChoose = { [weak self] choice in self?.fillPicker(with: choice.tabID) }
