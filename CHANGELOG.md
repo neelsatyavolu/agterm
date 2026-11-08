@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Added: Buttons at the top right of the window, each explained in its tooltip: show changes, commit, worktrees, hand off, usage, and the branch's pull request once there is one.
+- Added: Show Changes (⇧⌘E) opens a panel beside the terminal with every changed file and its diff. Pick Agent (what the agent in the tab changed since it started), Uncommitted, or Branch (everything since the branch left main). It updates as the agent edits and reads nothing while it's closed. Drag its edge to resize it.
+- Added: Commit (⌥⌘C) drafts a commit message with the same fast model as ⌘K, then commits, commits and pushes, or commits, pushes and opens a pull request with a written title and description, in one step. On main, opening a pull request first moves your work to a new branch and leaves main as it was. Pull requests need the GitHub CLI (gh).
+- Added: New Worktree Tab (⇧⌘N) starts an agent on a new branch in a folder of its own under ~/.agterm/worktrees, with your .env files copied in and an optional first task. A repo can add .agterm/worktree-setup.sh to install dependencies first. Remove This Worktree asks before deleting anything and says what would be lost.
+- Added: Hand Off continues an agent's conversation in Claude Code, Codex, Grok or Gemini CLI, in a new tab beside it.
+- Added: Usage (⇧⌘U) shows tokens and estimated cost by day, model and project for Claude Code and Codex on this Mac, and how much of each login's limits is left.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.

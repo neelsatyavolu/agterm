@@ -181,6 +181,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Rename Tab…", #selector(MainWindowController.renameTab)),
             item("Close Tab", #selector(MainWindowController.closeTab), "w"),
         ]))
+        main.addItem(submenu("Git", [
+            item("Show Changes", #selector(MainWindowController.toggleChanges), "e", [.command, .shift]),
+            item("Commit…", #selector(MainWindowController.showCommit), "c", [.command, .option]),
+            item("Open Pull Request", #selector(MainWindowController.openPullRequest)),
+            .separator(),
+            item("New Worktree Tab…", #selector(MainWindowController.newWorktreeTab), "n", [.command, .shift]),
+            item("Remove This Worktree…", #selector(MainWindowController.removeWorktree)),
+            .separator(),
+            handOffItem(),
+        ]))
         main.addItem(submenu("Edit", [
             item("Copy", #selector(NSText.copy(_:)), "c"),
             item("Paste", #selector(NSText.paste(_:)), "v"),
@@ -195,6 +205,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         var windowItems: [NSMenuItem] = [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            .separator(),
+            item("Usage", #selector(MainWindowController.showUsage), "u", [.command, .shift]),
             .separator(),
             item("Show Next Tab", #selector(MainWindowController.nextTab), "]", [.command, .shift]),
             item("Show Previous Tab", #selector(MainWindowController.previousTab), "[", [.command, .shift]),
@@ -253,6 +265,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item?.setShortcut(AgentIntegration.newAgentTabShortcut)
         }
         return item
+    }
+
+    /// Git → Hand Off To: the agents that can pick up a conversation.
+    private func handOffItem() -> NSMenuItem {
+        submenu("Hand Off To", HandoffTarget.allCases.map { target in
+            let entry = item(target.title, #selector(MainWindowController.handOffFromMenu(_:)))
+            entry.representedObject = target.rawValue
+            return entry
+        })
     }
 
     private func arrow(_ key: Int) -> String { String(UnicodeScalar(key)!) }

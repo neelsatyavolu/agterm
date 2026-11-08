@@ -93,11 +93,13 @@ public enum QuickCommand {
 
     /// CLI arguments for a one-shot answer with no tools and no MCP servers. Claude and Codex keep
     /// no session; Grok always saves one, so it gets `sessionID` for deleting afterwards.
+    /// `system` replaces ⌘K's instructions, for other one-shot requests (commit messages).
     public static func arguments(_ model: QuickModel, message: String, codex: CodexFastModel = .fallback,
-                                 sessionID: String = UUID().uuidString.lowercased()) -> [String] {
+                                 sessionID: String = UUID().uuidString.lowercased(),
+                                 system: String = QuickCommand.instructions) -> [String] {
         switch model {
         case .claude:
-            return ["-p", "--model", "haiku", "--system-prompt", instructions, "--tools", "",
+            return ["-p", "--model", "haiku", "--system-prompt", system, "--tools", "",
                     "--strict-mcp-config", "--mcp-config", #"{"mcpServers":{}}"#, "--setting-sources", "",
                     "--no-session-persistence", message]
         case .codex:
@@ -106,10 +108,10 @@ public enum QuickCommand {
             return args + ["-c", "model_reasoning_effort=\"\(codex.effort)\"", "-c", "mcp_servers={}",
                            "-c", "features.plugins=false", "-c", "features.shell_tool=false", "-c", "web_search=\"disabled\"",
                            "--ephemeral", "--skip-git-repo-check", "-s", "read-only",
-                           instructions + "\n\n" + message]
+                           system + "\n\n" + message]
         case .grok:
             // dontAsk alone still let tools run (checked with Grok 1.0.70); deny every tool outright.
-            return ["-p", message, "--effort", "low", "--system-prompt-override", instructions, "--max-turns", "1",
+            return ["-p", message, "--effort", "low", "--system-prompt-override", system, "--max-turns", "1",
                     "--permission-mode", "dontAsk", "--deny", "*", "--disable-web-search", "--no-subagents", "--no-plan",
                     "--session-id", sessionID]
         }

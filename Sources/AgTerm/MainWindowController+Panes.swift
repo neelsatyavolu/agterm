@@ -139,6 +139,7 @@ extension MainWindowController {
         tabBar.isHidden = left
         sidebar.isHidden = !left
         titleStrip.isHidden = !left
+        placeReviewToolbar()
         window?.contentView?.layoutSubtreeIfNeeded()
         focusedSession?.pushSize()
     }
@@ -149,6 +150,7 @@ extension MainWindowController {
     }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let answer = validateReviewItem(item) { return answer }
         switch item.action {
         case #selector(toggleTabsOnLeft):
             item.state = tabsOnLeft ? .on : .off
@@ -195,6 +197,8 @@ final class TitleStripView: NSView {
     private static let logoSize: CGFloat = 16
     var title = "" { didSet { if title != oldValue { needsDisplay = true } } }
     var logo: NSImage? { didSet { if logo !== oldValue { needsDisplay = true } } }
+    /// Room kept free at the right for the review toolbar.
+    var trailingReserve: CGFloat = 0 { didSet { if trailingReserve != oldValue { needsDisplay = true } } }
 
     override var mouseDownCanMoveWindow: Bool { false }
     override func mouseDown(with event: NSEvent) { WindowDrag.mouseDown(event, in: window) }
@@ -202,13 +206,14 @@ final class TitleStripView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let text = TabCardDrawing.text(title, Theme.topicFont, Theme.fg3)
         let logoWidth = logo == nil ? 0 : Self.logoSize + 8
-        let width = min(ceil(text.size().width) + logoWidth, bounds.width - 24)
-        let x = max(12, (bounds.width - width) / 2)
+        let right = max(12, trailingReserve)
+        let width = min(ceil(text.size().width) + logoWidth, bounds.width - 12 - right)
+        let x = max(12, min((bounds.width - width) / 2, bounds.width - right - width))
         if let logo {
             logo.draw(in: NSRect(x: x, y: (bounds.height - Self.logoSize) / 2, width: Self.logoSize, height: Self.logoSize),
                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
-        TabCardDrawing.draw(text, x: x + logoWidth, y: (bounds.height - 17) / 2, maxX: bounds.width - 12)
+        TabCardDrawing.draw(text, x: x + logoWidth, y: (bounds.height - 17) / 2, maxX: bounds.width - right)
     }
 
     override var isFlipped: Bool { true }

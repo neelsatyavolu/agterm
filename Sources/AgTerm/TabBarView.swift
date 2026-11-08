@@ -288,8 +288,10 @@ final class TabBarView: NSView {
 
     /// Room for tabs when they all fit.
     private var fullStripWidth: CGFloat {
-        max(0, bounds.width - Self.leadingInset - Self.plusWidth - (cloud == .hidden ? 0 : Self.cloudWidth))
+        max(0, bounds.width - Self.leadingInset - Self.plusWidth - (cloud == .hidden ? 0 : Self.cloudWidth) - trailingReserve)
     }
+    /// Room kept free at the right end for the review toolbar.
+    var trailingReserve: CGFloat = 0 { didSet { if trailingReserve != oldValue { needsLayout = true } } }
     private var overflows: Bool { CGFloat(cards.count) * Self.minTabWidth > fullStripWidth }
     /// When tabs overflow, the strip gives up room at each end for the scroll arrows.
     private var stripX: CGFloat { Self.leadingInset + (overflows ? Self.arrowWidth : 0) }

@@ -39,6 +39,16 @@ agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own
 - **Skip permission prompts.** Settings → Permissions can start each installed agent with its own bypass flag, such as `--dangerously-skip-permissions` (Claude Code, Antigravity), `--dangerously-bypass-approvals-and-sandbox` (Codex, which also turns off its sandbox), `--permission-mode bypassPermissions` (Grok), `--yolo` (Gemini, Kimi, Qwen, Crush), `--force` (Cursor), `--auto` (OpenCode) or `--yes-always` (Aider). Off by default. Runs where you pass a permission flag yourself, and subcommands like `mcp` or `login`, are left alone.
 - **⌘K writes a command.** Describe what you want; ⏎ puts the command at your prompt to check, ⌘⏎ runs it. It goes through the CLI you're already signed in to, at its fastest setting: Claude Haiku (about 2.5 s), Codex's Luna model at its lowest effort (about 4 s) or Grok at low effort (about 5 s). Automatic uses the first one installed. The model gets your request, the tab's folder, your shell and the tab's last 150 lines (scrollback included, up to 8,000 characters), so "fix that error" or "run that again" works. It has no tools, and the run isn't kept in the CLI's history.
 
+## Reviewing and shipping changes
+
+The buttons at the top right of the window work on the tab you're typing in; hover one to see what it does and its shortcut.
+
+- **Changes (⇧⌘E).** A panel beside the terminal lists each changed file with its diff. *Agent* shows what the agent in the tab changed since it started (from the same `git stash create` snapshot as the tab's line counts), *Uncommitted* everything not committed, and *Branch* everything since the branch left `main` (or the branch a worktree was made from). It reads git only while open, and again only when the tab's files change.
+- **Commit (⌥⌘C).** Drafts a message with ⌘K's fast model, then Commit, Commit & Push, or Commit, Push & Open PR. The pull request gets a written title and description and opens in your browser; the toolbar then shows its number. On the default branch, a pull request first moves the work to a new `agterm/…` branch. Needs the [GitHub CLI](https://cli.github.com) for pull requests.
+- **Worktrees (⇧⌘N).** A new branch in its own folder, `~/.agterm/worktrees/<repo>/<branch>`, with ignored `.env`, `.env.*` and `.envrc` files copied in, opened in a new tab running the agent you pick and, optionally, its first task. If the repo has `.agterm/worktree-setup.sh`, the tab runs it first. Remove This Worktree deletes the folder (and, if you tick it, the branch) after saying what would be lost.
+- **Hand off.** Writes the conversation so far to a file in the repo's `.git/agterm/handoffs` and starts Claude Code, Codex, Grok or Gemini CLI in a new tab, told to read it and carry on.
+- **Usage (⇧⌘U).** Tokens and estimated cost by day, model and project, read from Claude Code and Codex transcripts on this Mac (estimates at API prices, not your bill), and each login's limits.
+
 ## Switching accounts when an agent runs out
 
 Add more Claude Code, Codex or Grok logins in Settings → Accounts. Each one signs in through the CLI's own login, in a tab, into its own folder (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `GROK_HOME`; Grok also gets its own leader socket there). Conversations, settings, skills and MCP servers are shared with your own login through symlinks, so any login can resume any conversation.
@@ -84,6 +94,9 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | ⌃⌘S | View → Tabs on the Left: a sidebar showing each tab's agent and logo, model, spend and run time; with many tabs it shows less so they fit |
 | ⌥⌘T, ⌥⌘1–3 | New tab running your usual agent, or Claude Code, Codex, Grok |
 | ⌘K | Describe a command and have a fast model write it |
+| ⇧⌘E / ⌥⌘C | Show changes / commit, push or open a pull request |
+| ⇧⌘N | New worktree tab |
+| ⇧⌘U | Usage |
 | ⌘Q | Quit, leaving tabs running for next time (agterm → Quit and End Sessions ends them instead) |
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |

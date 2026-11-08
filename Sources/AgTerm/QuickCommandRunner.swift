@@ -119,6 +119,35 @@ final class QuickCommandRunner {
         return run
     }
 
+    /// A one-shot request with its own instructions (commit messages, pull request text) through
+    /// the same fast model as ⌘K. The reply comes back as the model wrote it, trimmed; `completion`
+    /// runs on the main queue.
+    func ask(system: String, message: String, timeout: TimeInterval = 45,
+             completion: @escaping (Result<String, Failure>) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let model = self.currentModel(), let cli = self.executable(model.cli) else {
+                return DispatchQueue.main.async { completion(.failure(.noModel)) }
+            }
+            let session = UUID().uuidString.lowercased()
+            let args = QuickCommand.arguments(model, message: message, codex: model == .codex ? Self.codexModel() : .fallback,
+                                              sessionID: session, system: system)
+            let result: Result<String, Failure>
+            switch Self.execute(self.process(cli, args), timeout: timeout) {
+            case let .exited(0, out, _):
+                let text = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                result = text.isEmpty ? .failure(.emptyReply) : .success(text)
+            case let .exited(status, _, err):
+                let detail = String(decoding: err, as: UTF8.self).split(separator: "\n").last.map(String.init) ?? ""
+                result = .failure(.failed(detail.isEmpty ? "The model exited with status \(status)." : detail))
+            case .timedOut: result = .failure(.timedOut)
+            case .cancelled: result = .failure(.failed("Cancelled."))
+            case let .couldNotStart(error): result = .failure(.failed(error.localizedDescription))
+            }
+            DispatchQueue.main.async { completion(result) }
+            if model == .grok { _ = Self.execute(self.process(cli, ["sessions", "delete", session]), timeout: 10) }
+        }
+    }
+
     private func process(_ cli: String, _ arguments: [String]) -> Process {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cli)

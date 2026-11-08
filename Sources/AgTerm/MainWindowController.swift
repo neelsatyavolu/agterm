@@ -38,6 +38,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var timers: [Timer] = []
     /// Set once the tabs are saved for this quit, so a second save can't overwrite them.
     private var savedForQuit = false
+    /// The title-bar buttons, the changes panel and their state (MainWindowController+Review).
+    let reviewToolbar = ReviewToolbar()
+    let diffPanel = DiffPanelView()
+    let review = ReviewState()
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
@@ -113,7 +117,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         blur.material = .underWindowBackground
         blur.state = .active
         backdrop.hole = container
-        for view in [blur, backdrop, container, tabBar, sidebar, titleStrip] as [NSView] {
+        for view in [blur, backdrop, container, diffPanel, tabBar, sidebar, titleStrip, reviewToolbar] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
@@ -138,9 +142,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             titleStrip.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             titleStrip.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             titleStrip.heightAnchor.constraint(equalToConstant: TitleStripView.height),
-            container.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
             container.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -6),
         ])
+        installReview(in: content)
         topLayout = [
             container.topAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: 8),
             container.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
@@ -196,6 +200,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         // Agent tabs: what changed since that agent started. Claude and Codex are counted from
         // their own transcripts (works outside git repos); other agents from a git snapshot.
         for session in sessions where session.agentName != nil {
+            // Every agent gets a snapshot when it starts: the diff panel's Agent view compares with it.
+            if session.agentBaseline == nil, !session.agentBaselineRequested { requestBaseline(session) }
             if session.agentName == "claude", let id = session.claudeSessionID {
                 transcripts.claude(sessionID: id) { [weak session] usage in session?.updateAgentUsage(usage ?? AgentUsage()) }
                 if session.needsTranscriptTitle {
@@ -209,15 +215,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             }
             if let baseline = session.agentBaseline {
                 git.agentDiff(baseline) { [weak session] diff in session?.updateAgentDiff(diff) }
-            } else if !session.agentBaselineRequested {
-                session.agentBaselineRequested = true
-                let agent = session.agentName
-                git.baseline(path: session.cwd) { [weak session] baseline in
-                    guard let session, session.agentName == agent else { return }
-                    session.agentBaseline = baseline
-                    if baseline != nil { session.updateAgentDiff((0, 0)) }
-                }
             }
+        }
+    }
+
+    /// Snapshots the working tree as an agent starts (`git stash create`, which touches nothing).
+    private func requestBaseline(_ session: TerminalSession) {
+        session.agentBaselineRequested = true
+        let agent = session.agentName
+        let countsFromGit = agent != "claude" && agent != "codex"
+        git.baseline(path: session.cwd) { [weak session] baseline in
+            guard let session, session.agentName == agent else { return }
+            session.agentBaseline = baseline
+            if baseline != nil, countsFromGit { session.updateAgentDiff((0, 0)) }
         }
     }
 
@@ -411,7 +421,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     @discardableResult
-    private func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) -> TerminalSession {
+    func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) -> TerminalSession {
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
         let session = TerminalSession(cwd: dir, restoring: saved, command: command)
         install(session)
@@ -793,7 +803,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     /// Ends a pane's shell; its neighbor takes the space, and a tab with no panes left closes.
-    private func removePane(_ session: TerminalSession) {
+    func removePane(_ session: TerminalSession) {
         guard let index = groupIndex(of: session) else { return }
         let group = groups[index]
         let neighbor = group.layout.neighbor(of: session.tabID, .left, in: container.layoutSpace)
@@ -860,6 +870,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             titleStrip.title = focused.topic
             titleStrip.logo = focused.agentName.flatMap(AgentLogo.image(for:))
         }
+        updateReview()
+    }
+
+    /// Asks git about `path` on the next poll, after a commit or push changed it.
+    func refreshGit(_ path: String) {
+        gitPolledAt[path] = nil
+        pollGit()
     }
 
     // MARK: Appearance
@@ -880,6 +897,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         tabBar.refreshAppearance()
         sidebar.refreshAppearance()
         titleStrip.needsDisplay = true
+        reviewToolbar.refreshAppearance()
+        diffPanel.refreshAppearance()
         container.subviews.forEach { $0.needsDisplay = true }
         container.needsDisplay = true
         commandBar.refreshAppearance()
