@@ -13,7 +13,7 @@ const shell = (step, body) => html`
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div class="landing-brand">
           ${raw(brandMark())}
-          <b>agmux</b>
+          <b>agterm</b>
           <span class="brand-sub">Teams</span>
         </div>
         <div class="steps">
@@ -123,7 +123,7 @@ export function joinDisclose(preview) {
       </div>
       <div class="pnl-b" style="display:flex;flex-direction:column;gap:13px">
         <p class="hint" style="margin:0">
-          Joining ${preview.team.name} turns on metrics upload from your agmux desktop app. It stays
+          Joining ${preview.team.name} turns on metrics upload from your agterm or agmux desktop app. It stays
           on while you're a member. Here is the complete list, in plain language.
         </p>
         ${raw(
@@ -165,18 +165,15 @@ export function joinDone(team) {
         </div>
         <h3>You're in — ${team.name}</h3>
         <p>
-          Open the agmux desktop app to start sync. Your first upload usually lands within a few
-          minutes of your next agent session.
+          Sign in under Settings → Teams &amp; Phone in agterm (or Settings → Teams in agmux) to
+          start sync. Your first upload usually lands within a few minutes of your next agent
+          session.
         </p>
         <div style="display:flex;gap:9px">
-          <a class="btn primary" href="agmux://teams"
-            ><i data-lucide="external-link"></i>Open agmux</a
-          >
           <a class="btn" href="#/t/${encodeURIComponent(team.slug)}/me">View your metrics</a>
         </div>
         <p class="hint" style="margin-top:2px">
-          Don't have the app? <a href="https://agmux.dev">Download for macOS</a> ·
-          <span class="mono">brew install --cask agmux</span>
+          Don't have the app? <a href="https://agterm.dev">Download agterm for macOS</a>
         </p>
       </div>
     </div>`,

@@ -278,7 +278,7 @@ export async function deviceStart(req: Request, env: Env): Promise<Response> {
  */
 export async function deviceAttach(req: Request, env: Env): Promise<Response> {
   const principal = await authenticate(req, env);
-  if (!principal) throw unauthorized("Sign in first, then reopen the link from agmux.");
+  if (!principal) throw unauthorized("Sign in first, then reopen the link from agterm or agmux.");
 
   const body = await readJson<{ code?: string }>(req);
   const code = (body.code ?? "").trim();
@@ -287,7 +287,7 @@ export async function deviceAttach(req: Request, env: Env): Promise<Response> {
   const attached = await attachLinkCode(env, code, principal.userId);
   if (!attached) {
     throw badRequest(
-      "That link request has expired or was already used. Click Sign in again in agmux.",
+      "That link request has expired or was already used. Click Sign in again in agterm or agmux.",
     );
   }
   return json({ attached: true });

@@ -128,7 +128,7 @@ export function teamHome({ team, data, role }) {
           statCard({
             icon: "coins",
             label: "Reported tokens",
-            help: "Measured usage from verified agmux-created sessions. Unverified history and unavailable provider reports are excluded.",
+            help: "Measured usage from verified agterm- and agmux-created sessions. Unverified history and unavailable provider reports are excluded.",
             ...tokenParts(t.tokens),
             spark: "tok",
             delta: data.deltas.tokens,
@@ -162,8 +162,8 @@ export function teamHome({ team, data, role }) {
             icon: "message-square",
             label: t.sessionsStartedIncomplete ? "Sessions (partial)" : "Sessions",
             help: t.sessionsStartedIncomplete
-              ? "Sessions started in agmux in this range. Some activity came from an older agmux version that doesn't report session starts, so the real count is higher."
-              : "Sessions started in agmux in this range. Subagents and automatic reviews add to usage, not to this count.",
+              ? "Sessions started in agterm or agmux in this range. Some activity came from an older agmux version that doesn't report session starts, so the real count is higher."
+              : "Sessions started in agterm or agmux in this range. Subagents and automatic reviews add to usage, not to this count.",
             value: fmt.sessions(t.sessionsStarted, t.sessionsStartedIncomplete),
             spark: "ses",
             note: `${t.turns.toLocaleString()} turns · ${t.toolCalls.toLocaleString()} tool calls`,

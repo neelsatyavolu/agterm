@@ -96,7 +96,7 @@ export async function maybeShowBillingNotice({ slug, teamId, role, billing }) {
       </div>
       <div style="font-size:13px;line-height:1.55;color:var(--t2)">
         <p style="margin:0 0 10px">
-          We're introducing paid <b style="color:var(--ink)">agmux Teams</b> so we can keep building
+          We're introducing paid <b style="color:var(--ink)">agterm Teams</b> so we can keep building
           org analytics, budgets, and leaderboards. Existing teams get a
           <b style="color:var(--ink)">free trial</b> — no card required right now.
         </p>
@@ -115,7 +115,7 @@ export async function maybeShowBillingNotice({ slug, teamId, role, billing }) {
             ($12 per seat beyond ${freeSeats}), or <b style="color:var(--ink)">$${yr}/yr</b>
             ($10/seat/mo billed yearly).
           </li>
-          <li>Personal agmux on your Mac stays free. Only the shared team workspace is paid.</li>
+          <li>agterm and agmux on your Mac stay free. Only the shared team workspace is paid.</li>
         </ul>
         <p style="margin:0;font-size:12px;color:var(--t4)">
           Manage seats and billing anytime on the <b style="color:var(--t3)">Plan</b> tab. Cancel anytime from the Stripe portal.

@@ -5,9 +5,9 @@ import { esc, fmtDate, html, initials, raw, since, syncPill } from "./dom.js";
 import { fmt, providerColor } from "./charts.js";
 import { prettyMixLabel } from "./labels.js";
 
-/** The agmux mark, drawn as on agmux.dev: inputs routed through one body to a single gold output. */
+/** The agterm mark, as on agterm.dev: a prompt chevron and a cursor. */
 export function brandMark(cls = "mark") {
-  return `<svg class="${cls}" viewBox="196 196 632 632" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M231 316 H405" stroke="currentColor" stroke-width="58" opacity="0.5"/><path d="M231 708 H405" stroke="currentColor" stroke-width="58" opacity="0.5"/><path d="M405 231 L606 351 L606 673 L405 793 Z" stroke="currentColor" stroke-width="58"/><path d="M234 512 H738" stroke="var(--accent)" stroke-width="64"/><circle cx="756" cy="512" r="66" fill="var(--accent)"/></svg>`;
+  return `<svg class="${cls}" viewBox="12 14 34 36" fill="none" aria-hidden="true"><path d="M18 22l11 10-11 10" stroke="currentColor" stroke-width="5" stroke-linecap="square"/><rect x="35" y="20" width="5" height="24" fill="var(--accent)"/></svg>`;
 }
 
 export const RANGES = [
@@ -884,7 +884,7 @@ export function inviteCard(invite, { canManage }) {
 
   // Active invites return a full url from the API. Legacy rows (created before
   // token persistence) may still be masked — regenerate once to re-copy.
-  const linkText = invite.url ?? "teams.agmux.dev/join/•••••••• (regenerate to copy)";
+  const linkText = invite.url ?? "teams.agterm.dev/join/•••••••• (regenerate to copy)";
   return html`
     <div class="pnl-b" style="display:flex;flex-direction:column;gap:11px">
       <div class="link">

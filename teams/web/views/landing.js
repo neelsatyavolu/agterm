@@ -10,14 +10,14 @@ export function landing({ next }) {
     <div class="landing">
       <header class="landing-nav">
         <nav class="landing-wrap" aria-label="Main">
-          <a class="landing-brand" href="https://agmux.dev">
+          <a class="landing-brand" href="https://agterm.dev">
             ${raw(brandMark())}
-            <b>agmux</b>
+            <b>agterm</b>
             <span class="brand-sub">Teams</span>
           </a>
           <div class="landing-nav-links">
             <a href="#/privacy">What gets shared</a>
-            <a class="hide-sm" href="https://agmux.dev">agmux.dev</a>
+            <a class="hide-sm" href="https://agterm.dev">agterm.dev</a>
           </div>
         </nav>
       </header>
@@ -27,7 +27,7 @@ export function landing({ next }) {
           <h1 class="landing-title">See how your team uses AI coding agents.</h1>
           <p class="landing-lead">
             Tokens, active hours, budgets and leaderboards across Claude, Codex and Grok, from
-            sessions your team runs in agmux. Aggregates only. Never prompts, diffs or source code.
+            sessions your team runs in agterm or agmux. Aggregates only. Never prompts, diffs or source code.
           </p>
           <div class="landing-actions">
             <a class="btn lg primary" href="${signInUrl("github", next)}"
@@ -39,7 +39,7 @@ export function landing({ next }) {
           </div>
           <p class="landing-fine">
             First 3 seats are free. Members use the
-            <a href="https://agmux.dev">agmux Mac app</a> and review the
+            <a href="https://agterm.dev">agterm Mac app</a> (or <a href="https://agmux.dev">agmux</a>) and review the
             <a href="#/privacy">disclosure</a> before joining.
           </p>
         </section>
@@ -80,10 +80,10 @@ export function landing({ next }) {
 
       <footer class="landing-foot">
         <div class="landing-wrap">
-          <span>agmux Teams</span>
-          <a href="https://agmux.dev">agmux.dev</a>
+          <span>agterm Teams</span>
+          <a href="https://agterm.dev">agterm.dev</a>
           <a href="#/privacy">Disclosure</a>
-          <a href="https://github.com/neelsatyavolu/agmux">GitHub</a>
+          <a href="https://github.com/neelsatyavolu/agterm">GitHub</a>
         </div>
       </footer>
     </div>
@@ -105,7 +105,7 @@ export function noTeams() {
           )}
         </div>
         <p class="hint" style="text-align:center">
-          Already invited? Open the <span class="mono">teams.agmux.dev/join/…</span> link your owner
+          Already invited? Open the <span class="mono">teams.agterm.dev/join/…</span> link your owner
           sent you.
         </p>
       </div>

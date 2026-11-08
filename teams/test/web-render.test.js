@@ -761,7 +761,7 @@ describe("team settings", () => {
 
 
   it("gives the owner rename, delete, invite and role controls", () => {
-    const m = teamSettings({ team, role: "owner", members, invite: { state: "active", url: "https://teams.agmux.dev/join/abc", expiresAt: "2026-08-05T00:00:00.000Z", usesLeft: 14, creatorName: "Priya Raman" } });
+    const m = teamSettings({ team, role: "owner", members, invite: { state: "active", url: "https://teams.agterm.dev/join/abc", expiresAt: "2026-08-05T00:00:00.000Z", usesLeft: 14, creatorName: "Priya Raman" } });
     expect(m).toContain('data-act="rename"');
     expect(m).toContain('data-act="delete"');
     expect(m).toContain('data-act="invite-revoke"');

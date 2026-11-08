@@ -23,7 +23,7 @@ async function fixture() {
     const headers: Record<string, string> = who === "aliceWeb"
       ? { cookie: `__Host-agmux_teams=${tokens[who]}` }
       : { authorization: `Bearer ${tokens[who]}` };
-    const response = await worker.fetch(new Request(`https://teams.agmux.dev/api/teams/${team}${suffix}`,
+    const response = await worker.fetch(new Request(`https://teams.agterm.dev/api/teams/${team}${suffix}`,
       { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), env);
     return { status: response.status, ...await response.json() as any };
   }

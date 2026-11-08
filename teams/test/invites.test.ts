@@ -15,7 +15,7 @@ import { addMember, makeEnv, seedTeam, seedUser } from "./helpers/d1";
 const principal = (userId: string): Principal => ({ userId, deviceId: null, via: "cookie" });
 
 const post = (body: unknown) =>
-  new Request("https://teams.agmux.dev/api/x", {
+  new Request("https://teams.agterm.dev/api/x", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "content-type": "application/json" },

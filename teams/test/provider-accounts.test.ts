@@ -22,7 +22,7 @@ async function fixture() {
   tokens.staff = await createSession(env, "staff");
   async function call(who: string, method = "GET", suffix = "", body?: unknown, team = "team") {
     const headers: Record<string, string> = who === "staff" || who === "cookie" ? { cookie: `__Host-agmux_teams=${tokens[who]}` } : { authorization: `Bearer ${tokens[who]}` };
-    const response = await worker.fetch(new Request(`https://teams.agmux.dev/api/teams/${team}/provider-accounts${suffix}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), env);
+    const response = await worker.fetch(new Request(`https://teams.agterm.dev/api/teams/${team}/provider-accounts${suffix}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }), env);
     return { status: response.status, headers: response.headers, ...await response.json() as any };
   }
   let serial = 0;

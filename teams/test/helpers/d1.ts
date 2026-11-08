@@ -90,7 +90,7 @@ export function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     DB: new FakeD1(db) as unknown as D1Database,
     ASSETS: { fetch: () => Promise.resolve(new Response(null, { status: 404 })) } as unknown as Fetcher,
-    APP_ORIGIN: "https://teams.agmux.dev",
+    APP_ORIGIN: "https://teams.agterm.dev",
     RETENTION_DAYS: "90",
     INVITE_TTL_DAYS: "14",
     ...overrides,

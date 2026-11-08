@@ -107,7 +107,7 @@ export async function mountDevBar(onChanged) {
         await navigator.clipboard.writeText(r.token).catch(() => {});
         toast("Device token copied — see teams-service/README.md");
         // Also print it, in case the clipboard is blocked.
-        console.info("agmux Teams dev device token:", r.token);
+        console.info("agterm Teams dev device token:", r.token);
       } else if (action === "reset") {
         if (!confirm("Delete every user, team and metric in the local database?")) return;
         await call("/api/dev/reset", {});

@@ -1,5 +1,5 @@
 /**
- * agmux Teams — Worker entry point.
+ * agterm Teams — Worker entry point.
  *
  *   /api/*  → JSON API (this file routes it)
  *   /*      → the SPA in ./web, served from the ASSETS binding
@@ -30,6 +30,7 @@ import * as providerAccounts from "./routes/provider-accounts";
 import * as teamSessions from "./routes/team-sessions";
 import * as teamBoard from "./routes/team-board";
 import { runLeaderboardSyncs } from "./leaderboard/sync";
+import { legacyRedirect } from "./legacy-host";
 
 type Handler = (
   req: Request,
@@ -578,6 +579,8 @@ async function handleApi(req: Request, env: Env, path: string): Promise<Response
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    const moved = legacyRedirect(req, env);
+    if (moved) return moved;
 
     if (url.pathname === "/api/health") return json({ service: "agmux-teams", ok: true });
 

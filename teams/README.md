@@ -1,6 +1,9 @@
-# agmux Teams
+# agterm Teams
 
-Org-level analytics for AI coding agents. Cloudflare Workers + D1, entirely
+Org-level analytics for AI coding agents, for teams using agterm or agmux.
+Formerly agmux Teams; moved here from the agmux repo's `teams-service/` with its history.
+It serves teams.agterm.dev, and teams.agmux.dev for agmux and agterm before 1.1.8
+(API there as before; browser visits redirect, see `src/legacy-host.ts`). Cloudflare Workers + D1, entirely
 separate from `remote-relay` — no shared bindings, and device pairing is
 untouched.
 
@@ -57,13 +60,14 @@ If either is missing the routes return 404 — invisible, not merely forbidden.
 
 The request's own hostname is deliberately **not** used: once `routes` names a
 custom domain, `wrangler dev` simulates that hostname locally, so a
-request-host check would report `teams.agmux.dev` on your own machine and
+request-host check would report `teams.agterm.dev` on your own machine and
 switch dev mode off exactly where it is needed.
 
 ### Testing the desktop app against local
 
 ```bash
-AGMUX_TEAMS_URL=http://localhost:8787 npx tauri dev
+AGTERM_TEAMS_URL=http://localhost:8787 swift run AgTerm   # agterm, from the repo root
+AGMUX_TEAMS_URL=http://localhost:8787 npx tauri dev    # agmux, from its repo
 ```
 
 Then **Settings → Teams → Sign in**. The desktop opens
@@ -84,15 +88,16 @@ Already provisioned and live:
 | | |
 |---|---|
 | Worker | `agmux-teams` |
-| URLs | <https://teams.agmux.dev> · <https://agmux-teams.xanom.workers.dev> |
+| URLs | <https://teams.agterm.dev> · <https://teams.agmux.dev> (old host) · <https://agmux-teams.xanom.workers.dev> |
 | D1 | `agmux-teams` (`31b8a340-eb82-41f1-b335-6bf82e097512`), schema applied |
+| `KNOWLEDGE_HMAC_SECRET` | `kw-default:https://teams.agmux.dev`, the value derived from the old `APP_ORIGIN`; changing it orphans existing Knowledge thread hashes |
 | DNS + TLS | provisioned by `custom_domain = true` on deploy |
 
 **Accounts rollout, 2026-09-21:** production has migration 013 and the provider-account
 encryption key, but intentionally retains the legacy policy implementation and web
 assets. Migration 012 is not deployed. A plain `npm run deploy` from this checkout
 would introduce policy queries that its production schema cannot serve. See
-[the deployment compatibility boundary](../AGMUX_TEAMS.md#team-provider-account-pool-separate-credential-plane-deployed-2026-09-21)
+[the deployment compatibility boundary](https://github.com/neelsatyavolu/agmux/blob/master/AGMUX_TEAMS.md#team-provider-account-pool-separate-credential-plane-deployed-2026-09-21)
 for the tested source baseline and rollback version. Complete a separate, compatible
 Restrictions rollout before deploying the full checkout.
 
@@ -113,9 +118,9 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 Callback URLs:
 
 - GitHub — <https://github.com/settings/developers> → New OAuth App →
-  `https://teams.agmux.dev/api/auth/github/callback`
+  `https://teams.agterm.dev/api/auth/github/callback`
 - Google — <https://console.cloud.google.com/apis/credentials> → OAuth client ID
-  (Web) → `https://teams.agmux.dev/api/auth/google/callback`
+  (Web) → `https://teams.agterm.dev/api/auth/google/callback`
 
 No secrets are needed for local dev.
 
@@ -158,7 +163,7 @@ test/            vitest; D1 shim backed by node:sqlite
   real browser is broken. When testing API routes, send the HTML accept header:
 
   ```bash
-  curl -sI -H 'Accept: text/html' https://teams.agmux.dev/api/auth/github/start
+  curl -sI -H 'Accept: text/html' https://teams.agterm.dev/api/auth/github/start
   # must be 302 to github.com, not 200 text/html
   ```
 

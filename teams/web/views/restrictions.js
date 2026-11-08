@@ -36,7 +36,7 @@ export function restrictionsPanel(data) {
     <div class="set-card-b">
       <div class="restriction-intro">
       <p class="hint">${editablePolicy && !("teamId" in editablePolicy) ? "Your rules can only narrow what the owner allows. They follow the people and groups you currently manage, covering active employees and yourself, never owners or other managers." : "The owner sets the team’s rules. Managers can add tighter rules for the employees they manage."}</p>
-      <p class="hint">Applies to work started in agmux. It does not stop running turns or control external apps.</p>
+      <p class="hint">Applies to work started in agmux. agterm reports usage but doesn't enforce these. It does not stop running turns or control external apps.</p>
       <details class="restriction-support"><summary>Supported restrictions</summary>
         <p>Claude and Codex support selected model and effort rules. Cursor, OpenCode and Local MLX support model rules only. For Local MLX, use the full model ID <code>local/&lt;id&gt;</code>, keeping the <code>local/</code> prefix. Local agents can run when MLX is the only allowed agent, subject to your other rules. Grok and Gemini cannot start work when a model or effort rule is set, until their settings can be reliably verified.</p>
         <p>These rules apply to the model and effort you select, not internal subagents. Terminals are unavailable whenever a model or effort rule is set.</p>

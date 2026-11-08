@@ -7,8 +7,12 @@ workers_dev = true
 # untouched: no shared bindings, no shared deployment.
 #
 # custom_domain provisions the DNS record and certificate on deploy — no manual
-# CNAME needed. agmux.dev is an active zone on this account.
-routes = [{ pattern = "teams.agmux.dev", custom_domain = true }]
+# CNAME needed. teams.agmux.dev is the old host: agmux and agterm before 1.1.8
+# call its API, and browser visits there redirect to APP_ORIGIN (src/legacy-host.ts).
+routes = [
+  { pattern = "teams.agterm.dev", custom_domain = true },
+  { pattern = "teams.agmux.dev", custom_domain = true },
+]
 
 [[d1_databases]]
 binding = "DB"
@@ -30,8 +34,9 @@ not_found_handling = "single-page-application"
 # (Accept: text/html) before the Worker runs — so a browser hitting
 # /api/auth/github/start would get index.html instead of the OAuth redirect.
 # Plain fetch() calls don't send Accept: text/html, which is why this only
-# breaks in a real browser. Force the Worker to run first for the API.
-run_worker_first = ["/api/*"]
+# breaks in a real browser. The Worker runs first everywhere: for the API, and so
+# page visits to the old host can redirect before assets answer them.
+run_worker_first = true
 
 # Paid plan: cap CPU per invocation so a bad loop can't burn the 5‑min max.
 # GitHub calls stay tiny (org search ≤ ~4 HTTP) — well under 10k subrequest limit.
@@ -39,12 +44,12 @@ run_worker_first = ["/api/*"]
 cpu_ms = 30_000
 
 [vars]
-APP_ORIGIN = "https://teams.agmux.dev"
+APP_ORIGIN = "https://teams.agterm.dev"
 RETENTION_DAYS = "90"
 INVITE_TTL_DAYS = "14"
 # Billing paywall is live. Set BILLING_ENFORCE = "false" to dark it again.
 BILLING_ENFORCE = "true"
-# Public Stripe Price IDs (live product "agmux Teams") — not secrets.
+# Public Stripe Price IDs (live product "agterm Teams") — not secrets.
 # Graduated: first 3 seats $0, then $12/mo or $120/yr per additional seat.
 STRIPE_PRICE_MONTHLY = "price_1U2xkVBPM9ZAoURpEgMGg6ZQ"
 STRIPE_PRICE_ANNUAL = "price_1U2xkVBPM9ZAoURpRcR1HJfP"

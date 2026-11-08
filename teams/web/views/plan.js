@@ -19,7 +19,7 @@ const PAID_FEATURES = [
   { icon: "credit-card", title: "Self-serve billing", body: "Stripe Checkout, invoices, and Customer Portal." },
   { icon: "building-2", title: "Org-ready ops", body: "Groups, manager scope, audit log, CSV export at scale." },
   { icon: "badge-percent", title: "Annual savings", body: "$10/seat/mo when billed yearly ($120/seat/yr)." },
-  { icon: "headphones", title: "Priority path", body: "Billing and account issues go straight to the agmux team." },
+  { icon: "headphones", title: "Priority path", body: "Billing and account issues go straight to the agterm team." },
 ];
 
 function daysLeft(trialEndsAt) {
@@ -319,7 +319,7 @@ export function teamPlan({ team, role, billing = null, prices = null, membersCou
       <div class="pnl plan-footnote">
         <div class="pnl-b hint" style="margin:0">
           Pricing is per <b style="color:var(--t3)">active linked member</b> beyond the free allotment.
-          Personal usage in the agmux desktop app is never billed. Questions?
+          Personal usage in agterm and agmux is never billed. Questions?
           <a href="mailto:neel@xanom.co">neel@xanom.co</a>
         </div>
       </div>

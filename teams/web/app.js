@@ -1,5 +1,5 @@
 import { mountRestrictions, restrictionsPage } from "./views/restrictions.js";
-/* agmux Teams — SPA shell: hash routing, chrome, chart mounting, actions.
+/* agterm Teams — SPA shell: hash routing, chrome, chart mounting, actions.
    Deliberately framework-free: the design ships as HTML, and staying close to
    HTML is what keeps the port faithful. */
 
@@ -202,7 +202,7 @@ function renderChrome(route) {
     <div class="wtop">
       <a class="brand" href="#/teams" title="All teams">
         ${raw(brandMark())}
-        <b>agmux</b>
+        <b>agterm</b>
         <span class="brand-sub">Teams</span>
       </a>
       ${team
@@ -1142,7 +1142,7 @@ async function viewLink() {
     app.innerHTML = linkPanel({
       ok: false,
       title: "Nothing to link",
-      body: "Open this page from agmux (Settings → Teams → Sign in) so it can hand over its link request.",
+      body: "Open this page from agterm (Settings → Teams & Phone → Sign in) or agmux (Settings → Teams) so it can hand over its link request.",
     });
     icons();
     return;
@@ -1152,7 +1152,7 @@ async function viewLink() {
   const who = state.user.display_name || "your account";
   const deviceLine = label
     ? raw(`Device: <strong>${esc(label)}</strong>`)
-    : "This will authorize the agmux desktop app that opened this page.";
+    : "This will authorize the desktop app that opened this page.";
   app.innerHTML = html`
     <section class="center">
       <div class="col">
@@ -1190,7 +1190,7 @@ async function viewLink() {
     app.innerHTML = linkPanel({
       ok: true,
       title: "Desktop app linked",
-      body: `You're signed in as ${state.user.display_name}. Return to agmux — it will pick up the link within a few seconds.`,
+      body: `You're signed in as ${state.user.display_name}. Return to the app — it will pick up the link within a few seconds.`,
     });
     icons();
   });

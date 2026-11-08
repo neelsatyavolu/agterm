@@ -17,7 +17,7 @@ async function fixture() {
   const tokens: Record<string, string> = {};
   for (const id of ["owner", "alice", "bob", "outsider"]) tokens[id] = await createDeviceToken(env, id, `${id}-mac`, null);
   async function call(who: string, method: string, suffix: string, body?: unknown) {
-    const response = await worker.fetch(new Request(`https://teams.agmux.dev/api/teams/team${suffix}`, {
+    const response = await worker.fetch(new Request(`https://teams.agterm.dev/api/teams/team${suffix}`, {
       method, headers: { authorization: `Bearer ${tokens[who]}` }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }), env);
     return { status: response.status, ...await response.json() as any };

@@ -9,10 +9,10 @@ Catalog + webhook on **live** Stripe account **agmux** (`acct_1U2LX6BPM9ZAoURp`)
 
 | Item | ID |
 |------|-----|
-| Product | `prod_V2jJpiBmBnFLsW` (`agmux Teams`) |
+| Product | `prod_V2jJpiBmBnFLsW` (`agterm Teams`, formerly `agmux Teams`) |
 | Monthly seat ($12) | `price_1U2druBPM9ZAoURpB1pNWMvh` · lookup `teams_seat_monthly` |
 | Annual seat ($120/yr = $10/mo) | `price_1U2ds0BPM9ZAoURpIqUCecnj` · lookup `teams_seat_annual` |
-| Webhook endpoint | `we_1U2eFwBPM9ZAoURp2k8kzhbW` → `https://teams.agmux.dev/api/billing/webhook` |
+| Webhook endpoint | `we_1U2eFwBPM9ZAoURp2k8kzhbW` → `https://teams.agterm.dev/api/billing/webhook` |
 
 Trial is **app-managed** (30 days from team create), not Stripe `trial_period_days`.  
 Existing teams grandfathered with `trial_ends_at = now+30d` when migration landed.  

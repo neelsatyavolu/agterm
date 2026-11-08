@@ -32,7 +32,7 @@ describe("dev-mode guard", () => {
   it("is off for any non-local APP_ORIGIN, even with the flag set", () => {
     // This is the gate that keeps dev mode dead on a real deployment.
     for (const origin of [
-      "https://teams.agmux.dev",
+      "https://teams.agterm.dev",
       "https://agmux-teams.xanom.workers.dev",
       "https://evil.example",
       "https://localhost.evil.example",
@@ -57,10 +57,10 @@ describe("dev-mode guard", () => {
   it("ignores the request hostname, which wrangler simulates from routes", () => {
     // With `routes` naming a custom domain, `wrangler dev` reports that
     // hostname locally. Dev mode must not depend on it in either direction.
-    expect(devEnabled(devEnv(), req("https://teams.agmux.dev/api/dev/login"))).toBe(true);
+    expect(devEnabled(devEnv(), req("https://teams.agterm.dev/api/dev/login"))).toBe(true);
     expect(
       devEnabled(
-        devEnv({ APP_ORIGIN: "https://teams.agmux.dev" }),
+        devEnv({ APP_ORIGIN: "https://teams.agterm.dev" }),
         req("http://localhost:8787/api/dev/login"),
       ),
     ).toBe(false);
@@ -226,9 +226,9 @@ describe("dev login and the desktop link handshake", () => {
   });
 
   it("refuses dev login entirely on a deployed origin", async () => {
-    const env = makeEnv({ DEV_AUTH: "true", APP_ORIGIN: "https://teams.agmux.dev" });
+    const env = makeEnv({ DEV_AUTH: "true", APP_ORIGIN: "https://teams.agterm.dev" });
     await expect(
-      devLogin(post("https://teams.agmux.dev/api/dev/login", { name: "You" }), env),
+      devLogin(post("https://teams.agterm.dev/api/dev/login", { name: "You" }), env),
     ).rejects.toMatchObject({ status: 404 });
   });
 });

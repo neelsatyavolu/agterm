@@ -60,7 +60,7 @@ export function knowledgeView({ team, settings, overview, role, searchHits }) {
           <div class="empty">
             <h3>Team Knowledge is off</h3>
             <p>
-              Shared decisions and session digests for your team. Included with agmux Teams.
+              Shared decisions and session digests for your team. Included with agterm Teams.
               ${isOwner
                 ? "Review the disclosure, then enable Knowledge to start collecting team context."
                 : "Ask a team owner to enable Knowledge in settings."}

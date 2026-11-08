@@ -8,7 +8,7 @@ export function privacy({ backHref }) {
     <section class="page" style="max-width:960px">
       <div class="phead">
         <div>
-          <div class="eyeb">agmux Teams</div>
+          <div class="eyeb">agterm Teams</div>
           <h1 style="margin-top:6px">What your team can see</h1>
           <div class="meta"><span>Plain language. No exceptions buried below.</span></div>
         </div>
@@ -27,7 +27,7 @@ export function privacy({ backHref }) {
               <div>
                 <b>The desktop app counts locally.</b>
                 <div class="m">
-                  agmux already tracks your own usage in the local Usage panel. Nothing changes
+                  agterm and agmux already track your own usage on your Mac. Nothing changes
                   there.
                 </div>
               </div>

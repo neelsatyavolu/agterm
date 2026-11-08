@@ -245,7 +245,7 @@ export async function exportCsv(
     `${granularity} CSV, ${win.days}d, ${(results ?? []).length} rows${scopeNote}`,
   );
 
-  const filename = `agmux-${safeSlug(ctx.team.slug)}-${win.days}d-${granularity}.csv`;
+  const filename = `agterm-teams-${safeSlug(ctx.team.slug)}-${win.days}d-${granularity}.csv`;
   return new Response(lines.join("\n") + "\n", {
     headers: {
       "content-type": "text/csv; charset=utf-8",

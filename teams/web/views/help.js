@@ -45,11 +45,11 @@ export function teamHelp({ team, role }) {
 
       <div class="help-stack">
         <section class="pnl" id="help-what">
-          <div class="pnl-h"><h3>What agmux Teams is</h3></div>
+          <div class="pnl-h"><h3>What agterm Teams is</h3></div>
           <div class="pnl-b help-prose">
             <p>
               Teams is org analytics for AI coding agents on Mac: Claude, Codex, Grok, and the
-              others you run in the agmux desktop app. It answers questions like how much the team
+              others you run in agterm or agmux. It answers questions like how much the team
               spent on tokens this month, who is blocked waiting on approvals, and which models
               people actually use.
             </p>
@@ -74,7 +74,7 @@ export function teamHelp({ team, role }) {
                 <b>Create a team (or accept an invite)</b>
                 <div class="m">
                   Owners create the team here, then copy the invite link from Settings. Invitees open
-                  <span class="mono">teams.agmux.dev/join/…</span>, sign in with GitHub or Google,
+                  <span class="mono">teams.agterm.dev/join/…</span>, sign in with GitHub or Google,
                   read the disclosure, and accept. Until they accept, nothing uploads for them.
                 </div>
               </div>
@@ -311,7 +311,7 @@ export function teamHelp({ team, role }) {
               <div>
                 <dt>Sessions / turns / tools</dt>
                 <dd>
-                  Sessions counts each conversation started in agmux once, on the day it started. Subagents and automatic reviews add to tokens and active time but are not sessions. Per-hour rates divide by active session-hours instead (each session counts once per hour it was active). Conversation turns and tool calls are counted separately. Tools are grouped:
+                  Sessions counts each conversation started in agterm or agmux once, on the day it started. Subagents and automatic reviews add to tokens and active time but are not sessions. Per-hour rates divide by active session-hours instead (each session counts once per hour it was active). Conversation turns and tool calls are counted separately. Tools are grouped:
                   terminal, edits, reads, search, web, subagents, MCP, other.
                 </dd>
               </div>

@@ -496,7 +496,7 @@ export function leaderboardSettingsPanel({ settings, repos, isOwner, teamSlug = 
                   }`,
                 )
               : s.appConfigured
-                ? "Install the agmux Teams GitHub App on your org, then choose which repos count."
+                ? "Install the agterm Teams GitHub App on your org, then choose which repos count."
                 : "Server needs GITHUB_APP_* secrets before org install works."}
           </div>
           <div class="set-actions" style="margin-top:8px">

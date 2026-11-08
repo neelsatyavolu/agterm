@@ -1,4 +1,4 @@
-/* agmux Teams — chart renderers. Hand-authored SVG; no chart lib.
+/* agterm Teams — chart renderers. Hand-authored SVG; no chart lib.
    Ported from the design's teams/charts.js, with the mock data generators
    dropped: these take real API shapes. Every chart keeps an aria summary and
    never relies on colour alone.

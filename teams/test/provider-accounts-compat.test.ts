@@ -11,7 +11,7 @@ const usageByLogin = readFileSync(new URL("../migrations/019_usage_by_login.sql"
 const catalogSql = "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name";
 
 async function call(env: Env, path: string, headers: Record<string, string> = {}, body?: unknown) {
-  const response = await worker.fetch(new Request(`https://teams.agmux.dev${path}`, {
+  const response = await worker.fetch(new Request(`https://teams.agterm.dev${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers,
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -212,20 +212,21 @@ describe("provider accounts backward compatibility", () => {
       const assets = vi.fn(async () => new Response("SPA"));
       env.ASSETS = { fetch: assets } as unknown as Fetcher;
       for (const provider of ["github", "google"]) {
-        const response = await worker.fetch(new Request(`https://teams.agmux.dev/api/auth/${provider}/start`, {
+        const response = await worker.fetch(new Request(`https://teams.agterm.dev/api/auth/${provider}/start`, {
           headers: { Accept: "text/html,application/xhtml+xml" },
         }), env);
         expect(response.status).toBe(302);
         const location = new URL(response.headers.get("location")!);
         expect(location.hostname).toBe(provider === "github" ? "github.com" : "accounts.google.com");
-        expect(location.searchParams.get("redirect_uri")).toBe(`https://teams.agmux.dev/api/auth/${provider}/callback`);
+        expect(location.searchParams.get("redirect_uri")).toBe(`https://teams.agterm.dev/api/auth/${provider}/callback`);
         expect(response.headers.get("set-cookie")).toContain("__Host-agmux_oauth=");
       }
       expect(assets).not.toHaveBeenCalled();
       // The Worker-only test cannot emulate Cloudflare's asset pre-routing;
-      // pin the deployment setting that keeps HTML navigations Worker-first.
+      // pin the deployment setting that keeps HTML navigations Worker-first
+      // (everywhere, so the old host can also redirect page visits).
       const config = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
-      expect(config).toMatch(/^run_worker_first\s*=\s*\["\/api\/\*"\]/m);
+      expect(config).toMatch(/^run_worker_first\s*=\s*true\b/m);
     });
   }
 });
