@@ -22,6 +22,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     var agentBaseline: GitPoller.AgentBaseline?
     var agentBaselineRequested = false
     private(set) var agentDiff: (added: Int, removed: Int)?
+    /// The agent's model and spend so far (Claude Code and Codex); nil until its transcript is read.
+    private(set) var agentUsage: AgentUsage?
     /// When the current agent started, and (for Claude) the conversation it's in.
     private(set) var agentStartedAt: Date?
     private(set) var claudeSessionID: String?
@@ -475,6 +477,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         agentBaseline = nil
         agentBaselineRequested = false
         agentDiff = nil
+        agentUsage = nil
         onChange?()
     }
 
@@ -491,6 +494,14 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     func updateAgentDiff(_ diff: (added: Int, removed: Int)?) {
         guard diff?.added != agentDiff?.added || diff?.removed != agentDiff?.removed else { return }
         agentDiff = diff
+        onChange?()
+    }
+
+    /// Claude Code and Codex: lines changed, plus the model and spend, from the transcript.
+    func updateAgentUsage(_ usage: AgentUsage) {
+        guard usage != agentUsage || agentDiff?.added != usage.added || agentDiff?.removed != usage.removed else { return }
+        agentUsage = usage
+        agentDiff = (usage.added, usage.removed)
         onChange?()
     }
 

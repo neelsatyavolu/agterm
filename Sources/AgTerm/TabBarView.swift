@@ -21,19 +21,49 @@ struct TabModel: Equatable {
     var moving: String?
     /// How much of the move is done, 0 to 1, shown as a bar along the card's foot.
     var movingProgress: Double?
+    /// The sidebar's extra lines: the agent ("Claude Code"), its model ("Opus 4.5"), what it has
+    /// spent ("$1.24 · 38k tokens"), when it started, and the foreground program otherwise.
+    var agent: String?
+    var model: String?
+    var usage: String?
+    var agentSince: Date?
+    var program: String?
+    /// How many panes the tab is split into.
+    var panes = 1
 }
 
+/// What the tab bar and the tab sidebar ask of the window.
 protocol TabBarDelegate: AnyObject {
-    func tabBar(_ bar: TabBarView, didSelect index: Int)
-    func tabBar(_ bar: TabBarView, didClose index: Int)
-    func tabBarDidRequestNewTab(_ bar: TabBarView)
+    func tabBar(_ bar: NSView, didSelect index: Int)
+    func tabBar(_ bar: NSView, didClose index: Int)
+    func tabBarDidRequestNewTab(_ bar: NSView)
     /// Right-click on +: start an agent instead of a plain shell.
-    func tabBarAgentMenu(_ bar: TabBarView) -> NSMenu
-    func tabBar(_ bar: TabBarView, didMove from: Int, to: Int)
+    func tabBarAgentMenu(_ bar: NSView) -> NSMenu
+    func tabBar(_ bar: NSView, didMove from: Int, to: Int)
     /// Right-click on a tab: rename it and the like.
-    func tabBar(_ bar: TabBarView, menuFor index: Int) -> NSMenu
+    func tabBar(_ bar: NSView, menuFor index: Int) -> NSMenu
     /// The cloud button beside +: move every tab to the cloud, or bring them back.
-    func tabBarDidRequestCloud(_ bar: TabBarView)
+    func tabBarDidRequestCloud(_ bar: NSView)
+}
+
+/// The window isn't movable by the system (so dragging a tab can never move it); empty parts of
+/// the tab bar and sidebar move it instead, and a double-click there zooms or minimizes it as set
+/// in System Settings, like a title bar.
+enum WindowDrag {
+    static func mouseDown(_ event: NSEvent, in window: NSWindow?) {
+        guard let window else { return }
+        if event.clickCount == 2 {
+            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+            case "Minimize": window.miniaturize(nil)
+            case "None": break
+            default: window.zoom(nil)
+            }
+            return
+        }
+        window.isMovable = true
+        window.performDrag(with: event)
+        window.isMovable = false
+    }
 }
 
 /// Horizontal strip of two-line tab cards plus a new-tab button. Sits in the title bar.
@@ -117,26 +147,11 @@ final class TabBarView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// The window isn't movable by the system (so dragging a tab can never move it); the empty
-    /// part of the bar moves it here instead, and a double-click there zooms or minimizes it
-    /// as set in System Settings, like a title bar.
+    /// The empty part of the bar moves the window (`WindowDrag`).
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    override func mouseDown(with event: NSEvent) {
-        guard let window else { return }
-        if event.clickCount == 2 {
-            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
-            case "Minimize": window.miniaturize(nil)
-            case "None": break
-            default: window.zoom(nil)
-            }
-            return
-        }
-        window.isMovable = true
-        window.performDrag(with: event)
-        window.isMovable = false
-    }
+    override func mouseDown(with event: NSEvent) { WindowDrag.mouseDown(event, in: window) }
 
     #if DEBUG
     var selectedCardForTest: NSView { cards[selectedIndex ?? 0] }
@@ -341,7 +356,7 @@ final class TabBarView: NSView {
     }
 }
 
-private final class IconButton: NSView {
+final class IconButton: NSView {
     enum Icon { case plus, left, right, cloud }
 
     var onClick: (() -> Void)?

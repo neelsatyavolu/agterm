@@ -174,8 +174,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Write a Command…", #selector(MainWindowController.toggleCommandBar), "k"),
             .separator(),
+            item("Split Right", #selector(MainWindowController.splitRight), "d"),
+            item("Split Down", #selector(MainWindowController.splitDown), "d", [.command, .shift]),
+            .separator(),
             item("Rename Tab…", #selector(MainWindowController.renameTab)),
-            item("Close Tab", #selector(MainWindowController.closeTab), "w"),
+            item("Close Pane", #selector(MainWindowController.closePane), "w"),
+            item("Close Tab", #selector(MainWindowController.closeTab), "w", [.command, .shift]),
         ]))
         main.addItem(submenu("Edit", [
             item("Copy", #selector(NSText.copy(_:)), "c"),
@@ -186,6 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Bigger", #selector(MainWindowController.biggerFont), "="),
             item("Smaller", #selector(MainWindowController.smallerFont), "-"),
             item("Actual Size", #selector(MainWindowController.resetFont), "0"),
+            .separator(),
+            item("Tabs on the Left", #selector(MainWindowController.toggleTabsOnLeft), "s", [.command, .control]),
         ]))
         var windowItems: [NSMenuItem] = [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
@@ -196,6 +202,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Move Tab Right", #selector(MainWindowController.moveTabRight), String(UnicodeScalar(NSRightArrowFunctionKey)!), [.command, .shift]),
             item("Next Tab", #selector(MainWindowController.nextTab), "\t", [.control]),
             item("Previous Tab", #selector(MainWindowController.previousTab), "\t", [.control, .shift]),
+            .separator(),
+            item("Select Next Pane", #selector(MainWindowController.nextPane), "]"),
+            item("Select Previous Pane", #selector(MainWindowController.previousPane), "["),
+            item("Select Pane Left", #selector(MainWindowController.selectPaneLeft), arrow(NSLeftArrowFunctionKey), [.command, .option]),
+            item("Select Pane Right", #selector(MainWindowController.selectPaneRight), arrow(NSRightArrowFunctionKey), [.command, .option]),
+            item("Select Pane Above", #selector(MainWindowController.selectPaneAbove), arrow(NSUpArrowFunctionKey), [.command, .option]),
+            item("Select Pane Below", #selector(MainWindowController.selectPaneBelow), arrow(NSDownArrowFunctionKey), [.command, .option]),
             .separator(),
         ]
         for n in 1...9 {
@@ -241,6 +254,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return item
     }
+
+    private func arrow(_ key: Int) -> String { String(UnicodeScalar(key)!) }
 
     private func item(_ title: String, _ action: Selector, _ key: String = "",
                       _ modifiers: NSEvent.ModifierFlags = [.command]) -> NSMenuItem {

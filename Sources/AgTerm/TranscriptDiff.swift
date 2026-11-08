@@ -1,18 +1,47 @@
 import AgTermCore
 import Foundation
 
+/// What a tab's agent has done so far, read from its transcript.
+struct AgentUsage: Equatable {
+    var added = 0
+    var removed = 0
+    /// The model of the latest turn, as the transcript names it.
+    var model: String?
+    /// Input and output tokens, not counting cache reads and writes.
+    var tokens = 0
+    var costUSD = 0.0
+    /// Some turns couldn't be priced, so `costUSD` is too low.
+    var costIncomplete = false
+
+    init(added: Int = 0, removed: Int = 0) {
+        self.added = added
+        self.removed = removed
+    }
+
+    init(_ events: [UsageEvent]) {
+        for event in events {
+            added += event.tools.linesAdded
+            removed += event.tools.linesRemoved
+            tokens += event.tokensIn + event.tokensOut
+            costUSD += event.costUSD
+            costIncomplete = costIncomplete || event.costIncomplete
+            if ModelName.short(event.model) != nil { model = event.model }
+        }
+    }
+}
+
 /// Lines an agent changed, counted from its own transcript (the edits its tools made), the way
 /// agmux counts them. Unlike a git snapshot this works in any folder, repo or not.
 final class TranscriptDiff {
     private let queue = DispatchQueue(label: "agterm.transcript-diff", qos: .utility)
     private var inFlight = Set<String>()
     /// Parsed totals per transcript, reused while the file is unchanged.
-    private var cache: [String: (modified: Date, added: Int, removed: Int)] = [:]
+    private var cache: [String: (modified: Date, usage: AgentUsage)] = [:]
     private var titleCache: [String: (modified: Date, title: String?)] = [:]
     private let lock = NSLock()
 
     /// Claude Code: the session's transcript under ~/.claude/projects.
-    func claude(sessionID: String, completion: @escaping ((added: Int, removed: Int)?) -> Void) {
+    func claude(sessionID: String, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "claude:" + sessionID, completion: completion) {
             guard let file = Self.claudeTranscript(sessionID) else { return nil }
             return self.total(file) { ClaudeTranscript.parse(lines: $0, sessionID: sessionID, fallbackDir: "") }
@@ -38,7 +67,7 @@ final class TranscriptDiff {
     }
 
     /// Codex: the newest rollout started in agterm, in this folder, since the agent started.
-    func codex(cwd: String, since start: Date, completion: @escaping ((added: Int, removed: Int)?) -> Void) {
+    func codex(cwd: String, since start: Date, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "codex:" + cwd, completion: completion) {
             guard let file = Self.codexRollout(cwd: cwd, since: start) else { return nil }
             return self.total(file) { CodexTranscript.parse(lines: $0, sessionID: file.deletingPathExtension().lastPathComponent) }
@@ -57,19 +86,18 @@ final class TranscriptDiff {
         }
     }
 
-    private func total(_ file: URL, parse: (String) -> [UsageEvent]) -> (added: Int, removed: Int)? {
+    private func total(_ file: URL, parse: (String) -> [UsageEvent]) -> AgentUsage? {
         guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
         lock.lock()
         let hit = cache[file.path]
         lock.unlock()
-        if let hit, hit.modified == modified { return (hit.added, hit.removed) }
+        if let hit, hit.modified == modified { return hit.usage }
         guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
-        let events = parse(text)
-        let added = events.reduce(0) { $0 + $1.tools.linesAdded }, removed = events.reduce(0) { $0 + $1.tools.linesRemoved }
+        let usage = AgentUsage(parse(text))
         lock.lock()
-        cache[file.path] = (modified, added, removed)
+        cache[file.path] = (modified, usage)
         lock.unlock()
-        return (added, removed)
+        return usage
     }
 
     static func claudeTranscript(_ sessionID: String) -> URL? {

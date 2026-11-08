@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.5 — 2026-11-07
+- Added: Split a tab into panes, as in Warp. Shell → Split Right (⌘D) or Split Down (⇧⌘D) opens a new shell beside or below the one you're typing in, in the same folder. Drag the line between panes to resize them, and move between panes with ⌘[ and ⌘] or ⌥⌘ and the arrow keys. Panes you aren't typing in are dimmed. ⌘W closes the pane you're in and ⇧⌘W closes the whole tab. Your panes and their sizes come back the next time you open agterm.
+- Added: View → Tabs on the Left (⌃⌘S) moves your tabs to a sidebar with more room for each one. A Claude Code or Codex tab shows its model (such as Opus 4.5), what it has spent so far in dollars and tokens, and how long it has been running, next to its status, folder and lines changed. A tab split into panes shows how many it has, and its dot shows whichever pane most needs you.
+
 ## 1.1.4 — 2026-11-06
 - Added: When Claude Code stops because it couldn't reach Anthropic (no internet, Wi-Fi changing, the Mac sleeping mid-response), agterm types "Continue where you left off." as soon as the connection is back, unless you've typed in the tab since. Turn it off in Settings → Agents.
 - Added: Click in the command you're typing at a zsh prompt to move the cursor there, instead of using the arrow keys.

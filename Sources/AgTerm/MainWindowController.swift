@@ -2,17 +2,27 @@ import AgTermCore
 import AppKit
 import Combine
 
-/// The single window: tab bar in the title bar, the selected terminal below.
+/// The single window: tabs in the title bar or down the left side, the selected tab's panes beside them.
 final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDelegate {
     let tabBar = TabBarView(frame: .zero)
-    private let container = NSView()
+    let sidebar = TabSidebarView(frame: .zero)
+    let titleStrip = TitleStripView()
+    /// Constraints for tabs along the top, and for tabs on the left (`applyTabPlacement`).
+    var topLayout: [NSLayoutConstraint] = []
+    var sideLayout: [NSLayoutConstraint] = []
+    let container = PaneHostView()
     /// Paints the margins around the terminal; the terminal paints its own area, so a
     /// see-through background isn't layered twice.
     private let backdrop = MarginView()
     /// Fallback blur, used only if the window server's blur radius call is unavailable.
     private let blur = NSVisualEffectView()
+    /// Every pane's shell, tab by tab in order (each tab's panes in layout order).
     private(set) var sessions: [TerminalSession] = []
-    private var selected = 0
+    /// The tabs, each one or more of `sessions`.
+    private(set) var groups: [PaneGroup] = []
+    /// The selected tab, an index into `groups`.
+    private(set) var selected = 0
+    var focusObservation: NSKeyValueObservation?
     private var appearanceSubscription: AnyCancellable?
     private let git = GitPoller()
     private let transcripts = TranscriptDiff()
@@ -30,6 +40,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                               backing: .buffered, defer: false)
         super.init(window: window)
         configure(window)
+        observeFocus()
         applyAppearance()
         restoreTabs()
         startTimers()
@@ -44,14 +55,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         TeamSessions.shared.tabs = { [weak self] in self?.sessions ?? [] }
         RemoteClient.shared.onEnabledChange = { [weak self] in self?.syncPhoneToCloud() }
         RemoteClient.shared.openTab = { [weak self] folder, command in
-            guard let self else { return nil }
-            self.addTab(cwd: folder, restoring: nil, command: command)
-            return self.sessions.last?.tabID
+            self?.addTab(cwd: folder, restoring: nil, command: command).tabID
         }
         Notifier.shared.onOpen = { [weak self] tabID in
-            guard let self, let index = self.sessions.firstIndex(where: { $0.tabID == tabID }) else { return }
+            guard let self, self.session(tabID) != nil else { return }
             self.window?.makeKeyAndOrderFront(nil)
-            self.select(index)
+            self.focus(tabID)
         }
         // `$appearance` fires before the new value is stored, so pass it along rather than re-reading it.
         appearanceSubscription = Preferences.shared.$appearance.dropFirst().sink { [weak self] settings in
@@ -89,11 +98,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         content.layer?.masksToBounds = true
         window.contentView = content
         tabBar.delegate = self
+        sidebar.delegate = self
+        container.onResize = { [weak self] path, ratio in self?.resizePanes(path, ratio) }
         blur.blendingMode = .behindWindow
         blur.material = .underWindowBackground
         blur.state = .active
         backdrop.hole = container
-        for view in [blur, backdrop, container, tabBar] as [NSView] {
+        for view in [blur, backdrop, container, tabBar, sidebar, titleStrip] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
@@ -110,11 +121,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             tabBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             tabBar.heightAnchor.constraint(equalToConstant: TabBarView.height),
-            container.topAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: 8),
-            container.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            sidebar.topAnchor.constraint(equalTo: content.topAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            sidebar.widthAnchor.constraint(equalToConstant: TabSidebarView.width),
+            titleStrip.topAnchor.constraint(equalTo: content.topAnchor),
+            titleStrip.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            titleStrip.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            titleStrip.heightAnchor.constraint(equalToConstant: TitleStripView.height),
             container.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
             container.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -6),
         ])
+        topLayout = [
+            container.topAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: 8),
+            container.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+        ]
+        sideLayout = [
+            container.topAnchor.constraint(equalTo: titleStrip.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 12),
+        ]
+        applyTabPlacement()
     }
 
     private func startTimers() {
@@ -140,6 +166,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let now = Date()
         sessions.forEach { $0.tick(now: now) }
         tabBar.blinkOn.toggle()
+        sidebar.blinkOn = tabBar.blinkOn
     }
 
     /// One git call per distinct folder, fanned out to every tab in it.
@@ -153,14 +180,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         // their own transcripts (works outside git repos); other agents from a git snapshot.
         for session in sessions where session.agentName != nil {
             if session.agentName == "claude", let id = session.claudeSessionID {
-                transcripts.claude(sessionID: id) { [weak session] diff in session?.updateAgentDiff(diff ?? (0, 0)) }
+                transcripts.claude(sessionID: id) { [weak session] usage in session?.updateAgentUsage(usage ?? AgentUsage()) }
                 if session.needsTranscriptTitle {
                     transcripts.claudeTitle(sessionID: id) { [weak session] title in session?.updateTranscriptTitle(title) }
                 }
                 continue
             }
             if session.agentName == "codex", let start = session.agentStartedAt {
-                transcripts.codex(cwd: session.cwd, since: start) { [weak session] diff in session?.updateAgentDiff(diff ?? (0, 0)) }
+                transcripts.codex(cwd: session.cwd, since: start) { [weak session] usage in session?.updateAgentUsage(usage ?? AgentUsage()) }
                 continue
             }
             if let baseline = session.agentBaseline {
@@ -210,11 +237,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 }
             }
         }
-        select(saved?.selected ?? 0)
+        regroup(saved)
+    }
+
+    /// Gathers the restored panes back into their saved tabs and selects the saved pane.
+    private func regroup(_ saved: SavedWorkspace?) {
+        let selectedID = saved.flatMap { $0.tabs.indices.contains($0.selected) ? $0.tabs[$0.selected].tabID : nil }
+        groups = SavedPaneGroup.regroup(sessions.map(\.tabID), saved: saved?.groups ?? []).map {
+            PaneGroup(layout: $0.layout, focused: $0.focused)
+        }
+        syncSessionOrder()
+        if let selectedID, session(selectedID) != nil { return focus(selectedID) }
+        select(min(saved?.selected ?? 0, groups.count - 1))
     }
 
     /// New tabs open in the selected tab's folder, as in Terminal.app.
-    private var currentFolder: String { sessions.indices.contains(selected) ? sessions[selected].cwd : NSHomeDirectory() }
+    private var currentFolder: String { focusedSession?.cwd ?? NSHomeDirectory() }
+
+    var selectedGroup: PaneGroup? { groups.indices.contains(selected) ? groups[selected] : nil }
+
+    /// The pane you're typing in, in the selected tab.
+    var focusedSession: TerminalSession? { selectedGroup.flatMap { session($0.focused) } }
+
+    func session(_ tabID: String) -> TerminalSession? { sessions.first { $0.tabID == tabID } }
+
+    private func groupIndex(of session: TerminalSession) -> Int? {
+        groups.firstIndex { $0.layout.contains(session.tabID) }
+    }
+
+    /// Keeps `sessions` in tab order, so the first pane of tab n is where tab n's shells start.
+    private func syncSessionOrder() {
+        let byID = Dictionary(sessions.map { ($0.tabID, $0) }, uniquingKeysWith: { first, _ in first })
+        sessions = groups.flatMap { $0.layout.panes.compactMap { byID[$0] } }
+    }
 
     @objc func newTab() { addTab(cwd: currentFolder, restoring: nil) }
 
@@ -283,15 +338,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         answer(alert.runModal() == .alertFirstButtonReturn)
     }
 
-    /// Puts `new` where `old` is and ends `old`'s shell.
+    /// Puts `new` in `old`'s pane and ends `old`'s shell.
     func replaceTab(_ old: TerminalSession, with new: TerminalSession) {
-        guard let index = sessions.firstIndex(of: old) else { return }
-        let wasSelected = index == selected
-        let current = selected
-        install(new)
-        sessions.swapAt(index, sessions.count - 1)
-        removeTab(at: sessions.count - 1)
-        select(wasSelected ? index : current)
+        guard let index = groupIndex(of: old) else { return }
+        let group = groups[index]
+        wire(new)
+        sessions.append(new)
+        group.layout = group.layout.replacing(old.tabID, with: new.tabID)
+        if group.focused == old.tabID { group.focused = new.tabID }
+        syncSessionOrder()
+        end(old)
+        select(selected)
     }
 
     /// `attaching` shows a shell the machine already runs.
@@ -313,7 +370,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     func restoreTabForTest(_ saved: SavedTab) { addTab(cwd: saved.cwd, restoring: saved) }
     var selectedTabCardForTest: NSView { tabBar.selectedCardForTest }
-    var selectedTabIDForTest: String { sessions[selected].tabID }
+    var selectedTabIDForTest: String { focusedSession?.tabID ?? "" }
     #endif
 
     /// ⌥⌘T: a new tab running the agent chosen in Settings → Agents.
@@ -336,12 +393,46 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         WhatsNewReveal.play(lines(session.view.getTerminal().cols), in: session.view)
     }
 
-    private func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) {
+    @discardableResult
+    private func addTab(cwd: String, restoring saved: SavedTab?, command: String? = nil) -> TerminalSession {
         let dir = FileManager.default.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
-        install(TerminalSession(cwd: dir, restoring: saved, command: command))
+        let session = TerminalSession(cwd: dir, restoring: saved, command: command)
+        install(session)
+        return session
     }
 
+    /// A new tab showing `session`.
     private func install(_ session: TerminalSession) {
+        wire(session)
+        sessions.append(session)
+        groups.append(PaneGroup(session))
+        select(groups.count - 1)
+        pollGit()
+    }
+
+    /// A new shell in a pane beside (`.columns`) or below (`.rows`) the one you're typing in.
+    func split(_ axis: PaneAxis) {
+        guard let group = selectedGroup, let current = focusedSession else { return }
+        let session = TerminalSession(cwd: FileManager.default.fileExists(atPath: current.cwd) ? current.cwd : NSHomeDirectory(),
+                                      restoring: nil, command: nil)
+        wire(session)
+        sessions.append(session)
+        group.layout = group.layout.splitting(current.tabID, with: session.tabID, axis: axis)
+        group.focused = session.tabID
+        syncSessionOrder()
+        select(selected)
+        pollGit()
+    }
+
+    /// Selects `tabID`'s tab and types in its pane.
+    func focus(_ tabID: String) {
+        guard let index = groups.firstIndex(where: { $0.layout.contains(tabID) }) else { return }
+        groups[index].focused = tabID
+        select(index)
+    }
+
+    /// The callbacks and view every pane's shell gets.
+    private func wire(_ session: TerminalSession) {
         session.onChange = { [weak self] in self?.render() }
         session.onStatusChange = { [weak session] status in
             // No banner for the tab you're already looking at.
@@ -349,31 +440,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             Notifier.shared.post(status: status, tabID: session.tabID, topic: session.topic, folder: session.folder)
         }
         session.onTyped = { [weak self, weak session] in
-            guard let self, let session, self.sessions.indices.contains(self.selected),
-                  self.sessions[self.selected] === session else { return }
+            guard let self, let session, self.focusedSession === session else { return }
             self.cdSuggestions.typed(in: session)
         }
         session.onCleanExit = { [weak self, weak session] in
-            guard let self, let session, let index = self.sessions.firstIndex(of: session) else { return }
-            self.removeTab(at: index)
+            guard let self, let session, self.sessions.contains(session) else { return }
+            self.removePane(session)
         }
+        // The pane host sizes it to its pane.
         let view = session.view
-        view.translatesAutoresizingMaskIntoConstraints = false
+        view.translatesAutoresizingMaskIntoConstraints = true
+        view.isHidden = true
         container.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: container.topAnchor),
-            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
         // GPU rendering is opt-in until it has been checked on screen: AGTERM_METAL=1.
         if ProcessInfo.processInfo.environment["AGTERM_METAL"] == "1" { try? view.setUseMetal(true) }
-        sessions.append(session)
-        select(sessions.count - 1)
-        pollGit()
     }
 
-    @objc func closeTab() { confirmClose(at: selected) }
+    /// ⌘W: the pane you're typing in; the tab goes with its last pane.
+    @objc func closePane() { focusedSession.map { confirmClose([$0]) } }
+
+    /// ⇧⌘W: the selected tab, every pane in it.
+    @objc func closeTab() { closeGroup(at: selected) }
+
+    private func closeGroup(at index: Int) {
+        guard groups.indices.contains(index) else { return }
+        confirmClose(groups[index].layout.panes.compactMap(session(_:)))
+    }
 
     // MARK: Tab menu
 
@@ -385,6 +477,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             ("Rename Tab…", #selector(renameTabFromMenu(_:))),
             nil,
             ("New Tab in This Folder", #selector(newTabInFolderFromMenu(_:))),
+            ("Split Right", #selector(splitRightFromMenu(_:))),
+            ("Split Down", #selector(splitDownFromMenu(_:))),
             ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
             ("Show in Finder", #selector(showInFinderFromMenu(_:))),
             nil,
@@ -408,9 +502,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         return menu
     }
 
-    @objc func renameTab() {
-        if sessions.indices.contains(selected) { rename(sessions[selected]) }
-    }
+    @objc func renameTab() { focusedSession.map(rename) }
 
     @objc private func renameTabFromMenu(_ sender: NSMenuItem) {
         (sender.representedObject as? TerminalSession).map(rename)
@@ -433,9 +525,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     @objc private func closeTabFromMenu(_ sender: NSMenuItem) {
-        guard let session = sender.representedObject as? TerminalSession,
-              let index = sessions.firstIndex(of: session) else { return }
-        confirmClose(at: index)
+        guard let session = sender.representedObject as? TerminalSession, let index = groupIndex(of: session) else { return }
+        closeGroup(at: index)
     }
 
     /// Asks for a name in a sheet; an empty name goes back to the program's own title.
@@ -453,9 +544,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         alert.beginSheetModal(for: window) { [weak self, weak session] response in
             guard let self, let session else { return }
             if response == .alertFirstButtonReturn { session.name = TabName.cleaned(field.stringValue) }
-            if let index = self.sessions.firstIndex(of: session), index == self.selected {
-                window.makeFirstResponder(session.view)
-            }
+            if self.focusedSession === session { window.makeFirstResponder(session.view) }
         }
     }
 
@@ -469,7 +558,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             let tab = session.snapshot()
             return endingSessions ? SavedTab(cwd: tab.cwd, scrollback: tab.scrollback, resume: tab.resume, tabID: tab.tabID, name: tab.name) : tab
         }
-        WorkspaceStore.save(SavedWorkspace(selected: selected, tabs: tabs, savedAt: Date()))
+        let focused = focusedSession.flatMap { sessions.firstIndex(of: $0) } ?? 0
+        WorkspaceStore.save(SavedWorkspace(selected: focused, tabs: tabs, savedAt: Date(),
+                                           groups: groups.map { SavedPaneGroup(layout: $0.layout, focused: $0.focused) }))
     }
 
     /// Saves the tabs one last time (later saves are ignored), then lets go of their shells:
@@ -482,6 +573,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         // Empty the list first so the quit check doesn't ask about these tabs again.
         let closing = sessions
         sessions = []
+        groups = []
         closing.forEach { endingSessions ? $0.terminate() : $0.detach() }
     }
 
@@ -489,69 +581,106 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     /// Moves a tab, keeping the same tab selected.
     func moveTab(from: Int, to: Int) {
-        guard sessions.indices.contains(from), sessions.indices.contains(to), from != to else { return }
+        guard groups.indices.contains(from), groups.indices.contains(to), from != to else { return }
         let next = TabOrder.selection(afterMoving: from, to: to, selected: selected)
-        sessions = TabOrder.moved(sessions, from: from, to: to)
+        groups = TabOrder.moved(groups, from: from, to: to)
+        syncSessionOrder()
         select(next)
     }
 
     @objc func moveTabLeft() { moveTab(from: selected, to: selected - 1) }
     @objc func moveTabRight() { moveTab(from: selected, to: selected + 1) }
 
-    @objc func nextTab() { select((selected + 1) % max(sessions.count, 1)) }
+    @objc func nextTab() { select((selected + 1) % max(groups.count, 1)) }
 
-    @objc func previousTab() { select((selected - 1 + sessions.count) % max(sessions.count, 1)) }
+    @objc func previousTab() { select((selected - 1 + groups.count) % max(groups.count, 1)) }
 
     @objc func selectTabFromMenu(_ sender: NSMenuItem) {
         // ⌘9 always means the last tab, as in Safari and Terminal.
-        let index = sender.tag == 9 ? sessions.count - 1 : sender.tag - 1
-        if sessions.indices.contains(index) { select(index) }
+        let index = sender.tag == 9 ? groups.count - 1 : sender.tag - 1
+        if groups.indices.contains(index) { select(index) }
     }
 
+    /// Shows tab `index` and types in its focused pane.
     func select(_ index: Int) {
-        guard sessions.indices.contains(index) else { return }
+        guard groups.indices.contains(index) else { return }
         selected = index
         cdSuggestions.hide()
-        if commandBar.superview != nil, sessions[index] !== commandBarTarget { hideCommandBar(refocus: false) }
-        let now = Date()
-        for (i, session) in sessions.enumerated() {
-            session.view.isHidden = i != index
-            session.setFocused(i == index && (window?.isKeyWindow ?? true), now: now)
-        }
-        sessions[index].view.needsDisplay = true
-        window?.makeFirstResponder(sessions[index].view)
+        let group = groups[index]
+        if !group.layout.contains(group.focused) { group.focused = group.layout.panes[0] }
+        guard let focused = session(group.focused) else { return }
+        if commandBar.superview != nil, focused !== commandBarTarget { hideCommandBar(refocus: false) }
+        showSelectedPanes()
+        focused.view.needsDisplay = true
+        window?.makeFirstResponder(focused.view)
         render()
     }
 
-    private func confirmClose(at index: Int) {
-        guard sessions.indices.contains(index), window?.attachedSheet == nil else { return }
-        let session = sessions[index]
-        guard session.isRunningProgram else { return removeTab(at: index) }
+    /// Lays out the selected tab's panes and hides every other shell.
+    func showSelectedPanes() {
+        guard let group = selectedGroup else { return }
+        let now = Date()
+        let key = window?.isKeyWindow ?? true
+        var views: [String: NSView] = [:]
+        for session in sessions {
+            let shown = group.layout.contains(session.tabID)
+            session.view.isHidden = !shown
+            session.setFocused(shown && session.tabID == group.focused && key, now: now)
+            if shown { views[session.tabID] = session.view }
+        }
+        container.show(group.layout, views: views, focused: group.focused)
+        container.layoutSubtreeIfNeeded()
+    }
+
+    /// Closes `panes` (one tab's), asking first about any still running a program.
+    private func confirmClose(_ panes: [TerminalSession]) {
+        guard !panes.isEmpty, window?.attachedSheet == nil else { return }
+        let running = panes.filter(\.isRunningProgram)
+        guard !running.isEmpty else { return panes.forEach(removePane) }
         let alert = NSAlert()
-        alert.messageText = "Close this tab?"
-        alert.informativeText = "\(session.foregroundName ?? "A program") is still running in \(session.folder)."
+        alert.messageText = panes.count == 1 ? (groups.first { $0.layout.contains(panes[0].tabID) }?.layout.panes.count == 1
+                                                ? "Close this tab?" : "Close this pane?") : "Close this tab?"
+        alert.informativeText = running.map { "\($0.foregroundName ?? "A program") is still running in \($0.folder)." }
+            .joined(separator: "\n")
         alert.addButton(withTitle: "Close")
         alert.addButton(withTitle: "Cancel")
         guard let window else { return }
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self,
-                  let current = self.sessions.firstIndex(of: session) else { return }
-            self.removeTab(at: current)
+            guard response == .alertFirstButtonReturn, let self else { return }
+            panes.filter { self.sessions.contains($0) }.forEach(self.removePane)
         }
     }
 
-    private func removeTab(at index: Int) {
-        let session = sessions.remove(at: index)
+    /// Ends a pane's shell; its neighbor takes the space, and a tab with no panes left closes.
+    private func removePane(_ session: TerminalSession) {
+        guard let index = groupIndex(of: session) else { return }
+        let group = groups[index]
+        let neighbor = group.layout.neighbor(of: session.tabID, .left, in: container.layoutSpace)
+            ?? group.layout.neighbor(of: session.tabID, .up, in: container.layoutSpace)
+        end(session)
+        if let rest = group.layout.removing(session.tabID) {
+            group.layout = rest
+            if group.focused == session.tabID { group.focused = neighbor.flatMap { rest.contains($0) ? $0 : nil } ?? rest.panes[0] }
+            syncSessionOrder()
+            return select(index == selected ? index : selected)
+        }
+        groups.remove(at: index)
+        syncSessionOrder()
+        guard !groups.isEmpty else {
+            window?.close()
+            return
+        }
+        select(index < selected ? selected - 1 : min(selected, groups.count - 1))
+    }
+
+    /// Ends `session`'s shell and lets go of it.
+    private func end(_ session: TerminalSession) {
+        sessions.removeAll { $0 === session }
         cdSuggestions.hide()
         if session === commandBarTarget { hideCommandBar(refocus: false) }
         session.onChange = nil
         session.terminate()
         session.view.removeFromSuperview()
-        guard !sessions.isEmpty else {
-            window?.close()
-            return
-        }
-        select(min(index, sessions.count - 1))
     }
 
     var runningPrograms: [String] {
@@ -583,12 +712,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     func render() {
         updateCloudButton()
-        tabBar.update(sessions.enumerated().map { i, s in
-            TabModel(topic: s.topic, folder: s.folder, git: s.git, agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
-                     status: s.status, selected: i == selected, inCloud: s.isCloud,
-                     moving: cloudState.moving[ObjectIdentifier(s)]?.label, movingProgress: cloudState.moving[ObjectIdentifier(s)]?.progress)
-        })
-        if sessions.indices.contains(selected) { window?.title = sessions[selected].topic }
+        let models = groups.enumerated().compactMap { i, group in tabModel(group, selected: i == selected) }
+        if tabsOnLeft { sidebar.update(models) } else { tabBar.update(models) }
+        if let focused = focusedSession {
+            window?.title = focused.topic
+            titleStrip.title = focused.topic
+        }
     }
 
     // MARK: Appearance
@@ -607,6 +736,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         blur.isHidden = blurred || radius == 0
         backdrop.color = Theme.bg
         tabBar.refreshAppearance()
+        sidebar.refreshAppearance()
+        titleStrip.needsDisplay = true
+        container.subviews.forEach { $0.needsDisplay = true }
+        container.needsDisplay = true
         commandBar.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
         window.invalidateShadow()
@@ -632,8 +765,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// ⌘K opens the bar over the selected tab; pressing it again closes it.
     @objc func toggleCommandBar() {
         guard commandBar.superview == nil else { return hideCommandBar() }
-        guard sessions.indices.contains(selected) else { return }
-        let session = sessions[selected]
+        guard let session = focusedSession else { return }
         commandBarTarget = session
         // Added last so it sits above the terminals, including tabs opened since.
         container.addSubview(commandBar)
@@ -673,7 +805,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         commandBar.cancelRun()
         commandBar.removeFromSuperview()
         commandBarTarget = nil
-        if refocus, sessions.indices.contains(selected) { window?.makeFirstResponder(sessions[selected].view) }
+        if refocus, let session = focusedSession { window?.makeFirstResponder(session.view) }
     }
 
     // ⌘= / ⌘- / ⌘0 change the saved font size, so Settings stays in sync.
@@ -683,27 +815,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     // MARK: TabBarDelegate
 
-    func tabBar(_ bar: TabBarView, didSelect index: Int) { select(index) }
-    func tabBar(_ bar: TabBarView, didClose index: Int) { confirmClose(at: index) }
-    func tabBarDidRequestNewTab(_ bar: TabBarView) { newTab() }
-    func tabBarAgentMenu(_ bar: TabBarView) -> NSMenu {
+    func tabBar(_ bar: NSView, didSelect index: Int) { select(index) }
+    func tabBar(_ bar: NSView, didClose index: Int) { closeGroup(at: index) }
+    func tabBarDidRequestNewTab(_ bar: NSView) { newTab() }
+    func tabBarAgentMenu(_ bar: NSView) -> NSMenu {
         let menu = NSMenu()
         let agents = AgentIntegration.installedAgents() ?? [.claude, .codex, .grok]
         AppDelegate.agentItems(agents, target: self).forEach(menu.addItem)
         return menu
     }
-    func tabBar(_ bar: TabBarView, didMove from: Int, to: Int) { moveTab(from: from, to: to) }
-    func tabBar(_ bar: TabBarView, menuFor index: Int) -> NSMenu { menu(for: sessions[index]) }
+    func tabBar(_ bar: NSView, didMove from: Int, to: Int) { moveTab(from: from, to: to) }
+    func tabBar(_ bar: NSView, menuFor index: Int) -> NSMenu {
+        let group = groups[index]
+        return menu(for: session(group.focused) ?? sessions[0])
+    }
 
     // MARK: NSWindowDelegate
 
-    func windowDidBecomeKey(_ notification: Notification) {
-        if sessions.indices.contains(selected) { sessions[selected].setFocused(true, now: Date()) }
-    }
+    func windowDidBecomeKey(_ notification: Notification) { focusedSession?.setFocused(true, now: Date()) }
 
-    func windowDidResignKey(_ notification: Notification) {
-        if sessions.indices.contains(selected) { sessions[selected].setFocused(false, now: Date()) }
-    }
+    func windowDidResignKey(_ notification: Notification) { focusedSession?.setFocused(false, now: Date()) }
 
     /// Full screen moves the toolbar into a bar of its own that covers the tab bar; it's only
     /// there to size the title bar, so hide it until the window leaves full screen.

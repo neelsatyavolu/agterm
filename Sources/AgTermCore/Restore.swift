@@ -8,13 +8,19 @@ public struct SavedWorkspace: Codable, Equatable, Sendable {
 
     public var version = SavedWorkspace.currentVersion
     public var savedAt: Date
+    /// The focused pane of the selected tab, as an index into `tabs`.
     public var selected: Int
+    /// Every pane, as its own entry, in tab order. Versions before split panes read each as a tab.
     public var tabs: [SavedTab]
+    /// How the panes in `tabs` are gathered into tabs (by tab ID); nil from versions before
+    /// split panes, where each entry is a tab of its own.
+    public var groups: [SavedPaneGroup]?
 
-    public init(selected: Int, tabs: [SavedTab], savedAt: Date = Date(timeIntervalSince1970: 0)) {
+    public init(selected: Int, tabs: [SavedTab], savedAt: Date = Date(timeIntervalSince1970: 0), groups: [SavedPaneGroup]? = nil) {
         self.selected = selected
         self.tabs = tabs
         self.savedAt = savedAt
+        self.groups = groups
     }
 
     public struct UnsupportedVersion: Error {}

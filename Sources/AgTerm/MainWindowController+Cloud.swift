@@ -31,16 +31,16 @@ final class CloudState {
 extension MainWindowController {
     /// The cloud button beside +: up while any tab is here, down once they're all in the cloud.
     func updateCloudButton() {
-        guard CloudAccount.isEnabled else { return tabBar.cloud = .hidden }
-        if cloudState.busy { return tabBar.cloud = .busy }
+        guard CloudAccount.isEnabled else { return setCloudButton(.hidden) }
+        if cloudState.busy { return setCloudButton(.busy) }
         let here = sessions.contains { !$0.isCloud && !$0.signals.exited }
         let there = sessions.contains { $0.isCloud && !$0.signals.exited }
-        tabBar.cloud = there && !here ? .bringBack : .moveUp
+        setCloudButton(there && !here ? .bringBack : .moveUp)
     }
 
-    func tabBarDidRequestCloud(_ bar: TabBarView) {
+    func tabBarDidRequestCloud(_ bar: NSView) {
         guard let cloud = CloudHost.configured else { return SettingsWindowController.shared.show(pane: "Cloud") }
-        if bar.cloud == .bringBack {
+        if tabBar.cloud == .bringBack {
             return bringBack(sessions.filter(\.isCloud), cloud: cloud, grace: 20)
         }
         let items = CloudMove.preflight(sessions)
