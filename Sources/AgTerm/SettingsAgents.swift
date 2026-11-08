@@ -59,6 +59,8 @@ struct AgentsPane: View {
                          + "once it's back. It won't if you've typed in the tab since.")
             }
 
+            KeepAwakeSection()
+
             Section {
                 Toggle("agmux project memory", isOn: $memory)
                 Toggle("consult", isOn: $consult)

@@ -3,6 +3,7 @@
 ## 1.1.8 — 2026-11-08
 - Added: Install agterm with Homebrew: `brew install --cask neel-xanom/agmux/agterm`.
 - Added: View → Command Palette (⇧⌘P). Type a few letters of any menu command or open tab, then press Return to run it or switch to that tab. Each command shows its menu and shortcut.
+- Added: Keep Mac Awake While Agents Run, in the agterm menu and Settings → Agents. While an agent tab is working, your Mac doesn't sleep on its own; it sleeps normally again once no agent is working. Turn on "Also when the lid is closed" to keep it awake with the lid shut too. That asks for an administrator's password once, to install a small helper, and agterm shows a notification when it's keeping the Mac awake on battery.
 
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.

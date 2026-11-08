@@ -176,6 +176,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private func tickStatus() {
         let now = Date()
         sessions.forEach { $0.tick(now: now) }
+        KeepAwake.shared.update(agentsBusy: sessions.contains { !$0.isCloud && $0.agentName != nil && $0.status == .working })
         tabBar.blinkOn.toggle()
         sidebar.blinkOn = tabBar.blinkOn
     }

@@ -17,6 +17,12 @@ cask "agterm" do
 
   app "agterm.app"
 
+  # The closed-lid keep-awake helper and its sudoers rule, if you turned that on.
+  uninstall delete: [
+    "/etc/sudoers.d/agterm-closed-lid",
+    "/Library/PrivilegedHelperTools/co.xanom.agterm.closed-lid",
+  ]
+
   zap trash: [
     "~/Library/Application Support/co.xanom.agterm",
     "~/Library/Caches/co.xanom.agterm",
