@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Added: Shell → Search Conversations… (⇧⌘F) finds past Claude Code, Codex and Grok conversations by what you or the agent wrote in them, across every login agterm manages. Each result shows the agent, the conversation's title, its folder, when it last ran and the text around the match. Pick one with the arrow keys and press Return to reopen it in a new tab in its folder.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.
