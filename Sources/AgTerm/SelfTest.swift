@@ -64,6 +64,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_RETURN_CHECK"] == "1" { return returnCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_TABCLOUD_CHECK"] == "1" { return tabCloudCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_BETA_CHECK"] == "1" { return betaCheck(outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_TEAMS_CHECK"] == "1" { return MainActor.assumeIsolated { teamsCheck(outDir: outDir) } }
         if ProcessInfo.processInfo.environment["AGTERM_ACCOUNTS_CHECK"] == "1" { return accountsCheck(outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_COORD_CHECK"] == "1" { return coordCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }

@@ -2,6 +2,8 @@
 
 ## 1.1.8 — 2026-11-08
 - Added: agterm sends anonymous usage counts so we can see how many people use it and which features matter: a random ID made on your Mac, agterm's and macOS's versions, the processor type, which agents start in your tabs, and how often you split a tab, open the command bar, open a cloud tab, pair a phone or install an update. Never files, folders, commands, what you type, repository names or account details. Turn it off in Settings → General → Privacy.
+- Added: Window → Team Dashboard shows your agmux Teams team without agmux: tokens, estimated cost, active time and sessions over 7 to 90 days, daily usage, the monthly budget, providers and models, every member's usage and spend, and projects. Click a member to see their numbers and which Claude or Codex login did the work. Employees see their own numbers. It loads when you open it or press Refresh, and shows the last numbers it got while you're offline. Settings → Teams & Phone has a Team Dashboard… button too.
+- Added: Team owners, and managers for the logins they added, can rename, pause and remove the team's shared Codex and Grok logins in the Team Dashboard.
 
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
