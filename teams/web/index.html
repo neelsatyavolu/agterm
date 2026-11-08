@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-accent="gold" data-density="comfortable">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>agmux Teams</title>
+    <meta
+      name="description"
+      content="Team analytics for AI coding agents. Aggregates only — never prompts, diffs, or code."
+    />
+    <meta name="theme-color" content="#edf0f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#14171d" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/teams.css" />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div id="chrome" hidden></div>
+    <main id="app" aria-live="polite">
+      <section class="page">
+        <div class="pnl"><div class="pnl-b"><div class="sk" style="width:220px"></div></div></div>
+      </section>
+    </main>
+
+    <!-- Icon set, pinned. Vendoring this into /web is the obvious follow-up if
+         we ever want the dashboard to work fully offline. -->
+    <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
