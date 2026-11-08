@@ -19,6 +19,14 @@ It is a real terminal (the [SwiftTerm](https://github.com/migueldeicaza/SwiftTer
 
 Download the latest `agterm.zip` from [Releases](https://github.com/neelsatyavolu/agterm/releases/latest) or [agterm.xanom.co](https://agterm.xanom.co), unzip it and move `agterm.app` to Applications. It is signed and notarized, and updates itself through [Sparkle](https://sparkle-project.org) (Settings → General).
 
+Or with Homebrew:
+
+```sh
+brew install --cask neel-xanom/agmux/agterm
+```
+
+agterm keeps updating itself after a Homebrew install, so `brew upgrade` skips it unless you pass `--greedy`. `brew uninstall --zap --cask agterm` also removes its settings and saved tabs.
+
 macOS 14 or later.
 
 On first launch agterm asks for Full Disk Access. Programs you run in a terminal get the terminal's permissions, so without it macOS blocks agents from Desktop, Documents, Mail and other apps' data, or keeps asking.

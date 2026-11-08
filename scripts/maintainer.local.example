@@ -8,3 +8,6 @@ export AGMUX_APPLE_NOTARY_VAULT=""
 export AGTERM_SIGNING_IDENTITY=""
 # 1Password reference to the Sparkle EdDSA private key, e.g. "op://Vault/Item/password"
 export AGTERM_SPARKLE_KEY_REF=""
+# Optional: a local checkout of the Homebrew tap, e.g. ~/Documents/GitHub/homebrew-agmux. A stable
+# release commits Casks/agterm.rb there (push it yourself); without it, release.sh prints the cask.
+export AGTERM_HOMEBREW_TAP=""
