@@ -14,9 +14,10 @@ struct AgentsPane: View {
 
     /// Checked once when Settings opens.
     private static let mcpStatus: String = {
-        let base = "claude and codex started in agterm get these MCP servers, the same ones agmux gives its agents. "
-            + "With agmux installed they're agmux's own, and memory is shared with agmux for the folders it knows. "
-            + "Without agmux, agterm's copies give every git repo its own memory. "
+        let base = "Claude Code, Codex, OpenCode, Kilo Code, Cursor Agent and Amp started in agterm get these MCP servers, "
+            + "the same ones agmux gives its agents. agterm runs its own copies, so agmux doesn't have to be installed. "
+            + "Folders agmux knows keep using agmux's memory, so nothing is lost if you uninstall it; "
+            + "every other git repo gets its own. "
             + "Servers you already configured aren't added twice. Start an agent with AGTERM_MCP=0 to skip them once."
         guard AgentIntegration.mcpBundles() != nil else {
             return "agterm's copies of the servers are missing (a development build?). " + base
@@ -59,9 +60,13 @@ struct AgentsPane: View {
                          + "once it's back. It won't if you've typed in the tab since.")
             }
 
+            KeepAwakeSection()
+
             Section {
                 Toggle("agmux project memory", isOn: $memory)
+                    .onChange(of: memory) { _, _ in AgentIntegration.installShellIntegration() }
                 Toggle("consult", isOn: $consult)
+                    .onChange(of: consult) { _, _ in AgentIntegration.installShellIntegration() }
             } header: {
                 Text("MCP servers")
             } footer: {

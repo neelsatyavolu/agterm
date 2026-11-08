@@ -4,10 +4,13 @@ import AppKit
 /// The strip above the terminal when the tabs are on the left: the tab's title after its agent's
 /// logo, and room to drag the window by. On an agent tab agterm can read, a Chat | Term control
 /// on the right; in Chat, the title becomes the agent, model, folder and branch, with tokens,
-/// cost and lines changed beside the control.
+/// cost and lines changed beside the control. The Session Timeline button sits at the right end.
 final class TitleStripView: NSView {
     static let height: CGFloat = 40
     private static let logoSize: CGFloat = 16
+    private static let timelineWidth: CGFloat = 44
+    /// Where content to the left of the timeline button ends.
+    private var trailingX: CGFloat { bounds.width - Self.timelineWidth - 4 }
 
     /// What Chat mode shows instead of the title.
     struct ChatInfo: Equatable {
@@ -28,6 +31,21 @@ final class TitleStripView: NSView {
     /// Chat (true) or Term (false) was clicked.
     var onChatMode: (Bool) -> Void = { _ in }
     private var segments: (chat: NSRect, term: NSRect)?
+    /// Opens the Session Timeline; at the right end of the strip.
+    let timelineButton = IconButton(.timeline)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        timelineButton.toolTip = "Session timeline (⇧⌘L)"
+        addSubview(timelineButton)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func layout() {
+        super.layout()
+        timelineButton.frame = NSRect(x: trailingX, y: 0, width: Self.timelineWidth, height: bounds.height)
+    }
 
     override var mouseDownCanMoveWindow: Bool { false }
     override var isFlipped: Bool { true }
@@ -42,7 +60,7 @@ final class TitleStripView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        var maxX = bounds.width - 12
+        var maxX = trailingX - 8
         segments = nil
         if let chatMode {
             maxX = drawControl(chat: chatMode) - 16
@@ -93,7 +111,7 @@ final class TitleStripView: NSView {
         let widths = labels.map { ceil($0.size().width) + 16 }
         let height: CGFloat = 22
         let total = widths.reduce(0, +)
-        let frame = NSRect(x: bounds.width - 12 - total, y: (bounds.height - height) / 2, width: total, height: height)
+        let frame = NSRect(x: trailingX - 8 - total, y: (bounds.height - height) / 2, width: total, height: height)
         let chatRect = NSRect(x: frame.minX, y: frame.minY, width: widths[0], height: height)
         let termRect = NSRect(x: chatRect.maxX, y: frame.minY, width: widths[1], height: height)
         Theme.surfaceHover.setFill()

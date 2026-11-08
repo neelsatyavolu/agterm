@@ -36,7 +36,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private static let idleGitInterval: TimeInterval = 30
     private static let backgroundGitInterval: TimeInterval = 15
     private let commandBar = CommandBar()
+    /// ⇧⌘P (`MainWindowController+Palette`).
+    let commandPalette = CommandPalette()
     private let cdSuggestions = CdSuggestions()
+    /// The Session Timeline panel (MainWindowController+Timeline).
+    let sessionTimeline = SessionTimelineController()
     /// The tab the open command bar answers for; its command only ever goes there.
     private weak var commandBarTarget: TerminalSession?
     private var timers: [Timer] = []
@@ -108,6 +112,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         window.contentView = content
         tabBar.delegate = self
         sidebar.delegate = self
+        setUpSessionTimeline()
         container.onResize = { [weak self] path, ratio in self?.resizePanes(path, ratio) }
         panePicker.isHidden = true
         panePicker.onChoose = { [weak self] choice in self?.fillPicker(with: choice.tabID) }
@@ -178,6 +183,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private func tickStatus() {
         let now = Date()
         sessions.forEach { $0.tick(now: now) }
+        KeepAwake.shared.update(agentsBusy: sessions.contains { !$0.isCloud && $0.agentName != nil && $0.status == .working })
         tabBar.blinkOn.toggle()
         sidebar.blinkOn = tabBar.blinkOn
     }
@@ -384,6 +390,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     func openCloudTab(_ cloud: CloudHost, attaching id: String? = nil) {
         do {
             install(try TerminalSession(cloud: cloud, cwd: currentFolder, attaching: id))
+            if id == nil { Analytics.record(.featureUsed(.cloudTab)) }
         } catch {
             let alert = NSAlert()
             alert.messageText = "Couldn't open a cloud tab"
@@ -408,6 +415,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     @objc func newAgentTabFromMenu(_ sender: NSMenuItem) {
         guard let agent = (sender.representedObject as? String).flatMap(AgentKind.named) else { return }
         newAgentTab(agent)
+    }
+
+    /// ⇧⌘F: find a past conversation and resume it in a new tab in its folder.
+    @objc func searchConversations() {
+        let search = ConversationSearchWindow.shared
+        search.openTab = { [weak self] folder, command in
+            self?.window?.makeKeyAndOrderFront(nil)
+            self?.addTab(cwd: folder, restoring: nil, command: command)
+        }
+        search.show(over: window)
     }
 
     /// Types the agent at the new shell's first prompt, so the shell is still there when it exits
@@ -449,6 +466,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         group.picker = slot
         group.focused = slot
         select(selected)
+        Analytics.record(.featureUsed(.split))
     }
 
     /// Puts `session` in the selected split's empty pane, or beside the pane you're typing in.
@@ -899,6 +917,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         container.subviews.forEach { $0.needsDisplay = true }
         container.needsDisplay = true
         commandBar.refreshAppearance()
+        commandPalette.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
         applyChatAppearance()
         window.invalidateShadow()
@@ -925,6 +944,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     @objc func toggleCommandBar() {
         guard commandBar.superview == nil else { return hideCommandBar() }
         guard let session = focusedSession else { return }
+        Analytics.record(.featureUsed(.commandBar))
         commandBarTarget = session
         // Added last so it sits above the terminals, including tabs opened since.
         container.addSubview(commandBar)

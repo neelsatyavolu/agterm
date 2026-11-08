@@ -65,8 +65,13 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_RETURN_CHECK"] == "1" { return returnCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_TABCLOUD_CHECK"] == "1" { return tabCloudCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_BETA_CHECK"] == "1" { return betaCheck(outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_TEAMS_CHECK"] == "1" { return MainActor.assumeIsolated { teamsCheck(outDir: outDir) } }
         if ProcessInfo.processInfo.environment["AGTERM_ACCOUNTS_CHECK"] == "1" { return accountsCheck(outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_COORD_CHECK"] == "1" { return coordCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_SESSIONTIMELINE_CHECK"] == "1" { return sessionTimelineCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_PALETTE_CHECK"] == "1" { return paletteCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_AWAKE_CHECK"] == "1" { return awakeCheck(outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_SEARCH_CHECK"] == "1" { return searchCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))
         window.contentView?.superview?.wantsLayer = true
@@ -793,7 +798,7 @@ enum SelfTest {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
-    private static func snapshotSettings(_ path: String) {
+    static func snapshotSettings(_ path: String) {
         guard let view = SettingsWindowController.shared.window?.contentView else { return }
         view.layoutSubtreeIfNeeded()
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }

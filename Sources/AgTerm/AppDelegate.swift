@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         TeamAccounts.shared.start()
         UsageMonitor.shared.start()
         RemoteClient.shared.startIfEnabled()
+        Analytics.start()
+        KeepAwake.shared.start()
     }
 
     /// Every other installed agent, listed when the menu opens (the PATH is found after launch).
@@ -52,8 +54,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+    private func keepAwakeItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Keep Mac Awake While Agents Run", action: #selector(KeepAwake.toggleEnabled(_:)), keyEquivalent: "")
+        item.target = KeepAwake.shared
+        return item
+    }
+
     @objc func showSettings() {
         SettingsWindowController.shared.show()
+    }
+
+    @objc func showTeamDashboard() {
+        MainActor.assumeIsolated { TeamsWindowController.shared.show() }
     }
 
     @objc func showWhatsNew() {
@@ -88,7 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Read the tabs before the quit lets go of them.
         let keptTabs = endSessionsOnQuit || !Updater.shared.isRelaunchingForUpdate ? nil : controller?.keptTabIDs
         controller?.quit(endingSessions: endSessionsOnQuit)
+        KeepAwake.shared.stop()
         TeamAccounts.shared.giveBackAll(keepingAgentsIn: keptTabs)
+        Analytics.flushAtQuit()
     }
 
     @objc func quitAndEndSessions() {
@@ -156,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings), ","),
             updatesItem(),
+            keepAwakeItem(),
             .separator(),
             item("Hide agterm", #selector(NSApplication.hide(_:)), "h"),
             item("Quit agterm", #selector(NSApplication.terminate(_:)), "q"),
@@ -173,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             moreAgentsItem(),
             .separator(),
             item("Write a Command…", #selector(MainWindowController.toggleCommandBar), "k"),
+            item("Search Conversations…", #selector(MainWindowController.searchConversations), "f", [.command, .shift]),
             .separator(),
             item("Split Right", #selector(MainWindowController.splitRight), "d"),
             item("Split Down", #selector(MainWindowController.splitDown), "d", [.command, .shift]),
@@ -187,16 +203,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
         ]))
         main.addItem(submenu("View", [
+            item("Command Palette…", #selector(MainWindowController.toggleCommandPalette), "p", [.command, .shift]),
+            .separator(),
             item("Bigger", #selector(MainWindowController.biggerFont), "="),
             item("Smaller", #selector(MainWindowController.smallerFont), "-"),
             item("Actual Size", #selector(MainWindowController.resetFont), "0"),
             .separator(),
+            item("Session Timeline", #selector(MainWindowController.toggleSessionTimeline), "l", [.command, .shift]),
             item("Tabs on the Left", #selector(MainWindowController.toggleTabsOnLeft), "s", [.command, .control]),
             .separator(),
             item("Chat", #selector(MainWindowController.toggleChat), "`", [.control]),
         ]))
         var windowItems: [NSMenuItem] = [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            .separator(),
+            item("Team Dashboard", #selector(AppDelegate.showTeamDashboard)),
             .separator(),
             item("Show Next Tab", #selector(MainWindowController.nextTab), "]", [.command, .shift]),
             item("Show Previous Tab", #selector(MainWindowController.previousTab), "[", [.command, .shift]),

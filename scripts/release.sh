@@ -5,7 +5,12 @@
 #
 # Steps: Developer ID sign → notarize + staple → zip → EdDSA-sign for Sparkle → appcast.xml
 # → GitHub release v<version> with agterm-<version>.zip, agterm.zip (stable name for the
-# website) and appcast.xml (the feed every installed copy polls).
+# website) and appcast.xml (the feed every installed copy polls) → Homebrew cask.
+#
+# The cask (packaging/homebrew/agterm.rb, rendered by scripts/render-cask.sh) points at
+# agterm-<version>.zip. With AGTERM_HOMEBREW_TAP set to a local checkout of the tap (in
+# scripts/maintainer.local), a stable release commits Casks/agterm.rb there; push it yourself.
+# Without it, the cask is printed. Betas leave the cask alone.
 #
 # A beta VERSION (1.1.0-beta.1) becomes a GitHub prerelease with only its zip: the stable feed
 # (releases/latest/download/appcast.xml) skips prereleases, so stable users don't see it.
@@ -127,9 +132,16 @@ awk -v items="$FEEDS/items.xml" '
     { print }
 ' "$OUT/appcast.xml" > "$OUT/$BETA_TAG/appcast.xml"
 if [ "$IS_BETA" = 1 ]; then cp "$ARCHIVE" "$OUT/$BETA_TAG/agterm.zip"; fi
-echo "Beta feed lists: $(grep -o '<sparkle:shortVersionString>[^<]*' "$OUT/$BETA_TAG/appcast.xml" | sed 's/.*>//' | paste -sd ' ' -)"
+if [ "$IS_BETA" = 0 ]; then
+    scripts/render-cask.sh "$VERSION" "$ARCHIVE" > "$OUT/agterm.rb"
+fi
+echo "Beta feed lists:$(grep -o '<sparkle:shortVersionString>[^<]*' "$OUT/$BETA_TAG/appcast.xml" | sed 's/.*>//' | paste -sd ' ' -)"
 
 if [ "$DRY_RUN" = 1 ]; then
+    if [ "$IS_BETA" = 0 ]; then
+        echo "Homebrew cask a release would commit${AGTERM_HOMEBREW_TAP:+ to $AGTERM_HOMEBREW_TAP} ($OUT/agterm.rb):"
+        cat "$OUT/agterm.rb"
+    fi
     echo "Dry run: wrote $OUT/appcast.xml and $OUT/$BETA_TAG/appcast.xml; published nothing."
     exit 0
 fi
@@ -151,4 +163,19 @@ fi
 BETA_ASSETS=("$OUT/$BETA_TAG/appcast.xml")
 if [ "$IS_BETA" = 1 ]; then BETA_ASSETS+=("$OUT/$BETA_TAG/agterm.zip"); fi
 gh release upload "$BETA_TAG" --repo "$REPO" --clobber "${BETA_ASSETS[@]}"
+# The cask goes out only once the zip it points at is published.
+if [ "$IS_BETA" = 0 ]; then
+    TAP="${AGTERM_HOMEBREW_TAP:-}"
+    if [ -n "$TAP" ] && [ -e "$TAP/.git" ]; then
+        mkdir -p "$TAP/Casks"
+        cp "$OUT/agterm.rb" "$TAP/Casks/agterm.rb"
+        git -C "$TAP" add Casks/agterm.rb
+        git -C "$TAP" commit -m "agterm $VERSION"
+        echo "Committed the Homebrew cask in $TAP; push it with: git -C \"$TAP\" push"
+    else
+        [ -z "$TAP" ] || echo "warning: AGTERM_HOMEBREW_TAP=$TAP isn't a git checkout" >&2
+        echo "Homebrew cask (set AGTERM_HOMEBREW_TAP in scripts/maintainer.local to commit it to your tap):"
+        cat "$OUT/agterm.rb"
+    fi
+fi
 echo "Released https://github.com/$REPO/releases/tag/$TAG"

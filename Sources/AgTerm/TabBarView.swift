@@ -77,6 +77,7 @@ final class TabBarView: NSView {
     private static let leadingInset: CGFloat = 80
     private static let plusWidth: CGFloat = 44
     private static let cloudWidth: CGFloat = 40
+    private static let timelineWidth: CGFloat = 44
     private static let minTabWidth: CGFloat = 168
     private static let maxTabWidth: CGFloat = 300
 
@@ -85,6 +86,8 @@ final class TabBarView: NSView {
     private let strip = NSView()
     private let plusButton = IconButton(.plus)
     private let cloudButton = IconButton(.cloud)
+    /// Opens the Session Timeline; at the far right of the bar.
+    let timelineButton = IconButton(.timeline)
     private let leftButton = IconButton(.left)
     private let rightButton = IconButton(.right)
     private var scrollX: CGFloat = 0
@@ -141,6 +144,8 @@ final class TabBarView: NSView {
         }
         cloudButton.isHidden = true
         addSubview(cloudButton)
+        timelineButton.toolTip = "Session timeline (⇧⌘L)"
+        addSubview(timelineButton)
         leftButton.onClick = { [weak self] in self?.scroll(by: -1) }
         rightButton.onClick = { [weak self] in self?.scroll(by: 1) }
         addSubview(leftButton)
@@ -288,7 +293,7 @@ final class TabBarView: NSView {
 
     /// Room for tabs when they all fit.
     private var fullStripWidth: CGFloat {
-        max(0, bounds.width - Self.leadingInset - Self.plusWidth - (cloud == .hidden ? 0 : Self.cloudWidth))
+        max(0, bounds.width - Self.leadingInset - Self.plusWidth - (cloud == .hidden ? 0 : Self.cloudWidth) - Self.timelineWidth)
     }
     private var overflows: Bool { CGFloat(cards.count) * Self.minTabWidth > fullStripWidth }
     /// When tabs overflow, the strip gives up room at each end for the scroll arrows.
@@ -306,6 +311,7 @@ final class TabBarView: NSView {
         let contentEnd = overflows ? strip.frame.maxX + Self.arrowWidth : stripX + CGFloat(cards.count) * width
         plusButton.frame = NSRect(x: contentEnd, y: 0, width: Self.plusWidth, height: bounds.height)
         cloudButton.frame = NSRect(x: plusButton.frame.maxX - 6, y: 0, width: Self.cloudWidth, height: bounds.height)
+        timelineButton.frame = NSRect(x: bounds.width - Self.timelineWidth - 4, y: 0, width: Self.timelineWidth, height: bounds.height)
 
         // Arrows beside the strip, hidden when there's nothing more on that side.
         leftButton.isHidden = !overflows || scrollX <= 0
@@ -359,7 +365,7 @@ final class TabBarView: NSView {
 }
 
 final class IconButton: NSView {
-    enum Icon { case plus, left, right, cloud }
+    enum Icon { case plus, left, right, cloud, timeline }
 
     var onClick: (() -> Void)?
     var onRightClick: ((NSEvent) -> Void)?
@@ -420,6 +426,20 @@ final class IconButton: NSView {
             let tinted = NSImage(size: symbol.size, flipped: false) { rect in
                 symbol.draw(in: rect)
                 (self.cloud == .busy ? Theme.fg3 : ink).set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: NSRect(x: c.x - symbol.size.width / 2, y: c.y - symbol.size.height / 2, width: symbol.size.width, height: symbol.size.height))
+        case .timeline:
+            if hovering {
+                Theme.surfaceHover.setFill()
+                NSBezierPath(roundedRect: NSRect(x: c.x - 13, y: c.y - 13, width: 26, height: 26), xRadius: 7, yRadius: 7).fill()
+            }
+            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            guard let symbol = NSImage(systemSymbolName: "list.bullet.indent", accessibilityDescription: toolTip)?.withSymbolConfiguration(config) else { return }
+            let tinted = NSImage(size: symbol.size, flipped: false) { rect in
+                symbol.draw(in: rect)
+                ink.set()
                 rect.fill(using: .sourceAtop)
                 return true
             }

@@ -61,7 +61,7 @@ final class TeamAccounts: ObservableObject {
     private var generation = 0
     private var answering: Set<String> = []
 
-    private var token: String? {
+    var token: String? {
         #if DEBUG
         if let token = ProcessInfo.processInfo.environment["AGTERM_TEAMS_TOKEN"] { return token }
         #endif
@@ -616,7 +616,7 @@ final class TeamAccounts: ObservableObject {
     }
 
     /// One request to the Teams service. Throws only for network trouble; statuses are the caller's.
-    private static func send(_ token: String, _ method: String, _ path: [String], body: [String: Any]? = nil) async throws -> (Int, Data) {
+    static func send(_ token: String, _ method: String, _ path: [String], body: [String: Any]? = nil) async throws -> (Int, Data) {
         var url = TeamsAccount.baseURL
         for segment in path { url.appendPathComponent(segment) }
         var request = URLRequest(url: url, timeoutInterval: 15)

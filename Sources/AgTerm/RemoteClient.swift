@@ -218,6 +218,8 @@ final class RemoteClient: ObservableObject {
                                   agmuxURL: "\(Self.phoneURL)#pair=\(code)&desktopId=\(credentials.desktopId)", expires: expires)
             }
         case "pair.ok", "phone.paired":
+            // Both can arrive for one pairing; only the first finds the code still showing.
+            if pairing != nil { Analytics.record(.featureUsed(.phonePaired)) }
             pairing = nil
             send(["type": "devices.list"])
         case "threads.list":

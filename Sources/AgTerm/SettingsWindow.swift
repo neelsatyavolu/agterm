@@ -106,6 +106,7 @@ private struct GeneralPane: View {
     @AppStorage(Notifier.attentionKey) private var notifyAttention = true
     @AppStorage(Notifier.completeKey) private var notifyComplete = true
     @AppStorage(Notifier.soundKey) private var notifySound = true
+    @AppStorage(Analytics.enabledKey) private var shareUsage = true
 
     private static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     private static let oldHelperNote = "Your tabs are running in a session helper from another version of agterm. "
@@ -145,6 +146,14 @@ private struct GeneralPane: View {
             } footer: {
                 Footnote("Agents and tools you run in agterm get the same access as agterm itself. "
                          + "Without Full Disk Access, macOS blocks them from Desktop, Documents, Mail and other apps' data.")
+            }
+
+            Section {
+                Toggle("Share anonymous usage data", isOn: $shareUsage)
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Footnote(Analytics.disclosure)
             }
         }
     }

@@ -37,6 +37,8 @@ public enum TeamPool {
         /// Who holds it now, when leased: you (`mine`) or a teammate's name.
         public let inUseMine: Bool
         public let inUseBy: String?
+        /// The team's owner, or the manager who added it, can rename, pause and remove it.
+        public var canManage = false
 
         public func leased(_ now: Date) -> Bool { leasedUntil.map { $0 > now } ?? false }
 
@@ -204,7 +206,8 @@ public enum TeamPool {
                        plan: text(row["plan"], max: 40), remainingPercent: percent(row["remainingPercent"]),
                        lastRemainingPercent: percent(row["lastRemainingPercent"]), blockedUntil: date(row["blockedUntil"]),
                        checkedAt: date(row["healthReportedAt"]), leasedUntil: date(row["leasedUntil"]),
-                       inUseMine: inUse?["self"] as? Bool == true, inUseBy: text(inUse?["by"], max: 120))
+                       inUseMine: inUse?["self"] as? Bool == true, inUseBy: text(inUse?["by"], max: 120),
+                       canManage: row["canManage"] as? Bool == true)
     }
 
     /// `POST …/allocate` or `…/:id/check`. Nil only when the service says no account is free.
