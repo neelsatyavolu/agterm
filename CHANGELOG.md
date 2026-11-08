@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Changed: agmux Teams is now agterm Teams, at teams.agterm.dev. You stay signed in, your team, usage history and shared logins are unchanged, and agmux keeps working with the same team. Links to teams.agmux.dev open the new address.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.
