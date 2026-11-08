@@ -36,7 +36,7 @@ extension TeamAccounts {
                         completion: @escaping (TeamPool.Failure?) -> Void,
                         parse: @escaping @Sendable (Int, Data) throws -> Void) {
         guard let token else {
-            return completion(TeamPool.Failure(message: "agterm is signed out of agmux Teams.", retryable: false))
+            return completion(TeamPool.Failure(message: "agterm is signed out of agterm Teams.", retryable: false))
         }
         let path = ["api", "teams", account.teamID, "provider-accounts", account.id]
         let payload = body.flatMap { try? JSONSerialization.data(withJSONObject: $0) }

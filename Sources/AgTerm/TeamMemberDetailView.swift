@@ -68,7 +68,7 @@ private struct LoginUsage: View {
                 }
             }
         } else {
-            TeamsNote("This agmux Teams server doesn't report usage by login yet.")
+            TeamsNote("This agterm Teams server doesn't report usage by login yet.")
         }
     }
 }

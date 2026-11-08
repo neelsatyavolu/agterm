@@ -26,7 +26,7 @@ public enum GrokAuth {
                      expiresAt: (best.entry["expires_at"] as? String).flatMap(date))
     }
 
-    /// What agmux Teams takes: every entry a grok.com sign-in with a token, all for one user. A
+    /// What agterm Teams takes: every entry a grok.com sign-in with a token, all for one user. A
     /// sign-in without a refresh token would stop working within hours, so that's refused too.
     public static func shareable(_ json: [String: Any]) -> Bool {
         guard !json.isEmpty else { return false }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Team sessions: share this Mac's agent tabs with teammates' agents through agmux Teams.
+/// Team sessions: share this Mac's agent tabs with teammates' agents through agterm Teams.
 struct TeamSessionsSection: View {
     @ObservedObject var account: TeamsAccount
     @ObservedObject var sessions: TeamSessions

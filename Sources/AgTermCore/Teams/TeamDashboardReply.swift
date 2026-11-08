@@ -16,12 +16,12 @@ extension TeamDashboard {
 
         public var errorDescription: String? {
             switch self {
-            case .signedOut: "agmux Teams no longer accepts this Mac's sign-in. Sign in again in Settings → Teams & Phone."
+            case .signedOut: "agterm Teams no longer accepts this Mac's sign-in. Sign in again in Settings → Teams & Phone."
             case .notMember: "You're not on this team anymore."
             case .refused(let message): message
-            case .unavailable: "agmux Teams is unavailable. Try again later."
-            case .unexpected: "agmux Teams sent an unexpected reply."
-            case .offline: "agmux Teams couldn't be reached."
+            case .unavailable: "agterm Teams is unavailable. Try again later."
+            case .unexpected: "agterm Teams sent an unexpected reply."
+            case .offline: "agterm Teams couldn't be reached."
             }
         }
     }

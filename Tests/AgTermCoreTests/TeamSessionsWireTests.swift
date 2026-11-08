@@ -33,14 +33,14 @@ final class TeamSessionsWireTests: XCTestCase {
         let typed = TeamSessionsWire.typedMessage(from: "Alice", body: "I moved main.\n\n  Rebase onto it.\r\n")
         XCTAssertFalse(typed.contains("\n"))
         XCTAssertFalse(typed.contains("\r"))
-        XCTAssertTrue(typed.hasPrefix("[Message from Alice's agent through agmux Teams."))
+        XCTAssertTrue(typed.hasPrefix("[Message from Alice's agent through agterm Teams."))
         XCTAssertTrue(typed.hasSuffix("] I moved main. Rebase onto it."))
     }
 
     func testControlCharactersCannotSteerTheTerminalOrEraseTheMarking() {
         let typed = TeamSessionsWire.typedMessage(from: "Eve\u{1b}[2K", body: "hi\u{15}\u{3}\u{1b}[2Jrm -rf\u{2028}now")
         XCTAssertFalse(typed.unicodeScalars.contains { $0.properties.generalCategory == .control })
-        XCTAssertTrue(typed.hasPrefix("[Message from Eve [2K's agent through agmux Teams."))
+        XCTAssertTrue(typed.hasPrefix("[Message from Eve [2K's agent through agterm Teams."))
         XCTAssertTrue(typed.hasSuffix("] hi [2Jrm -rf now"))
     }
 

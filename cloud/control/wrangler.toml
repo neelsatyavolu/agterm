@@ -1,4 +1,4 @@
-# agterm Cloud control plane (docs/cloud-sessions-plan.md): accounts via agmux Teams, a Fly
+# agterm Cloud control plane (docs/cloud-sessions-plan.md): accounts via agterm Teams, a Fly
 # machine per user, Stripe billing, hourly metering.
 name = "agterm-cloud"
 main = "src/index.ts"
@@ -19,7 +19,7 @@ database_id = "ab9ba36a-45e9-4526-a246-264059130901"
 crons = ["7 * * * *"]
 
 [vars]
-TEAMS_URL = "https://teams.agmux.dev"
+TEAMS_URL = "https://teams.agterm.dev"
 FLY_APP = "agterm-cloud-machines"
 CLOUD_IMAGE = "registry.fly.io/agterm-cloud-machines:v202611050138"
 INCLUDED_HOURS = "100"

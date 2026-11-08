@@ -2,13 +2,13 @@ import AppKit
 import Foundation
 import Security
 
-/// agterm's link to agmux Teams. agterm links as its own device (never reusing agmux's
+/// agterm's link to agterm Teams. agterm links as its own device (never reusing agmux's
 /// credentials, which would make the two apps overwrite each other's hourly rows) through the same
 /// device-link flow agmux uses: start → open the link page in the browser → poll until claimed.
 @MainActor
 final class TeamsAccount: ObservableObject {
     static let shared = TeamsAccount()
-    nonisolated static let baseURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_TEAMS_URL"] ?? "https://teams.agmux.dev")!
+    nonisolated static let baseURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_TEAMS_URL"] ?? "https://teams.agterm.dev")!
 
     enum State: Equatable {
         case signedOut
@@ -133,7 +133,7 @@ final class TeamsAccount: ObservableObject {
     /// The server rejected the token (revoked on the web): forget it.
     func tokenRejected() {
         signOut()
-        lastError = "agmux Teams signed this Mac out. Sign in again to keep reporting."
+        lastError = "agterm Teams signed this Mac out. Sign in again to keep reporting."
     }
 
     // MARK: HTTP
@@ -153,7 +153,7 @@ final class TeamsAccount: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .message(let m): m
-            case .unauthorized: "agmux Teams no longer accepts this Mac's sign-in."
+            case .unauthorized: "agterm Teams no longer accepts this Mac's sign-in."
             }
         }
     }
@@ -167,10 +167,10 @@ final class TeamsAccount: ObservableObject {
     static func send<T: Decodable>(_ method: String, _ path: String, body: Any? = nil, token: String? = nil) async throws -> T {
         let (data, status) = try await perform(method, path, query: [], body: body, token: token)
         guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data) else {
-            throw TeamsError.message("Unexpected reply from agmux Teams (HTTP \(status)).")
+            throw TeamsError.message("Unexpected reply from agterm Teams (HTTP \(status)).")
         }
         guard envelope.ok, let value = envelope.data else {
-            throw TeamsError.message(envelope.error ?? "agmux Teams refused the request (HTTP \(status)).")
+            throw TeamsError.message(envelope.error ?? "agterm Teams refused the request (HTTP \(status)).")
         }
         return value
     }
@@ -179,10 +179,10 @@ final class TeamsAccount: ObservableObject {
     static func sendRaw(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Any? = nil, token: String) async throws -> Any {
         let (data, status) = try await perform(method, path, query: query, body: body, token: token)
         guard let envelope = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            throw TeamsError.message("Unexpected reply from agmux Teams (HTTP \(status)).")
+            throw TeamsError.message("Unexpected reply from agterm Teams (HTTP \(status)).")
         }
         guard envelope["ok"] as? Bool == true, let value = envelope["data"] else {
-            throw TeamsError.message(envelope["error"] as? String ?? "agmux Teams refused the request (HTTP \(status)).")
+            throw TeamsError.message(envelope["error"] as? String ?? "agterm Teams refused the request (HTTP \(status)).")
         }
         return value
     }
@@ -190,7 +190,7 @@ final class TeamsAccount: ObservableObject {
     private static func perform(_ method: String, _ path: String, query: [URLQueryItem], body: Any?, token: String?) async throws -> (Data, Int) {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty { components?.queryItems = query }
-        guard let url = components?.url else { throw TeamsError.message("Bad agmux Teams address.") }
+        guard let url = components?.url else { throw TeamsError.message("Bad agterm Teams address.") }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

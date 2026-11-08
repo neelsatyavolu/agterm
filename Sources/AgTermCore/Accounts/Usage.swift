@@ -31,7 +31,7 @@ public enum AccountProvider: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Whether agmux Teams can share its logins (it keeps Claude logins personal).
+    /// Whether agterm Teams can share its logins (it keeps Claude logins personal).
     public var teamShareable: Bool { self != .claude }
 }
 

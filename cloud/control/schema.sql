@@ -1,6 +1,6 @@
--- agterm Cloud control plane: one row per agmux Teams user who has used cloud sessions.
+-- agterm Cloud control plane: one row per agterm Teams user who has used cloud sessions.
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,               -- agmux Teams user id
+  id TEXT PRIMARY KEY,               -- agterm Teams user id
   email TEXT,
   stripe_customer TEXT,
   subscription TEXT,                 -- Stripe subscription id

@@ -4,7 +4,7 @@ import Security
 
 /// agterm Cloud (docs/cloud-sessions-plan.md): the subscription and the cloud machine, through the
 /// control plane (cloud/control), with the agmux account. Signing in here links its own device
-/// through agmux's device-link page and shares nothing; a Mac already signed in to agmux Teams
+/// through agmux's device-link page and shares nothing; a Mac already signed in to agterm Teams
 /// uses that sign-in. Setting the machine up stores how to reach it (`CloudCredentials`), which
 /// `CloudHost.configured` then uses.
 @MainActor
@@ -59,7 +59,7 @@ final class CloudAccount: ObservableObject {
         if CloudCredentials.deviceToken != nil { signIn = .signedIn(email: UserDefaults.standard.string(forKey: "cloudEmail")) }
     }
 
-    /// The token the control plane takes: this sign-in's, else agmux Teams'.
+    /// The token the control plane takes: this sign-in's, else agterm Teams'.
     var token: String? { CloudCredentials.deviceToken ?? TeamsAccount.shared.token }
 
     var isSignedIn: Bool { token != nil }
@@ -263,7 +263,7 @@ enum CloudCredentials {
         SecItemAdd(add as CFDictionary, nil)
     }
 
-    /// Stable per install, apart from agmux Teams' own device.
+    /// Stable per install, apart from agterm Teams' own device.
     static var deviceID: String {
         let key = "cloudDeviceID"
         if let id = UserDefaults.standard.string(forKey: key) { return id }

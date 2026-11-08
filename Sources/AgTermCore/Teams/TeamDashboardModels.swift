@@ -1,6 +1,6 @@
 import Foundation
 
-/// What agmux Teams' dashboard routes send (`GET /api/teams`, `…/overview`, `…/members/:id/detail`,
+/// What agterm Teams' dashboard routes send (`GET /api/teams`, `…/overview`, `…/members/:id/detail`,
 /// `…/me`), for agterm's Teams window. Every field is optional on the wire: a missing or mistyped
 /// one falls back to a default, so an older or newer server never breaks the window.
 public enum TeamDashboard {

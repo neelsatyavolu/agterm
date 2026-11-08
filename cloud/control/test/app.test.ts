@@ -84,7 +84,7 @@ async function subscribe() {
 }
 
 describe("accounts", () => {
-  it("needs an agmux Teams token", async () => {
+  it("needs an agterm Teams token", async () => {
     expect((await call("GET", "/v1/cloud", undefined, "bad")).status).toBe(401);
     const me = await call("GET", "/v1/cloud");
     expect(me.status).toBe(200);

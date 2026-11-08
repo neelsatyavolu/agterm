@@ -44,7 +44,7 @@ struct TeamLoginsPanel: View {
             Button("Remove", role: .destructive) { if let account = removing { remove(account) } }
             Button("Cancel", role: .cancel) { removing = nil }
         } message: {
-            Text("agmux Teams deletes its copy of the login. Anyone using it now keeps it until their agent exits.")
+            Text("agterm Teams deletes its copy of the login. Anyone using it now keeps it until their agent exits.")
         }
     }
 

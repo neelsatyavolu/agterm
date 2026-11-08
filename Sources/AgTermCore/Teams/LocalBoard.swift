@@ -1,7 +1,7 @@
 import Foundation
 
 /// The board on this Mac, for agents in its tabs when team sessions are off: the same posts,
-/// fields and rules as the agmux Teams board (team-board.ts), kept in a file by the app.
+/// fields and rules as the agterm Teams board (team-board.ts), kept in a file by the app.
 public struct LocalBoard: Codable, Equatable, Sendable {
     public static let kinds: Set<String> = ["claim", "question", "decision", "note", "reply"]
     static let maxText = 2_000

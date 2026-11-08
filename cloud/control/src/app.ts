@@ -106,7 +106,7 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
 async function authenticate(request: Request, deps: Deps): Promise<UserRow> {
   const token = request.headers.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
   const teamsUser = token ? await deps.teams.whoami(token) : null;
-  if (!teamsUser) throw new Failure(401, "unauthorized", "Sign in to agmux Teams in agterm first.");
+  if (!teamsUser) throw new Failure(401, "unauthorized", "Sign in to agterm Teams in agterm first.");
   return await upsertUser(teamsUser, deps);
 }
 

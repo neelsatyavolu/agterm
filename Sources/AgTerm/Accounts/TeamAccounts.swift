@@ -2,7 +2,7 @@ import AgTermCore
 import AgTermSessionKit
 import Foundation
 
-/// Codex and Grok logins your team shares through agmux Teams. agterm borrows one only when your
+/// Codex and Grok logins your team shares through agterm Teams. agterm borrows one only when your
 /// own logins are out, for one agent process at a time: it renews the loan every minute with the
 /// login's current tokens (the CLI refreshes them in auth.json), and once that process has exited
 /// it sends the tokens back, returns the loan and deletes its copy. Owners and managers can also
@@ -151,9 +151,9 @@ final class TeamAccounts: ObservableObject {
     /// signing in again to one already there renews it. `completion` runs on the main queue.
     func upload(_ provider: AccountProvider, team: TeamPool.Team, label: String, credentials: Data,
                 completion: @escaping (Result<TeamPool.Account, TeamPool.Failure>) -> Void) {
-        guard let token else { return completion(.failure(TeamPool.Failure(message: "agterm is signed out of agmux Teams.", retryable: false))) }
+        guard let token else { return completion(.failure(TeamPool.Failure(message: "agterm is signed out of agterm Teams.", retryable: false))) }
         guard let body = TeamPool.uploadBody(provider: provider, label: label, credentials: credentials) else {
-            return completion(.failure(TeamPool.Failure(message: "That isn't a \(provider.title) subscription sign-in agmux Teams can share.", retryable: false)))
+            return completion(.failure(TeamPool.Failure(message: "That isn't a \(provider.title) subscription sign-in agterm Teams can share.", retryable: false)))
         }
         Task {
             var result: Result<TeamPool.Account, TeamPool.Failure> = .failure(TeamPool.networkError)
@@ -273,7 +273,7 @@ final class TeamAccounts: ObservableObject {
                 do { outcome.result = .success(try await Self.renew(token, loan.lease, home: AccountStore.home(id), health: nil)) }
                 catch { outcome.result = .failure(Self.failure(error)) }
             } else {
-                outcome.result = .failure(TeamPool.Failure(message: "agterm is signed out of agmux Teams.", retryable: false))
+                outcome.result = .failure(TeamPool.Failure(message: "agterm is signed out of agterm Teams.", retryable: false))
             }
         }
         Task {
@@ -464,7 +464,7 @@ final class TeamAccounts: ObservableObject {
                 let home = AccountStore.home(id)
                 guard await self.claim(id, lease, generation) else {
                     await Self.release(token, lease)
-                    throw TeamPool.Failure(message: "agterm signed out of agmux Teams.", retryable: false)
+                    throw TeamPool.Failure(message: "agterm signed out of agterm Teams.", retryable: false)
                 }
                 if (try? Self.install(lease, id: id)) != nil {
                     let result = await Task.detached { UsageProbe.read(account.provider, home: home) }.value

@@ -3,7 +3,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Window → Team Dashboard: your agmux Teams team's usage and shared logins, without agmux.
+/// Window → Team Dashboard: your agterm Teams team's usage and shared logins, without agmux.
 /// Fetches when it opens and on Refresh; nothing runs while it's closed.
 @MainActor
 final class TeamsWindowController: NSWindowController, NSWindowDelegate {
@@ -95,15 +95,15 @@ struct TeamsRootView: View {
     @ViewBuilder
     private func content(_ c: TeamsColors) -> some View {
         if !store.signedIn {
-            TeamsEmptyState(symbol: "person.2", title: "Sign in to agmux Teams",
-                            message: "The Team Dashboard shows your team's usage once this Mac is signed in to agmux Teams.",
+            TeamsEmptyState(symbol: "person.2", title: "Sign in to agterm Teams",
+                            message: "The Team Dashboard shows your team's usage once this Mac is signed in to agterm Teams.",
                             action: ("Open Settings", { SettingsWindowController.shared.show(pane: "Teams & Phone") }))
         } else if !store.teamsLoaded {
             loadingOrFailure
         } else if store.teams.isEmpty {
             TeamsEmptyState(symbol: "person.2.slash", title: "You're not on a team",
-                            message: "Open the invite link your team's owner sent you, or create a team on agmux Teams.",
-                            action: ("Open agmux Teams", { NSWorkspace.shared.open(TeamsAccount.baseURL) }))
+                            message: "Open the invite link your team's owner sent you, or create a team on agterm Teams.",
+                            action: ("Open agterm Teams", { NSWorkspace.shared.open(TeamsAccount.baseURL) }))
         } else if let overview = store.overview {
             VStack(alignment: .leading, spacing: 12) {
                 if let failure = store.failure { staleBanner(failure) }
