@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
@@ -105,9 +104,8 @@ describe("provider accounts backward compatibility", () => {
     // Compare against the actual pre-feature schema, not a slice of the new schema.
     const head = new DatabaseSync(":memory:");
     try {
-      head.exec(execFileSync("git", ["show", "e2f26037:teams-service/schema.sql"], {
-        cwd: new URL("..", import.meta.url), encoding: "utf8",
-      }));
+      // schema.sql as of agmux e2f26037, before this feature.
+      head.exec(readFileSync(new URL("./fixtures/schema-before-provider-accounts.sql", import.meta.url), "utf8"));
       expect((await env.DB.prepare(catalogSql).all()).results).toEqual(head.prepare(catalogSql).all());
       // Restore 016 (the Worker writes it), then compare later steps against this schema.
       await env.DB.prepare("ALTER TABLE metric_hourly ADD COLUMN sessions_started INTEGER").run();
