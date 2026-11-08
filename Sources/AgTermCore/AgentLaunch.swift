@@ -90,31 +90,41 @@ public enum AgentLaunch {
     ]
 
     /// Arguments for `claude`, or nil to run it unchanged. Uses no --strict-mcp-config, so the
-    /// user's own MCP servers keep working.
+    /// user's own MCP servers keep working. With no servers, only the instructions are added.
     public static func claude(userArgs: [String], servers: [MCPServer], instructions: String) -> [String]? {
         if let first = userArgs.first, claudeSubcommands.contains(first) { return nil }
-        guard !servers.isEmpty else { return nil }
-        var config: [String: Any] = [:]
-        for server in servers {
-            config[server.name] = ["command": server.command, "args": server.args, "env": server.env]
+        var args: [String] = []
+        if !servers.isEmpty {
+            var config: [String: Any] = [:]
+            for server in servers {
+                config[server.name] = ["command": server.command, "args": server.args, "env": server.env]
+            }
+            guard let data = try? JSONSerialization.data(withJSONObject: ["mcpServers": config], options: [.sortedKeys]) else { return nil }
+            args = ["--mcp-config", String(decoding: data, as: UTF8.self)]
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: ["mcpServers": config], options: [.sortedKeys]) else { return nil }
-        var args = ["--mcp-config", String(decoding: data, as: UTF8.self)]
         if !instructions.isEmpty, !userArgs.contains("--append-system-prompt") {
             args += ["--append-system-prompt", instructions]
         }
-        return args + userArgs
+        return args.isEmpty ? nil : args + userArgs
     }
 
     /// Arguments for `codex`: one `-c mcp_servers.<name>={…}` override per server.
-    public static func codex(userArgs: [String], servers: [MCPServer]) -> [String]? {
-        guard !servers.isEmpty else { return nil }
-        let overrides = servers.flatMap { server -> [String] in
+    /// `instructions` go in as `developer_instructions` unless the arguments already set them.
+    public static func codex(userArgs: [String], servers: [MCPServer], instructions: String = "") -> [String]? {
+        var overrides = servers.flatMap { server -> [String] in
             let args = server.args.map(toml).joined(separator: ", ")
             let env = server.env.sorted { $0.key < $1.key }.map { "\($0.key) = \(toml($0.value))" }.joined(separator: ", ")
             return ["-c", "mcp_servers.\(server.name)={ command = \(toml(server.command)), args = [\(args)], env = { \(env) } }"]
         }
-        return overrides + userArgs
+        if !instructions.isEmpty, !userArgs.contains(where: { $0.contains("developer_instructions") }) {
+            overrides += ["-c", "developer_instructions=\(toml(instructions))"]
+        }
+        return overrides.isEmpty ? nil : overrides + userArgs
+    }
+
+    /// Whether a Codex config.toml sets its own `developer_instructions`, which agterm leaves alone.
+    public static func codexHasDeveloperInstructions(_ toml: String) -> Bool {
+        toml.split(separator: "\n").contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("developer_instructions") }
     }
 
     /// MCP server names already in a Codex config.toml, so agterm doesn't add a duplicate.

@@ -67,6 +67,20 @@ final class TabOrderTests: XCTestCase {
         XCTAssertEqual(TabOrder.moved(["a", "b", "c", "d"], from: 3, to: 0), ["d", "a", "b", "c"])
         XCTAssertEqual(TabOrder.moved(["a", "b"], from: 1, to: 5), ["a", "b"], "out of range is a no-op")
     }
+
+    func testPinnedFirstKeepsEachPartsOrder() {
+        let pinned: Set = ["c", "e"]
+        XCTAssertEqual(TabOrder.pinnedFirst(["a", "b", "c", "d", "e"]) { pinned.contains($0) }, ["c", "e", "a", "b", "d"])
+        XCTAssertEqual(TabOrder.pinnedFirst(["a", "b"]) { _ in false }, ["a", "b"])
+    }
+
+    func testPinnedSurvivesSaveAndOldSavesAreUnpinned() throws {
+        let tab = SavedTab(cwd: "/tmp", scrollback: "", resume: nil, pinned: true)
+        let back = try JSONDecoder().decode(SavedTab.self, from: JSONEncoder().encode(tab))
+        XCTAssertEqual(back.pinned, true)
+        let old = try JSONDecoder().decode(SavedTab.self, from: Data(#"{"cwd":"/tmp","scrollback":""}"#.utf8))
+        XCTAssertNil(old.pinned)
+    }
 }
 
 final class SavedWorkspaceTests: XCTestCase {

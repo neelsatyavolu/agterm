@@ -58,9 +58,11 @@ public struct SavedTab: Codable, Equatable, Sendable {
     public var name: String?
     /// `sessionID` is a session on the cloud machine, not this Mac's helper (cloud sessions).
     public var inCloud: Bool?
+    /// Pinned to the top of the tab list.
+    public var pinned: Bool?
 
     public init(cwd: String, scrollback: String, resume: String?, sessionID: String? = nil, tabID: String? = nil, name: String? = nil,
-                inCloud: Bool? = nil) {
+                inCloud: Bool? = nil, pinned: Bool? = nil) {
         self.cwd = cwd
         self.scrollback = scrollback
         self.resume = resume
@@ -68,6 +70,7 @@ public struct SavedTab: Codable, Equatable, Sendable {
         self.tabID = tabID
         self.name = name
         self.inCloud = inCloud
+        self.pinned = pinned
     }
 }
 
@@ -361,6 +364,11 @@ public enum TabOrder {
         var copy = items
         copy.insert(copy.remove(at: from), at: to)
         return copy
+    }
+
+    /// `items` with the pinned ones first, each part keeping its order.
+    public static func pinnedFirst<T>(_ items: [T], isPinned: (T) -> Bool) -> [T] {
+        items.filter(isPinned) + items.filter { !isPinned($0) }
     }
 
     /// Where the selected tab ends up after moving the tab at `from` to `to`.

@@ -75,6 +75,18 @@ enum TabCardDrawing {
         }
     }
 
+    /// The pin on a pinned tab's card.
+    static func pin() -> NSImage? {
+        guard let symbol = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)) else { return nil }
+        return NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            Theme.fg3.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+    }
+
     static func text(_ string: String, _ font: NSFont, _ color: NSColor) -> NSMutableAttributedString {
         NSMutableAttributedString(string: string, attributes: [.font: font, .foregroundColor: color])
     }

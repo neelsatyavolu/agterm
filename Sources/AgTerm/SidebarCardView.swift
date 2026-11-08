@@ -124,8 +124,15 @@ final class SidebarCardView: NSView {
         guard let model else { return }
         drawBackground(model)
         TabCardDrawing.dot(model.status, center: NSPoint(x: Self.padX + 4, y: Self.topY + 9), blinkOn: blinkOn)
-        if hovering { TabCardDrawing.close(in: closeRect) }
-        let topicRight = hovering ? closeRect.minX - 8 : rightEdge
+        var topicRight = rightEdge
+        if hovering {
+            TabCardDrawing.close(in: closeRect)
+            topicRight = closeRect.minX - 8
+        } else if model.pinned, let pin = TabCardDrawing.pin() {
+            pin.draw(in: NSRect(x: rightEdge - pin.size.width, y: Self.topY + (Self.topicHeight - pin.size.height) / 2,
+                                width: pin.size.width, height: pin.size.height))
+            topicRight = rightEdge - pin.size.width - 8
+        }
         TabCardDrawing.draw(TabCardDrawing.text(model.topic, Theme.topicFont, model.selected ? Theme.fg : Theme.fg2),
                             x: Self.textX, y: Self.topY, maxX: topicRight)
         var y = Self.topY + Self.topicHeight

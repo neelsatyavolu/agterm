@@ -37,6 +37,10 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     var name: String? {
         didSet { if name != oldValue { onChange?() } }
     }
+    /// Pinned to the top of the tab list.
+    var pinned = false {
+        didSet { if pinned != oldValue { onChange?() } }
+    }
     private(set) var signals = StatusSignals()
     /// When each recent stretch of typing in this tab stopped (the newest 64): a Grok
     /// conversation made just after one is this tab's `/new`, not one started elsewhere.
@@ -150,6 +154,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
             }
             pendingCommand = saved.resume
             name = saved.name
+            pinned = saved.pinned == true
         }
         if let command { pendingCommand = command }
     }
@@ -202,7 +207,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         pollProcess()
         return SavedTab(cwd: cwd, scrollback: Scrollback.capture(view.getTerminal()), resume: resumeCommand() ?? pendingCommand,
                         sessionID: signals.exited ? nil : view.link.sessionID, tabID: tabID, name: name,
-                        inCloud: isCloud ? true : nil)
+                        inCloud: isCloud ? true : nil, pinned: pinned ? true : nil)
     }
 
     /// The command that brings back the agent in the foreground, with `prompt` as its first

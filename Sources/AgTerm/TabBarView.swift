@@ -32,6 +32,8 @@ struct TabModel: Equatable {
     var focused = false
     /// The agent's logo, for the sidebar.
     var logo: NSImage?
+    /// Pinned to the top of the list; the sidebar shows a pin.
+    var pinned = false
 }
 
 /// What the tab bar and the tab sidebar ask of the window.

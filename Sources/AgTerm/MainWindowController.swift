@@ -292,6 +292,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             PaneGroup(layout: $0.layout, focused: $0.focused)
         }
         syncSessionOrder()
+        defer { keepPinnedFirst() }
         if let selectedID, session(selectedID) != nil { return focus(selectedID) }
         select(min(saved?.selected ?? 0, groups.count - 1))
     }
@@ -567,6 +568,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         groups.insert(PaneGroup(session), at: min(after, groups.count))
         syncSessionOrder()
         focus(session.tabID)
+        keepPinnedFirst()
     }
 
     /// Selects `tabID`'s tab and types in its pane.
@@ -629,6 +631,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         ] : [])
         let entries: [(String, Selector)?] = [
             ("Rename Tab…", #selector(renameTabFromMenu(_:))),
+            session.pinned ? ("Unpin Tab", #selector(togglePinFromMenu(_:))) : ("Pin Tab", #selector(togglePinFromMenu(_:))),
             nil,
             ("New Tab in This Folder", #selector(newTabInFolderFromMenu(_:))),
         ] + split + [
@@ -660,6 +663,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     @objc private func renameTabFromMenu(_ sender: NSMenuItem) {
         (sender.representedObject as? TerminalSession).map(rename)
+    }
+
+    @objc private func togglePinFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        setPinned(session, !session.pinned)
+    }
+
+    /// Pins `session`'s tab to the top of the list, or puts it back below the pinned ones.
+    func setPinned(_ session: TerminalSession, _ on: Bool) {
+        session.pinned = on
+        keepPinnedFirst()
+        saveWorkspace()
+    }
+
+    /// Moves tabs with a pinned pane above the others, keeping the same tab selected.
+    func keepPinnedFirst() {
+        let shown = selectedGroup
+        let byID = Dictionary(sessions.map { ($0.tabID, $0) }, uniquingKeysWith: { first, _ in first })
+        let ordered = TabOrder.pinnedFirst(groups) { $0.layout.panes.contains { byID[$0]?.pinned == true } }
+        guard ordered.map(ObjectIdentifier.init) != groups.map(ObjectIdentifier.init) else { return }
+        groups = ordered
+        syncSessionOrder()
+        select(shown.flatMap { group in groups.firstIndex { $0 === group } } ?? selected)
     }
 
     @objc private func newTabInFolderFromMenu(_ sender: NSMenuItem) {
@@ -710,7 +736,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         guard !savedForQuit else { return }
         let tabs = sessions.map { session in
             let tab = session.snapshot()
-            return endingSessions ? SavedTab(cwd: tab.cwd, scrollback: tab.scrollback, resume: tab.resume, tabID: tab.tabID, name: tab.name) : tab
+            return endingSessions ? SavedTab(cwd: tab.cwd, scrollback: tab.scrollback, resume: tab.resume, tabID: tab.tabID, name: tab.name, pinned: tab.pinned) : tab
         }
         let focused = focusedSession.flatMap { sessions.firstIndex(of: $0) } ?? 0
         WorkspaceStore.save(SavedWorkspace(selected: focused, tabs: tabs, savedAt: Date(),
@@ -740,6 +766,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         groups = TabOrder.moved(groups, from: from, to: to)
         syncSessionOrder()
         select(next)
+        keepPinnedFirst()
     }
 
     @objc func moveTabLeft() { moveTab(from: selected, to: selected - 1) }

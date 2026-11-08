@@ -54,7 +54,9 @@ final class AgentLaunchTests: XCTestCase {
     func testClaudeSubcommandsAreLeftAlone() {
         XCTAssertNil(AgentLaunch.claude(userArgs: ["mcp", "list"], servers: [memory], instructions: ""))
         XCTAssertNil(AgentLaunch.claude(userArgs: ["update"], servers: [memory], instructions: ""))
-        XCTAssertNil(AgentLaunch.claude(userArgs: [], servers: [], instructions: "x"), "nothing to add")
+        XCTAssertNil(AgentLaunch.claude(userArgs: [], servers: [], instructions: ""), "nothing to add")
+        XCTAssertEqual(AgentLaunch.claude(userArgs: [], servers: [], instructions: "x"), ["--append-system-prompt", "x"],
+                       "the user's own servers still get agterm's instructions")
         XCTAssertNotNil(AgentLaunch.claude(userArgs: ["fix the bug"], servers: [memory], instructions: ""))
     }
 
@@ -64,6 +66,16 @@ final class AgentLaunchTests: XCTestCase {
             "-c", #"mcp_servers.agmux-memory={ command = "/usr/local/bin/node", args = ["/A/memory.mjs"], env = { AGMUX_PROJECT_ID = "p1" } }"#,
             "resume", "--last",
         ])
+    }
+
+    func testCodexGetsDeveloperInstructions() throws {
+        let args = try XCTUnwrap(AgentLaunch.codex(userArgs: ["resume"], servers: [], instructions: "Use \"consult\".\nAsk first."))
+        XCTAssertEqual(args, ["-c", #"developer_instructions="Use \"consult\".\nAsk first.""#, "resume"])
+        let own = try XCTUnwrap(AgentLaunch.codex(userArgs: ["-c", "developer_instructions=mine"], servers: [memory], instructions: "x"))
+        XCTAssertFalse(own.contains { $0.hasPrefix("developer_instructions=\"x") }, "arguments that set them win")
+        XCTAssertNil(AgentLaunch.codex(userArgs: [], servers: [], instructions: ""))
+        XCTAssertTrue(AgentLaunch.codexHasDeveloperInstructions("model = \"o\"\n  developer_instructions = \"\"\"\nmine\"\"\"\n"))
+        XCTAssertFalse(AgentLaunch.codexHasDeveloperInstructions("[mcp_servers.x]\ncommand = \"y\"\n"))
     }
 
     func testTomlStringsAreEscaped() {

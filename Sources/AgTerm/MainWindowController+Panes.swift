@@ -190,6 +190,7 @@ extension MainWindowController {
         model.agentSince = s.agentRunningSince
         model.program = s.agentName == nil && s.foregroundName != s.shellName ? s.foregroundName : nil
         model.logo = s.agentName.flatMap(AgentLogo.image(for:))
+        model.pinned = s.pinned
         return model
     }
 }

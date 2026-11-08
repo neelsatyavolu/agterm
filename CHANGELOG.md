@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.1.8 — 2026-11-08
+- Added: Pin tabs. Right-click a tab and choose Pin Tab: it moves to the top of the sidebar (or the start of the tab bar), shows a pin, and stays above the other tabs when you drag or open new ones, including after a relaunch. Unpin Tab puts it back below the pinned ones.
+- Added: Claude Code and Codex agents started in agterm are told that the consult tools let them see every other agent running in agterm on this Mac, ask one about its work and leave it a message, and are encouraged to check before editing, committing or switching branches in a repo another agent is using. A Codex config that sets its own `developer_instructions` is left alone.
 - Added: Chat view for Claude Code, Codex and Grok tabs. Press ⌃` (View → Chat), or click Chat in the strip above the tab, to read the conversation as a transcript: replies with formatting, folded file reads, edits as diffs, commands with their results and errors. Type in the box at the bottom to message the agent; Esc interrupts it. Approval prompts show as buttons; menus Chat can't read show the bottom of the screen, and ⌃` takes you back to the terminal. The agent keeps running in its terminal either way, and each pane of a split keeps its own view.
 - Changed: agterm Remote reads Claude Code and Codex transcripts only as far as they grew since the last read.
 - Changed: agterm uses much less memory with many agents running. Teams usage sync and tab titles read only what was added to each transcript instead of whole files, and agterm Remote forgets a conversation once you close it on your phone.
