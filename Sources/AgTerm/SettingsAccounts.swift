@@ -25,7 +25,7 @@ struct AccountsPane: View {
                          + "New sessions start on your own login, or the one you chose with Use for New Sessions in "
                          + "its ⋯ menu, while it has usage. Every account shares your "
                          + "conversations, settings and MCP servers. Codex and Grok can also borrow a login your team "
-                         + "shares in agmux Teams once all of yours are out.")
+                         + "shares in agterm Teams once all of yours are out.")
             }
 
             ForEach(providers, id: \.self) { provider in
@@ -143,7 +143,7 @@ private struct ProviderSection: View {
     }
 }
 
-/// Codex and Grok logins shared through agmux Teams. Owners and managers can add one here;
+/// Codex and Grok logins shared through agterm Teams. Owners and managers can add one here;
 /// renaming, pausing and removing them happen in agmux.
 private struct TeamSection: View {
     @ObservedObject var team: TeamAccounts
@@ -193,7 +193,7 @@ private struct TeamSection: View {
         } header: {
             Text("Shared by your team")
         } footer: {
-            Footnote(login.teamMessage ?? team.error ?? "From agmux Teams. agterm borrows one of these only when every login "
+            Footnote(login.teamMessage ?? team.error ?? "From agterm Teams. agterm borrows one of these only when every login "
                      + "of yours for that agent is out, keeps it for that tab, and gives it back when the agent exits. "
                      + (team.addableTeams.isEmpty ? "" : "An account you add is signed in once, for the team; agterm keeps no copy."))
         }

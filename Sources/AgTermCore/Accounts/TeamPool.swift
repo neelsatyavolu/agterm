@@ -1,6 +1,6 @@
 import Foundation
 
-/// agmux Teams' shared account pool: logins a team's owners share, lent to one session at a
+/// agterm Teams' shared account pool: logins a team's owners share, lent to one session at a
 /// time for 5 minutes, renewed every minute while used. Codex and Grok only: agmux keeps
 /// Claude logins personal. Credentials never reach an error message, a log line or anything
 /// stored besides the borrowed login's own auth.json.
@@ -93,8 +93,8 @@ public enum TeamPool {
         }
     }
 
-    public static let invalidResponse = Failure(message: "agmux Teams sent an unexpected reply.", retryable: false)
-    public static let networkError = Failure(message: "agmux Teams couldn't be reached.", retryable: true)
+    public static let invalidResponse = Failure(message: "agterm Teams sent an unexpected reply.", retryable: false)
+    public static let networkError = Failure(message: "agterm Teams couldn't be reached.", retryable: true)
     public static let inUse = Failure(message: "A teammate is using this account right now.", retryable: false)
 
     /// Folder ids for borrowed logins start with this, so the wrapper knows one when it sees it.
@@ -152,13 +152,13 @@ public enum TeamPool {
 
     public static func failure(status: Int) -> Failure {
         switch status {
-        case 401: Failure(message: "agmux Teams no longer accepts this Mac's sign-in.", retryable: false)
+        case 401: Failure(message: "agterm Teams no longer accepts this Mac's sign-in.", retryable: false)
         case 403: Failure(message: "You don't have permission to use these team accounts.", retryable: false)
-        case 404, 405, 501: Failure(message: "This agmux Teams server doesn't share accounts.", retryable: false)
+        case 404, 405, 501: Failure(message: "This agterm Teams server doesn't share accounts.", retryable: false)
         case 409: Failure(message: "The team account changed. Try again.", retryable: false)
-        case 429: Failure(message: "agmux Teams is busy. Try again shortly.", retryable: true)
-        case 500...599: Failure(message: "agmux Teams is unavailable. Try again later.", retryable: true)
-        default: Failure(message: "agmux Teams refused the request.", retryable: false)
+        case 429: Failure(message: "agterm Teams is busy. Try again shortly.", retryable: true)
+        case 500...599: Failure(message: "agterm Teams is unavailable. Try again later.", retryable: true)
+        default: Failure(message: "agterm Teams refused the request.", retryable: false)
         }
     }
 
@@ -275,9 +275,9 @@ public enum TeamPool {
     public static func uploaded(status: Int, body: Data, team: Team) throws -> Account {
         switch status {
         case 200..<300: break
-        case 400: throw Failure(message: "agmux Teams didn't accept this sign-in.", retryable: false)
+        case 400: throw Failure(message: "agterm Teams didn't accept this sign-in.", retryable: false)
         case 403: throw Failure(message: "Only a team's owners and managers can add accounts.", retryable: false)
-        case 413: throw Failure(message: "This sign-in is too large for agmux Teams.", retryable: false)
+        case 413: throw Failure(message: "This sign-in is too large for agterm Teams.", retryable: false)
         default: throw failure(status: status)
         }
         guard let row = try data(body)["account"] as? [String: Any], let account = account(row, team: team) else { throw invalidResponse }

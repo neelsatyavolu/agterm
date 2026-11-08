@@ -1,6 +1,6 @@
 import Foundation
 
-/// The agent sessions that started in agterm, the only ones agterm may report to agmux Teams.
+/// The agent sessions that started in agterm, the only ones agterm may report to agterm Teams.
 /// Claude Code session ids are recorded as tabs see them (from ~/.claude/sessions/<pid>.json);
 /// Codex sessions carry `originator: agterm` in their own header, set by the codex wrapper.
 final class TeamsClaims {

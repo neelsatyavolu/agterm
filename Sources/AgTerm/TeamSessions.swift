@@ -2,7 +2,7 @@ import AgTermCore
 import AgTermSessionKit
 import Foundation
 
-/// Team sessions through agmux Teams. Turned on, this Mac lists its agent tabs to teammates who
+/// Team sessions through agterm Teams. Turned on, this Mac lists its agent tabs to teammates who
 /// turned it on too; their agents can ask a read-only copy of one (consult answers here, on this
 /// Mac) and, if you allow it, message one. It also serves consult's team tools in this Mac's own
 /// tabs over a local socket, so the Teams sign-in never leaves the app.
@@ -274,7 +274,7 @@ final class TeamSessions: ObservableObject {
     private func serve(_ method: String, _ params: [String: Any], _ reply: @escaping LineRPCServer.Reply) {
         if serveLocal(method, params, reply) { return }
         guard let token = TeamsAccount.shared.token else {
-            return reply(.failure(Self.failure("Sign in to agmux Teams in agterm Settings → Teams & Phone first.")))
+            return reply(.failure(Self.failure("Sign in to agterm Teams in agterm Settings → Teams & Phone first.")))
         }
         guard enabled, let team = teamID else {
             return reply(.failure(Self.failure("Turn on team sessions in agterm Settings → Teams & Phone first.")))

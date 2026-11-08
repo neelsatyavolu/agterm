@@ -2,7 +2,7 @@
 
 export interface TeamsUser { id: string; email: string | null }
 
-/** agmux Teams: who a device token belongs to. */
+/** agterm Teams: who a device token belongs to. */
 export interface Teams { whoami(token: string): Promise<TeamsUser | null> }
 
 export interface MachineSpec {

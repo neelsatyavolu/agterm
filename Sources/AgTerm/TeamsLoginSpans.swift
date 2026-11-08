@@ -1,7 +1,7 @@
 import AgTermCore
 import Foundation
 
-/// Which login each Claude/Codex session started in agterm ran on, so agmux Teams can split a
+/// Which login each Claude/Codex session started in agterm ran on, so agterm Teams can split a
 /// member's usage by login. The wrapper writes the login into the tab's launch record; when a tab
 /// learns its session id, the two are joined here into a span starting at the launch. Kept in
 /// Application Support; only hashes, Claude emails and session ids, never transcript content.

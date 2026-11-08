@@ -3,7 +3,7 @@ import AppKit
 import CoreImage
 import SwiftUI
 
-/// agmux Teams: link this Mac, see what is shared, sign out.
+/// agterm Teams: link this Mac, see what is shared, sign out.
 struct TeamsSection: View {
     @ObservedObject var account: TeamsAccount
     @State private var confirming = false
@@ -48,7 +48,7 @@ struct TeamsSection: View {
                 Text(error).foregroundStyle(.red)
             }
         } header: {
-            Text("agmux Teams")
+            Text("agterm Teams")
         } footer: {
             Text("Reports the sessions you run in agterm to your team, the same way agmux does. agterm links as its own device.")
                 .foregroundStyle(.secondary)

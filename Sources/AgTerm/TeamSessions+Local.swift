@@ -4,9 +4,9 @@ import Foundation
 
 /// The channels consult offers agents in this Mac's tabs, served from the app: the agent tabs on
 /// this Mac (the same `sessions.list` / `sessions.send` calls agmux's room socket answers, so they
-/// work without agmux), and the board, on agmux Teams with team sessions on, else on this Mac.
+/// work without agmux), and the board, on agterm Teams with team sessions on, else on this Mac.
 extension TeamSessions {
-    /// Team sessions are on and signed in: the board and team tools go to agmux Teams.
+    /// Team sessions are on and signed in: the board and team tools go to agterm Teams.
     var liveTeam: (token: String, team: String)? {
         guard enabled, let token = TeamsAccount.shared.token, let team = teamID else { return nil }
         return (token, team)

@@ -161,7 +161,7 @@ enum AgentIntegration {
             argv = ["--leader-socket", AccountStore.grokLeaderSocket(home)] + argv
         }
         // Marks Codex sessions as started in agterm (their header's originator), which is how
-        // agmux Teams reporting tells them apart from sessions started elsewhere.
+        // agterm Teams reporting tells them apart from sessions started elsewhere.
         if agent == "codex", env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == nil {
             setenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "agterm", 1)
         }
