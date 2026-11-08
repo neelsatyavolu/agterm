@@ -6,12 +6,17 @@ public struct GitSummary: Equatable, Sendable {
     public var files = 0
     public var added = 0
     public var removed = 0
+    /// Commits not pushed to the branch's upstream yet.
+    public var ahead = 0
+    /// The branch has no upstream yet, though the repo has a remote it could go to.
+    public var unpublished = false
 
-    public init(branch: String? = nil, files: Int = 0, added: Int = 0, removed: Int = 0) {
+    public init(branch: String? = nil, files: Int = 0, added: Int = 0, removed: Int = 0, ahead: Int = 0) {
         self.branch = branch
         self.files = files
         self.added = added
         self.removed = removed
+        self.ahead = ahead
     }
 }
 

@@ -139,6 +139,7 @@ extension MainWindowController {
         tabBar.isHidden = left
         sidebar.isHidden = !left
         titleStrip.isHidden = !left
+        placeReviewToolbar()
         window?.contentView?.layoutSubtreeIfNeeded()
         focusedSession?.pushSize()
     }
@@ -149,6 +150,7 @@ extension MainWindowController {
     }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let answer = validateReviewItem(item) { return answer }
         switch item.action {
         case #selector(toggleTabsOnLeft):
             item.state = tabsOnLeft ? .on : .off

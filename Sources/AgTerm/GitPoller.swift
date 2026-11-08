@@ -23,7 +23,14 @@ final class GitPoller {
         guard let status = run(["--no-optional-locks", "-C", path, "status", "--porcelain", "-b"]) else { return nil }
         let porcelain = GitStat.parsePorcelain(status)
         let lines = GitStat.parseShortstat(run(["--no-optional-locks", "-C", path, "diff", "HEAD", "--shortstat"]) ?? "")
-        return GitSummary(branch: porcelain.branch, files: porcelain.files, added: lines.added, removed: lines.removed)
+        let upstream = status.split(separator: "\n", maxSplits: 1).first.map { GitPublish.upstream(statusHeader: String($0)) }
+        var summary = GitSummary(branch: porcelain.branch, files: porcelain.files, added: lines.added, removed: lines.removed,
+                                 ahead: upstream?.ahead ?? 0)
+        // A clean branch that was never pushed can still be pushed; asked only in that case.
+        if porcelain.files == 0, upstream?.branch != nil, upstream?.upstream == nil {
+            summary.unpublished = !(run(["-C", path, "remote"]) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return summary
     }
 
     // MARK: What an agent changed

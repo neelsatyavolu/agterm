@@ -9,8 +9,12 @@ final class TitleStripView: NSView {
     static let height: CGFloat = 40
     private static let logoSize: CGFloat = 16
     private static let timelineWidth: CGFloat = 44
-    /// Where content to the left of the timeline button ends.
+    /// Where the timeline button starts.
     private var trailingX: CGFloat { bounds.width - Self.timelineWidth - 4 }
+    /// Room kept free left of the timeline button for the review toolbar.
+    var trailingReserve: CGFloat = 0 { didSet { if trailingReserve != oldValue { needsDisplay = true } } }
+    /// Where the title and the Chat | Term control must end.
+    private var contentMaxX: CGFloat { trailingX - max(8, trailingReserve) }
 
     /// What Chat mode shows instead of the title.
     struct ChatInfo: Equatable {
@@ -60,7 +64,7 @@ final class TitleStripView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        var maxX = trailingX - 8
+        var maxX = contentMaxX
         segments = nil
         if let chatMode {
             maxX = drawControl(chat: chatMode) - 16
@@ -111,7 +115,7 @@ final class TitleStripView: NSView {
         let widths = labels.map { ceil($0.size().width) + 16 }
         let height: CGFloat = 22
         let total = widths.reduce(0, +)
-        let frame = NSRect(x: trailingX - 8 - total, y: (bounds.height - height) / 2, width: total, height: height)
+        let frame = NSRect(x: contentMaxX - total, y: (bounds.height - height) / 2, width: total, height: height)
         let chatRect = NSRect(x: frame.minX, y: frame.minY, width: widths[0], height: height)
         let termRect = NSRect(x: chatRect.maxX, y: frame.minY, width: widths[1], height: height)
         Theme.surfaceHover.setFill()
