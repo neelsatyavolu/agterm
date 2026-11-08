@@ -4,7 +4,11 @@ name = "agterm-cloud"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 workers_dev = true
-routes = [{ pattern = "cloud.agterm.xanom.co", custom_domain = true }]
+# cloud.agterm.xanom.co stays for apps up to 1.1.7, which have it built in.
+routes = [
+  { pattern = "cloud.agterm.dev", custom_domain = true },
+  { pattern = "cloud.agterm.xanom.co", custom_domain = true },
+]
 
 [[d1_databases]]
 binding = "DB"
@@ -24,6 +28,6 @@ STRIPE_OVERAGE_PRICE = "price_1UWP1NBPM9ZAoURp9l196RW4" # $0.10 an hour past 100
 STRIPE_METER_EVENT = "agterm_cloud_overage_hours"
 VOLUME_GB = "20"
 STRIPE_PRICE = "price_1UWOhTBPM9ZAoURpxHnL4wJe" # agterm Cloud monthly, live agmux account
-APP_ORIGIN = "https://cloud.agterm.xanom.co"
+APP_ORIGIN = "https://cloud.agterm.dev"
 
 # Secrets (wrangler secret put): FLY_API_TOKEN, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET

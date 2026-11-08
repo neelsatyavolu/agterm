@@ -17,7 +17,7 @@ It is a real terminal (the [SwiftTerm](https://github.com/migueldeicaza/SwiftTer
 
 ## Install
 
-Download the latest `agterm.zip` from [Releases](https://github.com/neelsatyavolu/agterm/releases/latest) or [agterm.xanom.co](https://agterm.xanom.co), unzip it and move `agterm.app` to Applications. It is signed and notarized, and updates itself through [Sparkle](https://sparkle-project.org) (Settings → General).
+Download the latest `agterm.zip` from [Releases](https://github.com/neelsatyavolu/agterm/releases/latest) or [agterm.dev](https://agterm.dev), unzip it and move `agterm.app` to Applications. It is signed and notarized, and updates itself through [Sparkle](https://sparkle-project.org) (Settings → General).
 
 macOS 14 or later.
 

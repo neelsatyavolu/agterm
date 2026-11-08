@@ -20,7 +20,7 @@ final class CloudAccount: ObservableObject {
             || UserDefaults.standard.bool(forKey: "agtermCloud")
     }
 
-    nonisolated static let controlURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_CLOUD_CONTROL"] ?? "https://cloud.agterm.xanom.co")!
+    nonisolated static let controlURL = URL(string: ProcessInfo.processInfo.environment["AGTERM_CLOUD_CONTROL"] ?? "https://cloud.agterm.dev")!
 
     struct Status: Decodable, Equatable {
         struct Machine: Decodable, Equatable {

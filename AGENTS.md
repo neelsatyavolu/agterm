@@ -13,7 +13,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | `Mobile/` | agterm Remote (iOS); see `Mobile/README.md` |
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
 | `Tests/AgTermSessionKitTests/` | XCTest for the session helper (runs a server in-process) |
-| `site/` | agterm.xanom.co landing page (Vercel) |
+| `site/` | agterm.dev landing page (Vercel) |
 | `cloud/` | agterm Cloud: the machine image (`Dockerfile`, `entrypoint.sh`) and the control plane Worker (`control/`, TypeScript, D1); see `docs/cloud-sessions-plan.md` |
 
 ## Commands

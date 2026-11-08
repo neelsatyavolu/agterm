@@ -99,7 +99,7 @@ echo "Signing the update and writing appcast.xml…"
 op read "$SPARKLE_KEY_ITEM" > "$SECRETS/sparkle.key"
 "$SPARKLE_BIN/generate_appcast" --ed-key-file "$SECRETS/sparkle.key" \
     --download-url-prefix "https://github.com/$REPO/releases/download/$TAG/" \
-    --link "https://agterm.xanom.co" "$OUT"
+    --link "https://agterm.dev" "$OUT"
 cp "$ARCHIVE" "$OUT/agterm.zip"
 
 # The beta feed: this release's item plus the newest one of the other kind, taken from the

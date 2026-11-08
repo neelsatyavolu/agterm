@@ -28,4 +28,4 @@ struct AgTermRemoteApp: App {
 }
 
 /// The privacy policy the App Store listing links to, also linked in the app.
-let privacyPolicyURL = URL(string: "https://agterm.xanom.co/privacy")!
+let privacyPolicyURL = URL(string: "https://agterm.dev/privacy")!
