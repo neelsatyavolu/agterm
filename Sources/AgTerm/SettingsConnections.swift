@@ -38,7 +38,10 @@ struct TeamsSection: View {
                 }
             case let .signedIn(name, email):
                 LabeledContent(email.map { "\(name) · \($0)" } ?? name) {
-                    Button("Sign Out") { account.signOut() }
+                    HStack {
+                        Button("Team Dashboard…") { TeamsWindowController.shared.show() }
+                        Button("Sign Out") { account.signOut() }
+                    }
                 }
                 if let last = account.lastUpload {
                     LabeledContent("Last upload", value: last.formatted(.relative(presentation: .named)))

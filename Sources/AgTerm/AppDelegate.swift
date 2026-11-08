@@ -56,6 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsWindowController.shared.show()
     }
 
+    @objc func showTeamDashboard() {
+        MainActor.assumeIsolated { TeamsWindowController.shared.show() }
+    }
+
     @objc func showWhatsNew() {
         guard let controller else { return }
         controller.window?.makeKeyAndOrderFront(nil)
@@ -195,6 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         var windowItems: [NSMenuItem] = [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            .separator(),
+            item("Team Dashboard", #selector(AppDelegate.showTeamDashboard)),
             .separator(),
             item("Show Next Tab", #selector(MainWindowController.nextTab), "]", [.command, .shift]),
             item("Show Previous Tab", #selector(MainWindowController.previousTab), "[", [.command, .shift]),

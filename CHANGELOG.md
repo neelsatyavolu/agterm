@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Added: Window → Team Dashboard shows your agmux Teams team without agmux: tokens, estimated cost, active time and sessions over 7 to 90 days, daily usage, the monthly budget, providers and models, every member's usage and spend, and projects. Click a member to see their numbers and which Claude or Codex login did the work. Employees see their own numbers. It loads when you open it or press Refresh, and shows the last numbers it got while you're offline. Settings → Teams & Phone has a Team Dashboard… button too.
+- Added: Team owners, and managers for the logins they added, can rename, pause and remove the team's shared Codex and Grok logins in the Team Dashboard.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.
