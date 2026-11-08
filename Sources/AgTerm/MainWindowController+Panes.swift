@@ -195,6 +195,21 @@ final class TitleStripView: NSView {
     private static let logoSize: CGFloat = 16
     var title = "" { didSet { if title != oldValue { needsDisplay = true } } }
     var logo: NSImage? { didSet { if logo !== oldValue { needsDisplay = true } } }
+    /// Opens the Session Timeline; at the right end of the strip.
+    let timelineButton = IconButton(.timeline)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        timelineButton.toolTip = "Session timeline (⇧⌘L)"
+        addSubview(timelineButton)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func layout() {
+        super.layout()
+        timelineButton.frame = NSRect(x: bounds.width - 44 - 4, y: 0, width: 44, height: bounds.height)
+    }
 
     override var mouseDownCanMoveWindow: Bool { false }
     override func mouseDown(with event: NSEvent) { WindowDrag.mouseDown(event, in: window) }
@@ -202,13 +217,13 @@ final class TitleStripView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let text = TabCardDrawing.text(title, Theme.topicFont, Theme.fg3)
         let logoWidth = logo == nil ? 0 : Self.logoSize + 8
-        let width = min(ceil(text.size().width) + logoWidth, bounds.width - 24)
+        let width = min(ceil(text.size().width) + logoWidth, bounds.width - 24 - 96)
         let x = max(12, (bounds.width - width) / 2)
         if let logo {
             logo.draw(in: NSRect(x: x, y: (bounds.height - Self.logoSize) / 2, width: Self.logoSize, height: Self.logoSize),
                       from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
-        TabCardDrawing.draw(text, x: x + logoWidth, y: (bounds.height - 17) / 2, maxX: bounds.width - 12)
+        TabCardDrawing.draw(text, x: x + logoWidth, y: (bounds.height - 17) / 2, maxX: bounds.width - 12 - 48)
     }
 
     override var isFlipped: Bool { true }

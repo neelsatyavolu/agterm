@@ -191,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Smaller", #selector(MainWindowController.smallerFont), "-"),
             item("Actual Size", #selector(MainWindowController.resetFont), "0"),
             .separator(),
+            item("Session Timeline", #selector(MainWindowController.toggleSessionTimeline), "l", [.command, .shift]),
             item("Tabs on the Left", #selector(MainWindowController.toggleTabsOnLeft), "s", [.command, .control]),
         ]))
         var windowItems: [NSMenuItem] = [

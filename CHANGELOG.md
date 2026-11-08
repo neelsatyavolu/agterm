@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Added: Session Timeline (View → Session Timeline, ⇧⌘L, or the list button at the top right). It lists every prompt you sent in the tab with Claude Code, Codex or Grok, newest first, with whether it's running, done, failed or cancelled and how long ago. Click one to scroll the terminal to where that turn starts; it flashes briefly. In a plain shell tab it lists the commands you ran.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.
