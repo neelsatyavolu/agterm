@@ -2,6 +2,7 @@
 
 ## 1.1.8 — 2026-11-08
 - Added: Install agterm with Homebrew: `brew install --cask neel-xanom/agmux/agterm`.
+- Added: View → Command Palette (⇧⌘P). Type a few letters of any menu command or open tab, then press Return to run it or switch to that tab. Each command shows its menu and shortcut.
 
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.

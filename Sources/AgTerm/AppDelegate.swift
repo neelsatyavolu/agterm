@@ -187,6 +187,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
         ]))
         main.addItem(submenu("View", [
+            item("Command Palette…", #selector(MainWindowController.toggleCommandPalette), "p", [.command, .shift]),
+            .separator(),
             item("Bigger", #selector(MainWindowController.biggerFont), "="),
             item("Smaller", #selector(MainWindowController.smallerFont), "-"),
             item("Actual Size", #selector(MainWindowController.resetFont), "0"),

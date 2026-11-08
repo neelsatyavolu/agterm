@@ -32,6 +32,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var gitPolledAt: [String: Date] = [:]
     private static let idleGitInterval: TimeInterval = 30
     private let commandBar = CommandBar()
+    /// ⇧⌘P (`MainWindowController+Palette`).
+    let commandPalette = CommandPalette()
     private let cdSuggestions = CdSuggestions()
     /// The tab the open command bar answers for; its command only ever goes there.
     private weak var commandBarTarget: TerminalSession?
@@ -883,6 +885,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         container.subviews.forEach { $0.needsDisplay = true }
         container.needsDisplay = true
         commandBar.refreshAppearance()
+        commandPalette.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
         window.invalidateShadow()
     }
