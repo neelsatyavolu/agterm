@@ -28,8 +28,10 @@ struct TabModel: Equatable {
     var usage: String?
     var agentSince: Date?
     var program: String?
-    /// How many panes the tab is split into.
-    var panes = 1
+    /// The one you type in: of a split's tabs, which are all `selected`.
+    var focused = false
+    /// The agent's logo, for the sidebar.
+    var logo: NSImage?
 }
 
 /// What the tab bar and the tab sidebar ask of the window.
@@ -182,7 +184,7 @@ final class TabBarView: NSView {
             card.model = model
             card.blinkOn = blinkOn
         }
-        let newSelection = models.firstIndex(where: \.selected)
+        let newSelection = models.firstIndex(where: \.focused) ?? models.firstIndex(where: \.selected)
         if newSelection != selectedIndex {
             selectedIndex = newSelection
             scrollSelectedIntoView()

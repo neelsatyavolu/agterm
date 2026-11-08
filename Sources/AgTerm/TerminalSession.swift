@@ -517,6 +517,16 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         return foreground.pid
     }
 
+    /// When the agent's process started, so a tab reattached after a relaunch still counts from
+    /// then. A cloud tab's pid is on the cloud machine, so it counts from when agterm saw the agent.
+    var agentRunningSince: Date? {
+        guard agentName != nil else { return nil }
+        guard !isCloud, let pid = foregroundJob else { return agentStartedAt }
+        if agentProcessStart?.pid != pid { agentProcessStart = ProcInfo.startTime(pid: pid).map { (pid, $0) } }
+        return agentProcessStart?.started ?? agentStartedAt
+    }
+    private var agentProcessStart: (pid: pid_t, started: Date)?
+
     /// The process group in the foreground, if it isn't the shell (an agent, say).
     var foregroundGroup: pid_t? {
         guard !signals.exited, let group = ProcInfo.foregroundPid(ptyFd: view.link.ptyFd),

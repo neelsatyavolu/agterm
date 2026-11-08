@@ -6,6 +6,7 @@ import AppKit
 /// lights, + and the cloud button; the list scrolls when the tabs don't fit.
 final class TabSidebarView: NSView {
     static let width: CGFloat = 264
+    /// The header's height when the traffic lights can't be found.
     static let headerHeight: CGFloat = 52
     private static let inset: CGFloat = 8
     private static let spacing: CGFloat = 2
@@ -100,7 +101,7 @@ final class TabSidebarView: NSView {
         }
         guard drag == nil else { return }
         layoutCards(animated: false)
-        let newSelection = models.firstIndex(where: \.selected)
+        let newSelection = models.firstIndex(where: \.focused) ?? models.firstIndex(where: \.selected)
         if newSelection != selectedIndex {
             selectedIndex = newSelection
             if let index = newSelection { list.scrollToVisible(cards[index].frame) }
@@ -182,7 +183,9 @@ final class TabSidebarView: NSView {
     /// others closed up around the slot it would drop into.
     private func layoutCards(animated: Bool) {
         let width = max(0, scroll.contentSize.width - 2 * Self.inset)
-        let heights = cards.map { $0.model.map(SidebarCardView.height(for:)) ?? 60 }
+        let density = fittingDensity()
+        cards.forEach { $0.density = density }
+        let heights = cards.map { $0.model.map { SidebarCardView.height(for: $0, density: density) } ?? 40 }
         var y = Self.spacing
         var slot = 0
         for (i, card) in cards.enumerated() {
@@ -201,18 +204,37 @@ final class TabSidebarView: NSView {
         list.frame = NSRect(x: 0, y: 0, width: scroll.contentSize.width, height: max(total, scroll.contentSize.height))
     }
 
+    /// The most detail at which every card fits without scrolling; the least when none does.
+    private func fittingDensity() -> SidebarCardView.Density {
+        let room = scroll.contentSize.height
+        let models = cards.compactMap(\.model)
+        return SidebarCardView.Density.allCases.first { density in
+            models.reduce(Self.spacing) { $0 + SidebarCardView.height(for: $1, density: density) + Self.spacing } <= room
+        } ?? .compact
+    }
+
+    /// Just below the traffic lights, so the first tab sits close under them.
+    private var headerHeight: CGFloat {
+        guard let button = window?.standardWindowButton(.closeButton), let superview = button.superview else { return Self.headerHeight }
+        let frame = convert(button.frame, from: superview)
+        return min(Self.headerHeight, max(28, ceil(frame.maxY) + 8))
+    }
+
     override func layout() {
         super.layout()
-        let header = Self.headerHeight
-        plusButton.frame = NSRect(x: bounds.width - Self.plusWidth - 6, y: 0, width: Self.plusWidth, height: header)
-        cloudButton.frame = NSRect(x: plusButton.frame.minX - 34, y: 0, width: 36, height: header)
+        let header = headerHeight
+        let lights = window?.standardWindowButton(.closeButton).flatMap { button in button.superview.map { convert(button.frame, from: $0) } }
+        // + and the cloud button line up with the traffic lights.
+        let buttonY = lights.map { $0.midY - 18 } ?? 0
+        plusButton.frame = NSRect(x: bounds.width - Self.plusWidth - 6, y: buttonY, width: Self.plusWidth, height: 36)
+        cloudButton.frame = NSRect(x: plusButton.frame.minX - 34, y: buttonY, width: 36, height: 36)
         scroll.frame = NSRect(x: 0, y: header, width: bounds.width - 1, height: max(0, bounds.height - header))
         if drag == nil { layoutCards(animated: false) }
     }
 
+    /// No fill of its own: the window margins behind it are the terminal's color, so the sidebar
+    /// and the terminal read as one surface (a second see-through fill made a mismatched band).
     override func draw(_ dirtyRect: NSRect) {
-        Theme.chrome.setFill()
-        bounds.fill()
         Theme.border.setFill()
         NSRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height).fill()
     }

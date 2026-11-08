@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.6 — 2026-11-07
+- Changed: Split Right (⌘D) and Split Down (⇧⌘D) open an empty pane that lists your other tabs. Pick one, or click a tab in the tab bar or sidebar, to show it there, or choose New Shell. Every tab in a split keeps its own place in the tabs and is highlighted while the split is on screen; the one you're typing in has the accent bar.
+- Added: Right-click a tab that isn't on screen and choose Show to the Right or Show Below to put it beside the current tab. Shell → Unsplit, or Unsplit on a split tab's menu, puts every pane back in a tab of its own; Move to Own Tab does it for one. Nothing closes.
+- Changed: ⌘W closes the tab you're typing in, including one in a split; Close Pane and ⇧⌘W are gone.
+- Added: The sidebar and the title above the terminal show each agent's logo.
+- Changed: With more tabs than fit, sidebar tabs drop the spend and run time line, then the agent line, so more fit on screen.
+- Changed: The sidebar is the terminal's color and its first tab sits right under the window buttons.
+- Fixed: In a see-through window, a strip between the sidebar and the terminal showed what was behind the window.
+- Fixed: An agent's run time counts from when it started, not from when agterm last opened.
+- Fixed: Tabs in your home folder show ~ in the sidebar.
+
 ## 1.1.5 — 2026-11-07
 - Added: Split a tab into panes, as in Warp. Shell → Split Right (⌘D) or Split Down (⇧⌘D) opens a new shell beside or below the one you're typing in, in the same folder. Drag the line between panes to resize them, and move between panes with ⌘[ and ⌘] or ⌥⌘ and the arrow keys. Panes you aren't typing in are dimmed. ⌘W closes the pane you're in and ⇧⌘W closes the whole tab. Your panes and their sizes come back the next time you open agterm.
 - Added: View → Tabs on the Left (⌃⌘S) moves your tabs to a sidebar with more room for each one. A Claude Code or Codex tab shows its model (such as Opus 4.5), what it has spent so far in dollars and tokens, and how long it has been running, next to its status, folder and lines changed. A tab split into panes shows how many it has, and its dot shows whichever pane most needs you.

@@ -176,10 +176,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Split Right", #selector(MainWindowController.splitRight), "d"),
             item("Split Down", #selector(MainWindowController.splitDown), "d", [.command, .shift]),
+            item("Unsplit", #selector(MainWindowController.unsplitTab)),
             .separator(),
             item("Rename Tab…", #selector(MainWindowController.renameTab)),
-            item("Close Pane", #selector(MainWindowController.closePane), "w"),
-            item("Close Tab", #selector(MainWindowController.closeTab), "w", [.command, .shift]),
+            item("Close Tab", #selector(MainWindowController.closeTab), "w"),
         ]))
         main.addItem(submenu("Edit", [
             item("Copy", #selector(NSText.copy(_:)), "c"),

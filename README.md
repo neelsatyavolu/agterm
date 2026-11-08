@@ -78,16 +78,16 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 
 | Keys | Action |
 |---|---|
-| ⌘T / ⌘W / ⇧⌘W | New tab (in the current tab's folder) / close pane (the tab goes with its last pane) / close tab |
-| ⌘D / ⇧⌘D | Split the current pane right / down, in the same folder; drag the line between panes to resize |
-| ⌘[ ⌘], ⌥⌘ + arrows | Move between panes |
-| ⌃⌘S | View → Tabs on the Left: a sidebar showing each tab's agent, model, spend and pane count |
+| ⌘T / ⌘W | New tab (in the current tab's folder) / close the tab you're typing in |
+| ⌘D / ⇧⌘D | Split right / down: an empty pane opens, then pick another tab (or click one in the tabs) or a new shell to show there. Drag the line between panes to resize. Shell → Unsplit puts each back in its own tab |
+| ⌘[ ⌘], ⌥⌘ + arrows | Move between the panes of a split |
+| ⌃⌘S | View → Tabs on the Left: a sidebar showing each tab's agent and logo, model, spend and run time; with many tabs it shows less so they fit |
 | ⌥⌘T, ⌥⌘1–3 | New tab running your usual agent, or Claude Code, Codex, Grok |
 | ⌘K | Describe a command and have a fast model write it |
 | ⌘Q | Quit, leaving tabs running for next time (agterm → Quit and End Sessions ends them instead) |
 | ⌘1–⌘9, ⌘⇧[ ⌘⇧], ⌃Tab | Switch tabs |
 | Drag a tab, ⌘⇧← ⌘⇧→ | Reorder tabs |
-| Right-click a tab | Rename it (also Shell → Rename Tab…), open a new tab in its folder, split it, copy its folder path, show it in Finder, or close it |
+| Right-click a tab | Rename it (also Shell → Rename Tab…), open a new tab in its folder, split it or show it beside the current tab, unsplit, copy its folder path, show it in Finder, or close it |
 | ⌘= ⌘- ⌘0 | Font size |
 | ⌘, | Settings: General, Appearance, Agents, Permissions, Accounts, Command (⌘K), Teams & Phone |
 | Drag onto a tab | Files and folders type their escaped paths, as in Terminal.app. Images from a browser or screenshot tool are saved to a temp file first, so Claude Code can attach them. |

@@ -11,6 +11,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     var topLayout: [NSLayoutConstraint] = []
     var sideLayout: [NSLayoutConstraint] = []
     let container = PaneHostView()
+    /// What a new, empty pane shows until you choose a tab for it (Split Right / Split Down).
+    let panePicker = PanePickerView()
     /// Paints the margins around the terminal; the terminal paints its own area, so a
     /// see-through background isn't layered twice.
     private let backdrop = MarginView()
@@ -100,6 +102,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         tabBar.delegate = self
         sidebar.delegate = self
         container.onResize = { [weak self] path, ratio in self?.resizePanes(path, ratio) }
+        panePicker.isHidden = true
+        panePicker.onChoose = { [weak self] choice in self?.fillPicker(with: choice.tabID) }
+        panePicker.onCancel = { [weak self] in self?.cancelPicker() }
+        container.addSubview(panePicker)
         blur.blendingMode = .behindWindow
         blur.material = .underWindowBackground
         blur.state = .active
@@ -410,18 +416,106 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         pollGit()
     }
 
-    /// A new shell in a pane beside (`.columns`) or below (`.rows`) the one you're typing in.
+    /// An empty pane beside (`.columns`) or below (`.rows`) the one you're typing in, showing
+    /// the pane picker: choose another tab to show there, or a new shell.
     func split(_ axis: PaneAxis) {
         guard let group = selectedGroup, let current = focusedSession else { return }
-        let session = TerminalSession(cwd: FileManager.default.fileExists(atPath: current.cwd) ? current.cwd : NSHomeDirectory(),
+        dropPickers()
+        let slot = "picker-" + UUID().uuidString
+        group.layout = group.layout.splitting(current.tabID, with: slot, axis: axis)
+        group.picker = slot
+        group.focused = slot
+        select(selected)
+    }
+
+    /// Puts `session` in the selected split's empty pane, or beside the pane you're typing in.
+    func show(_ session: TerminalSession, beside axis: PaneAxis) {
+        guard let group = selectedGroup, !group.layout.contains(session.tabID) else { return focus(session.tabID) }
+        if group.picker == nil {
+            guard let current = focusedSession else { return }
+            let slot = "picker-" + UUID().uuidString
+            group.layout = group.layout.splitting(current.tabID, with: slot, axis: axis)
+            group.picker = slot
+        }
+        fillPicker(with: session.tabID)
+    }
+
+    /// Fills the selected split's empty pane with the tab `tabID`, taken out of wherever it was
+    /// shown, or with a new shell in the current folder when nil.
+    func fillPicker(with tabID: String?) {
+        guard let group = selectedGroup, let slot = group.picker else { return }
+        let session: TerminalSession
+        if let tabID, let existing = self.session(tabID) {
+            takeOut(existing)
+            session = existing
+        } else {
+            let folder = group.layout.panes.compactMap(self.session(_:)).first?.cwd ?? NSHomeDirectory()
+            session = TerminalSession(cwd: FileManager.default.fileExists(atPath: folder) ? folder : NSHomeDirectory(),
                                       restoring: nil, command: nil)
-        wire(session)
-        sessions.append(session)
-        group.layout = group.layout.splitting(current.tabID, with: session.tabID, axis: axis)
+            wire(session)
+            sessions.append(session)
+        }
+        group.layout = group.layout.replacing(slot, with: session.tabID)
+        group.picker = nil
         group.focused = session.tabID
         syncSessionOrder()
-        select(selected)
+        select(groups.firstIndex { $0 === group } ?? 0)
         pollGit()
+    }
+
+    /// Closes the empty pane without choosing anything.
+    func cancelPicker() {
+        guard let group = selectedGroup, let slot = group.picker, let rest = group.layout.removing(slot) else { return }
+        group.layout = rest
+        group.picker = nil
+        if group.focused == slot { group.focused = rest.panes[0] }
+        select(selected)
+    }
+
+    /// Any tab's empty pane goes away: only the shown split can have one.
+    private func dropPickers(except keep: PaneGroup? = nil) {
+        for group in groups where group !== keep {
+            guard let slot = group.picker, let rest = group.layout.removing(slot) else { continue }
+            group.layout = rest
+            group.picker = nil
+            if group.focused == slot { group.focused = rest.panes[0] }
+        }
+    }
+
+    /// Takes `session` out of the split (or tab) it's in, leaving it shown nowhere. A tab left
+    /// with no shells goes away.
+    private func takeOut(_ session: TerminalSession) {
+        guard let index = groupIndex(of: session) else { return }
+        let group = groups[index]
+        if let rest = group.layout.removing(session.tabID), rest.panes.contains(where: { self.session($0) != nil }) {
+            group.layout = rest
+            if group.focused == session.tabID { group.focused = rest.panes.first { self.session($0) != nil } ?? rest.panes[0] }
+        } else {
+            groups.remove(at: index)
+        }
+    }
+
+    /// Puts every pane of `session`'s split back into a tab of its own, in place; nothing closes.
+    func unsplit(_ session: TerminalSession? = nil) {
+        guard let target = session ?? focusedSession, let index = groupIndex(of: target) else { return }
+        let group = groups[index]
+        let panes = group.layout.panes.compactMap(self.session(_:))
+        guard panes.count > 1 || group.picker != nil else { return }
+        let focused = group.focused
+        groups.replaceSubrange(index...index, with: panes.map(PaneGroup.init))
+        syncSessionOrder()
+        focus(self.session(focused) == nil ? target.tabID : focused)
+    }
+
+    /// Takes one pane out of its split into a tab of its own, right after the split.
+    func moveToOwnTab(_ session: TerminalSession) {
+        guard let index = groupIndex(of: session), groups[index].layout.panes.count > 1 else { return }
+        let group = groups[index]
+        takeOut(session)
+        let after = (groups.firstIndex { $0 === group } ?? index) + 1
+        groups.insert(PaneGroup(session), at: min(after, groups.count))
+        syncSessionOrder()
+        focus(session.tabID)
     }
 
     /// Selects `tabID`'s tab and types in its pane.
@@ -456,15 +550,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         if ProcessInfo.processInfo.environment["AGTERM_METAL"] == "1" { try? view.setUseMetal(true) }
     }
 
-    /// ⌘W: the pane you're typing in; the tab goes with its last pane.
-    @objc func closePane() { focusedSession.map { confirmClose([$0]) } }
-
-    /// ⇧⌘W: the selected tab, every pane in it.
-    @objc func closeTab() { closeGroup(at: selected) }
-
-    private func closeGroup(at index: Int) {
-        guard groups.indices.contains(index) else { return }
-        confirmClose(groups[index].layout.panes.compactMap(session(_:)))
+    /// ⌘W: the tab you're typing in; in a split, its neighbor takes the space. In an empty
+    /// pane, closes that pane.
+    @objc func closeTab() {
+        guard let session = focusedSession else { return cancelPicker() }
+        confirmClose([session])
     }
 
     // MARK: Tab menu
@@ -473,12 +563,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     /// even if the tabs move while the menu is open.
     private func menu(for session: TerminalSession) -> NSMenu {
         let menu = NSMenu()
+        let shown = selectedGroup?.layout.contains(session.tabID) == true
+        let inSplit = (groupIndex(of: session).map { groups[$0].layout.panes.count } ?? 1) > 1
+        // A tab on screen splits; one that isn't can be shown beside the one on screen.
+        let split: [(String, Selector)?] = !shown ? [
+            ("Show to the Right", #selector(showRightFromMenu(_:))),
+            ("Show Below", #selector(showBelowFromMenu(_:))),
+        ] : [
+            ("Split Right", #selector(splitRightFromMenu(_:))),
+            ("Split Down", #selector(splitDownFromMenu(_:))),
+        ] + (inSplit ? [
+            ("Move to Own Tab", #selector(moveToOwnTabFromMenu(_:))),
+            ("Unsplit", #selector(unsplitFromMenu(_:))),
+        ] : [])
         let entries: [(String, Selector)?] = [
             ("Rename Tab…", #selector(renameTabFromMenu(_:))),
             nil,
             ("New Tab in This Folder", #selector(newTabInFolderFromMenu(_:))),
-            ("Split Right", #selector(splitRightFromMenu(_:))),
-            ("Split Down", #selector(splitDownFromMenu(_:))),
+        ] + split + [
+            nil,
             ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
             ("Show in Finder", #selector(showInFinderFromMenu(_:))),
             nil,
@@ -525,8 +628,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     @objc private func closeTabFromMenu(_ sender: NSMenuItem) {
-        guard let session = sender.representedObject as? TerminalSession, let index = groupIndex(of: session) else { return }
-        closeGroup(at: index)
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        confirmClose([session])
     }
 
     /// Asks for a name in a sheet; an empty name goes back to the program's own title.
@@ -560,7 +663,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         }
         let focused = focusedSession.flatMap { sessions.firstIndex(of: $0) } ?? 0
         WorkspaceStore.save(SavedWorkspace(selected: focused, tabs: tabs, savedAt: Date(),
-                                           groups: groups.map { SavedPaneGroup(layout: $0.layout, focused: $0.focused) }))
+                                           groups: groups.compactMap(\.saved)))
     }
 
     /// Saves the tabs one last time (later saves are ignored), then lets go of their shells:
@@ -591,28 +694,51 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     @objc func moveTabLeft() { moveTab(from: selected, to: selected - 1) }
     @objc func moveTabRight() { moveTab(from: selected, to: selected + 1) }
 
-    @objc func nextTab() { select((selected + 1) % max(groups.count, 1)) }
+    /// The next tab in the list, each pane of a split counting as its own tab.
+    @objc func nextTab() { stepTab(by: 1) }
 
-    @objc func previousTab() { select((selected - 1 + groups.count) % max(groups.count, 1)) }
+    @objc func previousTab() { stepTab(by: -1) }
+
+    private func stepTab(by step: Int) {
+        guard !sessions.isEmpty else { return }
+        let current = focusedSession.flatMap { sessions.firstIndex(of: $0) }
+            ?? selectedGroup.flatMap { group in sessions.firstIndex { group.layout.contains($0.tabID) } } ?? 0
+        selectCard((current + step + sessions.count) % sessions.count)
+    }
 
     @objc func selectTabFromMenu(_ sender: NSMenuItem) {
         // ⌘9 always means the last tab, as in Safari and Terminal.
-        let index = sender.tag == 9 ? groups.count - 1 : sender.tag - 1
-        if groups.indices.contains(index) { select(index) }
+        selectCard(sender.tag == 9 ? sessions.count - 1 : sender.tag - 1)
+    }
+
+    /// The tab at `index` in the tab bar or sidebar (one per shell). With an empty pane open,
+    /// a tab not already shown goes into it.
+    func selectCard(_ index: Int) {
+        guard sessions.indices.contains(index) else { return }
+        let session = sessions[index]
+        if let group = selectedGroup, group.picker != nil, !group.layout.contains(session.tabID) {
+            return fillPicker(with: session.tabID)
+        }
+        focus(session.tabID)
     }
 
     /// Shows tab `index` and types in its focused pane.
     func select(_ index: Int) {
         guard groups.indices.contains(index) else { return }
-        selected = index
-        cdSuggestions.hide()
         let group = groups[index]
+        dropPickers(except: group)
+        selected = groups.firstIndex { $0 === group } ?? index
+        cdSuggestions.hide()
         if !group.layout.contains(group.focused) { group.focused = group.layout.panes[0] }
-        guard let focused = session(group.focused) else { return }
-        if commandBar.superview != nil, focused !== commandBarTarget { hideCommandBar(refocus: false) }
+        let focused = session(group.focused)
+        if commandBar.superview != nil, focused == nil || focused !== commandBarTarget { hideCommandBar(refocus: false) }
         showSelectedPanes()
-        focused.view.needsDisplay = true
-        window?.makeFirstResponder(focused.view)
+        if let focused {
+            focused.view.needsDisplay = true
+            window?.makeFirstResponder(focused.view)
+        } else {
+            window?.makeFirstResponder(panePicker)
+        }
         render()
     }
 
@@ -628,6 +754,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             session.setFocused(shown && session.tabID == group.focused && key, now: now)
             if shown { views[session.tabID] = session.view }
         }
+        panePicker.isHidden = group.picker == nil
+        if let slot = group.picker {
+            views[slot] = panePicker
+            panePicker.choices = pickerChoices(for: group)
+        }
         container.show(group.layout, views: views, focused: group.focused)
         container.layoutSubtreeIfNeeded()
     }
@@ -638,8 +769,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let running = panes.filter(\.isRunningProgram)
         guard !running.isEmpty else { return panes.forEach(removePane) }
         let alert = NSAlert()
-        alert.messageText = panes.count == 1 ? (groups.first { $0.layout.contains(panes[0].tabID) }?.layout.panes.count == 1
-                                                ? "Close this tab?" : "Close this pane?") : "Close this tab?"
+        alert.messageText = panes.count == 1 ? "Close this tab?" : "Close these tabs?"
         alert.informativeText = running.map { "\($0.foregroundName ?? "A program") is still running in \($0.folder)." }
             .joined(separator: "\n")
         alert.addButton(withTitle: "Close")
@@ -658,7 +788,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let neighbor = group.layout.neighbor(of: session.tabID, .left, in: container.layoutSpace)
             ?? group.layout.neighbor(of: session.tabID, .up, in: container.layoutSpace)
         end(session)
-        if let rest = group.layout.removing(session.tabID) {
+        if let rest = group.layout.removing(session.tabID), rest.panes.contains(where: { self.session($0) != nil }) {
             group.layout = rest
             if group.focused == session.tabID { group.focused = neighbor.flatMap { rest.contains($0) ? $0 : nil } ?? rest.panes[0] }
             syncSessionOrder()
@@ -712,11 +842,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     func render() {
         updateCloudButton()
-        let models = groups.enumerated().compactMap { i, group in tabModel(group, selected: i == selected) }
+        let models = sessions.map(tabModel)
         if tabsOnLeft { sidebar.update(models) } else { tabBar.update(models) }
         if let focused = focusedSession {
             window?.title = focused.topic
             titleStrip.title = focused.topic
+            titleStrip.logo = focused.agentName.flatMap(AgentLogo.image(for:))
         }
     }
 
@@ -815,8 +946,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 
     // MARK: TabBarDelegate
 
-    func tabBar(_ bar: NSView, didSelect index: Int) { select(index) }
-    func tabBar(_ bar: NSView, didClose index: Int) { closeGroup(at: index) }
+    func tabBar(_ bar: NSView, didSelect index: Int) { selectCard(index) }
+    func tabBar(_ bar: NSView, didClose index: Int) {
+        if sessions.indices.contains(index) { confirmClose([sessions[index]]) }
+    }
     func tabBarDidRequestNewTab(_ bar: NSView) { newTab() }
     func tabBarAgentMenu(_ bar: NSView) -> NSMenu {
         let menu = NSMenu()
@@ -824,11 +957,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         AppDelegate.agentItems(agents, target: self).forEach(menu.addItem)
         return menu
     }
-    func tabBar(_ bar: NSView, didMove from: Int, to: Int) { moveTab(from: from, to: to) }
-    func tabBar(_ bar: NSView, menuFor index: Int) -> NSMenu {
-        let group = groups[index]
-        return menu(for: session(group.focused) ?? sessions[0])
+    /// Cards move a whole split at a time: the dragged card's split goes where the target card's is.
+    func tabBar(_ bar: NSView, didMove from: Int, to: Int) {
+        guard sessions.indices.contains(from), sessions.indices.contains(to),
+              let source = groupIndex(of: sessions[from]), let target = groupIndex(of: sessions[to]) else { return }
+        if source == target { return render() }
+        moveTab(from: source, to: target)
     }
+    func tabBar(_ bar: NSView, menuFor index: Int) -> NSMenu { menu(for: sessions[index]) }
 
     // MARK: NSWindowDelegate
 
@@ -871,7 +1007,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
 /// Fills its bounds with a color, except where `hole` sits.
 final class MarginView: NSView {
     var color = NSColor.clear { didSet { needsDisplay = true } }
-    weak var hole: NSView?
+    /// Repainted whenever the hole moves or resizes (tabs moving to the left move it without
+    /// resizing this view), so no strip is left unpainted in a see-through window.
+    weak var hole: NSView? {
+        didSet {
+            if let observer = holeObserver { NotificationCenter.default.removeObserver(observer) }
+            hole?.postsFrameChangedNotifications = true
+            holeObserver = hole.map {
+                NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: $0, queue: .main) { [weak self] _ in
+                    self?.needsDisplay = true
+                }
+            }
+        }
+    }
+    private var holeObserver: NSObjectProtocol?
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(rect: bounds)

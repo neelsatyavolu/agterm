@@ -5,8 +5,19 @@ import AppKit
 ///   ● Topic …………………………………   (× on hover)
 ///     WORKING  Claude Code · Opus 4.5
 ///     folder  branch ………… +12 −4
-///     $1.24 · 38k tokens · 12m · 2 panes
+///     $1.24 · 38k tokens · 12m
+/// When the tabs don't all fit, the sidebar asks for fewer lines (`Density`).
 final class SidebarCardView: NSView {
+    /// How much a card shows, from everything down to the topic and folder.
+    enum Density: CaseIterable {
+        case full
+        /// Without the spend, run time and pane count.
+        case noUsage
+        /// The topic and folder line only; the dot still shows the status.
+        case compact
+    }
+
+    var density = Density.full { didSet { if density != oldValue { needsDisplay = true } } }
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
     var onMenu: ((NSEvent) -> Void)?
@@ -37,10 +48,20 @@ final class SidebarCardView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// The card's height for `model`: the topic, plus a line for each detail it has.
-    static func height(for model: TabModel) -> CGFloat {
-        let lines = (detailLine(model) ? 1 : 0) + (folderLine(model) ? 1 : 0) + (metaLine(model, now: Date()) == nil ? 0 : 1)
-        return topY + topicHeight + CGFloat(lines) * lineHeight + bottomPad
+    /// The card's height for `model` at `density`: the topic, plus a line for each detail it shows.
+    static func height(for model: TabModel, density: Density = .full) -> CGFloat {
+        let lines = (shows(.detail, model, density) ? 1 : 0) + (shows(.folder, model, density) ? 1 : 0) + (shows(.meta, model, density) ? 1 : 0)
+        return topY + topicHeight + CGFloat(lines) * lineHeight + (density == .compact ? bottomPad - 3 : bottomPad)
+    }
+
+    private enum Line { case detail, folder, meta }
+
+    private static func shows(_ line: Line, _ model: TabModel, _ density: Density) -> Bool {
+        switch line {
+        case .detail: density != .compact && detailLine(model)
+        case .folder: folderLine(model)
+        case .meta: density == .full && metaLine(model, now: Date()) != nil
+        }
     }
 
     override func updateTrackingAreas() {
@@ -108,15 +129,15 @@ final class SidebarCardView: NSView {
         TabCardDrawing.draw(TabCardDrawing.text(model.topic, Theme.topicFont, model.selected ? Theme.fg : Theme.fg2),
                             x: Self.textX, y: Self.topY, maxX: topicRight)
         var y = Self.topY + Self.topicHeight
-        if Self.detailLine(model) {
+        if Self.shows(.detail, model, density) {
             drawDetail(model, y: y)
             y += Self.lineHeight
         }
-        if Self.folderLine(model) {
+        if Self.shows(.folder, model, density) {
             drawFolder(model, y: y)
             y += Self.lineHeight
         }
-        if let meta = Self.metaLine(model, now: Date()) {
+        if Self.shows(.meta, model, density), let meta = Self.metaLine(model, now: Date()) {
             TabCardDrawing.draw(TabCardDrawing.text(meta, Theme.metaFont, Theme.fg3), x: Self.textX, y: y, maxX: rightEdge)
         }
     }
@@ -124,15 +145,17 @@ final class SidebarCardView: NSView {
     private func drawBackground(_ model: TabModel) {
         let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: TabCardView.radius, yRadius: TabCardView.radius)
         if model.selected {
-            Theme.bg.setFill()
+            // Every tab of the shown split is tinted; the one you type in also gets the accent bar.
+            Theme.surfaceHover.setFill()
             shape.fill()
+            guard model.focused else { return }
             NSGraphicsContext.saveGraphicsState()
             shape.addClip()
             Theme.accent.setFill()
             NSRect(x: 0, y: 0, width: 2, height: bounds.height).fill()
             NSGraphicsContext.restoreGraphicsState()
         } else if hovering {
-            Theme.surfaceHover.setFill()
+            Theme.surface.setFill()
             shape.fill()
         }
     }
@@ -150,6 +173,11 @@ final class SidebarCardView: NSView {
         }
         if let moving = model.moving {
             return TabCardDrawing.draw(TabCardDrawing.text(moving, Theme.metaFont, Theme.accent), x: x, y: y, maxX: rightEdge)
+        }
+        // The logo sits under the status dot, so the line keeps its width for the model.
+        if let logo = model.logo {
+            logo.draw(in: NSRect(x: Self.padX - 1, y: y + 2, width: 12, height: 12), from: .zero, operation: .sourceOver,
+                      fraction: 1, respectFlipped: true, hints: nil)
         }
         let line = NSMutableAttributedString()
         if let agent = model.agent ?? model.program {
@@ -190,10 +218,9 @@ final class SidebarCardView: NSView {
         }
     }
 
-    /// Spend, how long the agent has run, and the pane count, when there's any of them.
+    /// Spend and how long the agent has run, when there's either.
     private static func metaLine(_ model: TabModel, now: Date) -> String? {
-        let parts = [model.usage, model.agentSince.map { UsageText.elapsed(now.timeIntervalSince($0)) },
-                     model.panes > 1 ? "\(model.panes) panes" : nil].compactMap { $0 }
+        let parts = [model.usage, model.agentSince.map { UsageText.elapsed(now.timeIntervalSince($0)) }].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }

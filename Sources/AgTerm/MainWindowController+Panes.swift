@@ -1,11 +1,20 @@
 import AgTermCore
 import AppKit
 
-/// A tab: one or more panes, each a shell (`TerminalSession`, named by its tab ID), and the
-/// one you type in.
+/// What's on screen together: one tab, or a split of several, each pane a shell
+/// (`TerminalSession`, named by its tab ID), and the one you type in. Every shell is still a tab
+/// of its own in the tab bar and sidebar; a split's tabs are highlighted together.
 final class PaneGroup {
     var layout: PaneNode
     var focused: String
+    /// The empty pane after Split Right or Split Down, waiting for you to choose a tab.
+    var picker: String?
+
+    /// As saved: never with the empty pane, which doesn't outlive the window.
+    var saved: SavedPaneGroup? {
+        guard let layout = picker.map({ layout.removing($0) }) ?? layout else { return nil }
+        return SavedPaneGroup(layout: layout, focused: layout.contains(focused) ? focused : layout.panes[0])
+    }
 
     init(layout: PaneNode, focused: String) {
         self.layout = layout
@@ -23,10 +32,12 @@ extension MainWindowController {
 
     // MARK: Splitting
 
-    /// ⌘D: a new shell beside the pane you're typing in, in its folder.
+    /// ⌘D: an empty pane beside the one you're typing in, to show another tab or a new shell.
     @objc func splitRight() { split(.columns) }
-    /// ⇧⌘D: a new shell below it.
+    /// ⇧⌘D: the same, below it.
     @objc func splitDown() { split(.rows) }
+    /// Shell → Unsplit: every pane of the split back to a tab of its own.
+    @objc func unsplitTab() { unsplit() }
 
     @objc func splitRightFromMenu(_ sender: NSMenuItem) { splitFromMenu(sender, .columns) }
     @objc func splitDownFromMenu(_ sender: NSMenuItem) { splitFromMenu(sender, .rows) }
@@ -35,6 +46,35 @@ extension MainWindowController {
         guard let session = sender.representedObject as? TerminalSession else { return }
         focus(session.tabID)
         split(axis)
+    }
+
+    /// Right-clicking a tab that isn't on screen: show it beside the one that is.
+    @objc func showRightFromMenu(_ sender: NSMenuItem) {
+        (sender.representedObject as? TerminalSession).map { show($0, beside: .columns) }
+    }
+
+    @objc func showBelowFromMenu(_ sender: NSMenuItem) {
+        (sender.representedObject as? TerminalSession).map { show($0, beside: .rows) }
+    }
+
+    @objc func moveToOwnTabFromMenu(_ sender: NSMenuItem) {
+        (sender.representedObject as? TerminalSession).map(moveToOwnTab)
+    }
+
+    @objc func unsplitFromMenu(_ sender: NSMenuItem) {
+        (sender.representedObject as? TerminalSession).map { unsplit($0) }
+    }
+
+    /// The empty pane's list: a new shell, then every tab not already on screen.
+    func pickerChoices(for group: PaneGroup) -> [PanePickerView.Choice] {
+        let folder = group.layout.panes.compactMap(session(_:)).first?.folder ?? ""
+        return [PanePickerView.Choice(tabID: nil, title: "New Shell", detail: folder.isEmpty ? "~" : folder)]
+            + sessions.filter { !group.layout.contains($0.tabID) }.map { tab in
+                PanePickerView.Choice(tabID: tab.tabID, title: tab.topic,
+                                      detail: [tab.agentName.map { AgentKind.named($0)?.title ?? $0 }, tab.folder.isEmpty ? "~" : tab.folder]
+                                          .compactMap { $0 }.joined(separator: " · "),
+                                      logo: tab.agentName.flatMap(AgentLogo.image(for:)))
+            }
     }
 
     // MARK: Moving between panes
@@ -114,8 +154,10 @@ extension MainWindowController {
             item.state = tabsOnLeft ? .on : .off
             return true
         case #selector(selectPaneLeft), #selector(selectPaneRight), #selector(selectPaneAbove), #selector(selectPaneBelow),
-             #selector(nextPane), #selector(previousPane):
+             #selector(nextPane), #selector(previousPane), #selector(unsplitTab):
             return (selectedGroup?.layout.panes.count ?? 0) > 1
+        case #selector(splitRight), #selector(splitDown):
+            return focusedSession != nil
         default:
             return true
         }
@@ -123,48 +165,50 @@ extension MainWindowController {
 
     // MARK: Building the cards
 
-    /// What a tab's card shows: its focused pane, the most pressing status among its panes, and
-    /// the agent's details for the sidebar.
-    func tabModel(_ group: PaneGroup, selected: Bool) -> TabModel? {
-        let panes = group.layout.panes.compactMap(session(_:))
-        guard let s = session(group.focused) ?? panes.first else { return nil }
+    /// What a tab's card shows. `selected`: on screen (every tab of the shown split);
+    /// `focused`: the one you type in.
+    func tabModel(_ s: TerminalSession) -> TabModel {
         let moving = cloudState.moving[ObjectIdentifier(s)]
+        let shown = selectedGroup?.layout.contains(s.tabID) == true
         var model = TabModel(topic: s.topic, folder: s.folder, git: s.git,
                              agentDiff: s.agentDiff.map { DiffCount(added: $0.added, removed: $0.removed) },
-                             status: Self.mostPressing(panes.map(\.status)), selected: selected, inCloud: s.isCloud,
+                             status: s.status, selected: shown, inCloud: s.isCloud,
                              moving: moving?.label, movingProgress: moving?.progress)
+        model.focused = shown && selectedGroup?.focused == s.tabID
         model.agent = s.agentName.map { AgentKind.named($0)?.title ?? $0 }
         model.model = s.agentUsage?.model.flatMap(ModelName.short)
         model.usage = s.agentUsage.flatMap { usage in
             let parts = [UsageText.cost(usage.costUSD, incomplete: usage.costIncomplete), UsageText.tokens(usage.tokens)].compactMap { $0 }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
-        model.agentSince = s.agentName == nil ? nil : s.agentStartedAt
+        model.agentSince = s.agentRunningSince
         model.program = s.agentName == nil && s.foregroundName != s.shellName ? s.foregroundName : nil
-        model.panes = panes.count
+        model.logo = s.agentName.flatMap(AgentLogo.image(for:))
         return model
-    }
-
-    /// A pane waiting on you outranks one working, then one done.
-    private static func mostPressing(_ statuses: [TabStatus]) -> TabStatus {
-        let order: [TabStatus] = [.waiting, .working, .done, .idle, .exited]
-        return order.first(where: statuses.contains) ?? .idle
     }
 }
 
-/// The strip above the terminal when the tabs are on the left: the tab's title, and room to
-/// drag the window by.
+/// The strip above the terminal when the tabs are on the left: the tab's title, after its
+/// agent's logo, and room to drag the window by.
 final class TitleStripView: NSView {
     static let height: CGFloat = 40
+    private static let logoSize: CGFloat = 16
     var title = "" { didSet { if title != oldValue { needsDisplay = true } } }
+    var logo: NSImage? { didSet { if logo !== oldValue { needsDisplay = true } } }
 
     override var mouseDownCanMoveWindow: Bool { false }
     override func mouseDown(with event: NSEvent) { WindowDrag.mouseDown(event, in: window) }
 
     override func draw(_ dirtyRect: NSRect) {
         let text = TabCardDrawing.text(title, Theme.topicFont, Theme.fg3)
-        let width = min(ceil(text.size().width), bounds.width - 24)
-        TabCardDrawing.draw(text, x: max(12, (bounds.width - width) / 2), y: (bounds.height - 17) / 2, maxX: bounds.width - 12)
+        let logoWidth = logo == nil ? 0 : Self.logoSize + 8
+        let width = min(ceil(text.size().width) + logoWidth, bounds.width - 24)
+        let x = max(12, (bounds.width - width) / 2)
+        if let logo {
+            logo.draw(in: NSRect(x: x, y: (bounds.height - Self.logoSize) / 2, width: Self.logoSize, height: Self.logoSize),
+                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+        TabCardDrawing.draw(text, x: x + logoWidth, y: (bounds.height - 17) / 2, maxX: bounds.width - 12)
     }
 
     override var isFlipped: Bool { true }
