@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Changed: agterm runs its own project memory and consult servers for every agent, even with agmux installed, so you can uninstall agmux without losing memory. Repos agmux knows keep reading and writing agmux's memory where it is; nothing is copied or moved.
+- Added: OpenCode, Kilo Code, Cursor Agent and Amp started in agterm get project memory and consult too, for that run only, without changes to their settings files. OpenCode, Kilo Code and Cursor Agent are also told how to use the memory.
+- Changed: Git repos agmux doesn't know get their own memory even when agmux is installed.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.

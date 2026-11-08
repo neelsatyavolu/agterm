@@ -25,12 +25,12 @@ On first launch agterm asks for Full Disk Access. Programs you run in a terminal
 
 ## agmux memory and consult
 
-Claude Code and Codex started in an agterm tab get the two MCP servers [agmux](https://agmux.dev) gives its own agents. agmux doesn't have to be installed:
+Claude Code, Codex, OpenCode, Kilo Code, Cursor Agent and Amp started in an agterm tab get the two MCP servers [agmux](https://agmux.dev) gives its own agents. agterm always runs its own copies of them, so agmux doesn't have to be installed, and uninstalling it loses no memory:
 
-- **agmux-memory**, project memory every agent in a repo reads and adds to. With agmux installed it is agmux's own server, for the folders agmux knows, with agmux's project ids and stores, so both apps share one memory. Without agmux, agterm's copy gives each git repo its own memory (stored in agterm's Application Support folder, plus the repo's `.agmux/MEMORY.md`).
+- **agmux-memory**, project memory every agent in a repo reads and adds to. For folders agmux knows (its `~/.agmux/agmux.db`, read even after agmux is uninstalled), agterm uses agmux's project ids and stores in `~/.agmux/projects` in place, so both apps share one memory and nothing is copied or moved. Every other git repo gets its own memory in agterm's Application Support folder. Either way the repo's `.agmux/MEMORY.md` is kept up to date. If a repo has both stores (agterm ran without agmux for a while), the one written to last is used.
 - **consult**, for second opinions and diff reviews from other agents on your Mac.
 
-agterm puts small `claude`, `codex` and `grok` wrappers first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add `--mcp-config` for Claude or `-c mcp_servers.…` for Codex, skip servers you already configured, and edit no config files. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs Node on PATH (22 or later for consult). agterm's copies of the servers are in `Resources/mcp`, under agmux's license.
+agterm puts small wrappers for these agents (and `grok`, for account switching) first on PATH in its own shells (zsh through `ZDOTDIR`, which still loads your startup files). They add the servers for this run only and edit no config files: `--mcp-config` for Claude Code (with the memory instructions in `--append-system-prompt`), `-c mcp_servers.…` for Codex, `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT` for OpenCode and Kilo (with the instructions as an instructions file), a local plugin in `--plugin-dir` for Cursor Agent (its servers show as `plugin-agterm-…`, with the instructions as an always-on rule), and `--mcp-config` for Amp. Servers you already configured aren't added twice. Grok, Gemini CLI, Factory Droid, Kimi Code and Cline don't get them: none has a way to add a server for one run without changing your settings. Start an agent with `AGTERM_MCP=0` to skip them once, or turn them off in Settings → Agents. Needs Node on PATH (22 or later for consult). agterm's copies of the servers are in `Resources/mcp`, under agmux's license.
 
 ## Starting agents and ⌘K
 

@@ -2,19 +2,21 @@ import AgTermCore
 import AgTermSessionKit
 import Darwin
 import Foundation
-import SQLite3
 
-/// Gives agents started in agterm the same MCP servers agmux gives its agents (agmux project
-/// memory and consult) and, if you ask for it, starts them without permission prompts. agterm's
-/// shells get small `claude`, `codex` and `grok` wrappers first on PATH; each wrapper re-enters
-/// this binary (`--agterm-exec`), which works out the extra arguments and execs the real CLI.
+/// Gives agents started in agterm its project memory and consult MCP servers (the ones agmux
+/// gives its agents; see AgentIntegrationMCP.swift) and, if you ask for it, starts them without
+/// permission prompts. agterm's shells get small wrappers (`claude`, `codex`, `grok`, …) first on
+/// PATH; each re-enters this binary (`--agterm-exec`), which works out the extra arguments and
+/// execs the real CLI.
 enum AgentIntegration {
-    /// Agents that get a wrapper: Claude Code, Codex and Grok always (MCP servers, account
-    /// switching), others only while "skip permission prompts" is on for them, so agterm shadows
-    /// as few commands as it can.
+    /// Agents that get a wrapper: Claude Code, Codex and Grok always (account switching), the
+    /// others agterm gives MCP servers while memory or consult is on, and the rest only while
+    /// "skip permission prompts" is on for them, so agterm shadows as few commands as it can.
     static var wrappedAgents: [AgentKind] {
-        AgentKind.all.filter {
-            AccountProvider(rawValue: $0.id) != nil || ($0.bypassFlags != nil && UserDefaults.standard.bool(forKey: bypassKey($0)))
+        let mcp = wantMemory || wantConsult
+        return AgentKind.all.filter {
+            AccountProvider(rawValue: $0.id) != nil || (mcp && AgentMCPLaunch.supported.contains($0.id))
+                || ($0.bypassFlags != nil && UserDefaults.standard.bool(forKey: bypassKey($0)))
         }
     }
     static let memoryKey = "integrationMemory"
@@ -165,17 +167,8 @@ enum AgentIntegration {
         if agent == "codex", env["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == nil {
             setenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", "agterm", 1)
         }
-        if env["AGTERM_MCP"] != "0" {
-            let servers = mcpServers(for: agent, cwd: FileManager.default.currentDirectoryPath, env: env)
-            switch agent {
-            case "claude":
-                let memory = servers.contains { $0.name == "agmux-memory" } ? memoryInstructions : ""
-                argv = AgentLaunch.claude(userArgs: userArgs, servers: servers, instructions: memory) ?? userArgs
-            case "codex":
-                argv = AgentLaunch.codex(userArgs: userArgs, servers: servers) ?? userArgs
-            default:
-                break
-            }
+        if env["AGTERM_MCP"] != "0", let withMCP = addingMCP(agent: agent, userArgs: userArgs, env: env) {
+            argv = withMCP
         }
         let cArgs = ([real] + argv).map { strdup($0) } + [nil]
         execv(real, cArgs)
@@ -250,138 +243,6 @@ enum AgentIntegration {
         }
     }
 
-    static let memoryInstructions = """
-        ## agmux project memory
-        Shared project memory for every agent on this repo, through the agmux-memory MCP tools.
-        1. Call memory_list first to see what earlier agents recorded.
-        2. Do the work.
-        3. Before your final reply, call session_upsert with a short summary of what you did.
-        4. Use memory_add only for lasting decisions, conventions or gotchas.
-        """
-
-    /// The servers to add for `agent` started in `cwd`, skipping any the user already configured.
-    static func mcpServers(for agent: String, cwd: String, env: [String: String]) -> [MCPServer] {
-        let defaults = UserDefaults.standard
-        let wantMemory = defaults.object(forKey: memoryKey) as? Bool ?? true
-        let wantConsult = defaults.object(forKey: consultKey) as? Bool ?? true
-        guard wantMemory || wantConsult, let bundles = mcpBundles(), let node = findOnPath("node", excluding: nil) else { return [] }
-        let existing = configuredServers(for: agent, cwd: cwd)
-        let home = NSHomeDirectory()
-        // With agmux installed, exactly agmux's projects and stores, so memory matches agmux.
-        let project = bundles.fromAgmux
-            ? AgmuxProject.match(cwd, in: agmuxProjects())
-            : AgmuxProject.standalone(cwd) { FileManager.default.fileExists(atPath: $0 + "/.git") }
-        var servers: [MCPServer] = []
-        if wantMemory, let project, !existing.contains("agmux-memory") {
-            let session = "agterm-" + (env["AGTERM_TAB_ID"] ?? UUID().uuidString)
-            let memoryEnv = bundles.fromAgmux
-                ? project.memoryEnv(home: home, sessionID: session)
-                : project.memoryEnv(dataDir: supportDir.appendingPathComponent("projects/" + project.id).path, sessionID: session)
-            servers.append(MCPServer(name: "agmux-memory", command: node, args: [bundles.memory], env: memoryEnv))
-        }
-        if wantConsult, !existing.contains("consult"), nodeMajorVersion(node) >= 22 {
-            var consultEnv = ["PATH": env["PATH"] ?? ""]
-            if let project { consultEnv["AGMUX_PROJECT_ID"] = project.id }
-            // agterm's own consult: agents list and message this Mac's tabs, use the board and (with
-            // team sessions on) reach teammates' agents, all through the app's socket.
-            var consult = bundles.consult
-            if let shipped = shippedConsultBundle() {
-                consult = shipped
-                consultEnv["AGTERM_TEAM_SOCK"] = TeamSessions.socketPath
-            }
-            servers.append(MCPServer(name: "consult", command: node, args: [consult], env: consultEnv))
-        }
-        return servers
-    }
-
-    // MARK: Finding things
-
-    /// The memory and consult servers: agmux's own while agmux is installed, else the copies agterm
-    /// ships (Resources/mcp).
-    static func mcpBundles() -> (memory: String, consult: String, fromAgmux: Bool)? {
-        if let agmux = agmuxBundles() { return (agmux.memory, agmux.consult, true) }
-        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("mcp") else { return nil }
-        let memory = dir.appendingPathComponent("agmux-memory-mcp.bundle.mjs").path
-        let consult = dir.appendingPathComponent("agmux-consult-mcp.bundle.mjs").path
-        guard FileManager.default.fileExists(atPath: memory), FileManager.default.fileExists(atPath: consult) else { return nil }
-        return (memory, consult, false)
-    }
-
-    /// agterm's own copy of consult: the board, the team session tools and `--answer-team-ask`.
-    static func shippedConsultBundle() -> String? {
-        guard let path = Bundle.main.resourceURL?.appendingPathComponent("mcp/agmux-consult-mcp.bundle.mjs").path,
-              FileManager.default.fileExists(atPath: path) else { return nil }
-        return path
-    }
-
-    /// agmux's bundled servers, if agmux is installed. AGTERM_NO_AGMUX=1 acts as if it weren't.
-    static func agmuxBundles() -> (memory: String, consult: String)? {
-        guard ProcessInfo.processInfo.environment["AGTERM_NO_AGMUX"] != "1" else { return nil }
-        for app in ["/Applications/agmux.app", NSHomeDirectory() + "/Applications/agmux.app"] {
-            let dist = app + "/Contents/Resources/sidecar/dist/"
-            let memory = dist + "agmux-memory-mcp.bundle.mjs", consult = dist + "agmux-consult-mcp.bundle.mjs"
-            if FileManager.default.fileExists(atPath: memory), FileManager.default.fileExists(atPath: consult) {
-                return (memory, consult)
-            }
-        }
-        return nil
-    }
-
-    /// Projects from agmux's database, read-only.
-    static func agmuxProjects() -> [AgmuxProject] {
-        let path = NSHomeDirectory() + "/.agmux/agmux.db"
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            sqlite3_close(db)
-            return []
-        }
-        defer { sqlite3_close(db) }
-        sqlite3_busy_timeout(db, 300)
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT id, repo_path FROM projects", -1, &statement, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(statement) }
-        var projects: [AgmuxProject] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            guard let id = sqlite3_column_text(statement, 0), let repo = sqlite3_column_text(statement, 1) else { continue }
-            projects.append(AgmuxProject(id: String(cString: id), repoPath: String(cString: repo)))
-        }
-        return projects
-    }
-
-    /// MCP server names the user already gave this agent, so agterm doesn't add a second copy.
-    private static func configuredServers(for agent: String, cwd: String) -> Set<String> {
-        let home = NSHomeDirectory()
-        switch agent {
-        case "claude":
-            var names = Set<String>()
-            if let config = json(home + "/.claude.json") {
-                names.formUnion((config["mcpServers"] as? [String: Any])?.keys ?? [:].keys)
-                if let projects = config["projects"] as? [String: [String: Any]] {
-                    for (dir, settings) in projects where cwd == dir || cwd.hasPrefix(dir + "/") {
-                        names.formUnion((settings["mcpServers"] as? [String: Any])?.keys ?? [:].keys)
-                    }
-                }
-            }
-            for dir in AgentLaunch.folders(upFrom: cwd) where dir != "/" {
-                if let mcp = json(dir + "/.mcp.json") {
-                    names.formUnion((mcp["mcpServers"] as? [String: Any])?.keys ?? [:].keys)
-                }
-            }
-            return names
-        case "codex":
-            let codexHome = ProcessInfo.processInfo.environment["CODEX_HOME"] ?? home + "/.codex"
-            let toml = (try? String(contentsOfFile: codexHome + "/config.toml", encoding: .utf8)) ?? ""
-            return AgentLaunch.codexServerNames(toml)
-        default:
-            return []
-        }
-    }
-
-    private static func json(_ path: String) -> [String: Any]? {
-        guard let data = FileManager.default.contents(atPath: path) else { return nil }
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-    }
-
     static func findOnPath(_ name: String, excluding skip: String?) -> String? {
         let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         for dir in path.split(separator: ":").map(String.init) where dir != skip && !dir.isEmpty {
@@ -389,18 +250,5 @@ enum AgentIntegration {
             if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
         }
         return nil
-    }
-
-    private static func nodeMajorVersion(_ node: String) -> Int {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: node)
-        process.arguments = ["--version"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return 0 }
-        process.waitUntilExit()
-        let version = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        return Int(version.trimmingCharacters(in: .whitespacesAndNewlines).dropFirst().prefix { $0 != "." }) ?? 0
     }
 }
