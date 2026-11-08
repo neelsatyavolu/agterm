@@ -14,8 +14,8 @@ final class TeamsSync {
     private var timer: Timer?
     private var running = false
     private let worker = DispatchQueue(label: "agterm.teams", qos: .utility)
-    /// Parsed events per transcript, reused while the file's modification date is unchanged.
-    private var parsed: [String: (modified: Date, events: [UsageEvent])] = [:]
+    /// What the last sync read, so the next one reads only what agents added since.
+    private var memory = Memory()
     /// Whether any of your teams shows Claude logins' emails, and when that was last asked.
     private var labelsWanted: (value: Bool, at: Date)?
     private static let labelsWantedFor: TimeInterval = 600
@@ -40,12 +40,12 @@ final class TeamsSync {
         running = true
         let claims = TeamsClaims.shared.claudeSessions
         let spans = TeamsLoginSpans.shared.all
-        let cache = parsed
+        let memory = memory
         worker.async { [weak self] in
-            let result = Self.collectBuckets(claudeSessions: claims, spans: spans, cache: cache)
+            let result = Self.collectBuckets(claudeSessions: claims, spans: spans, memory: memory)
             Task { @MainActor in
                 guard let self else { return }
-                self.parsed = result.cache
+                self.memory = result.memory
                 let labels = await self.wantsLabels(token: token) ? AccountLabel.from(spans) : []
                 await self.upload(result.buckets, accounts: result.accounts, labels: labels, token: token)
                 self.running = false
@@ -55,47 +55,80 @@ final class TeamsSync {
 
     // MARK: Collecting
 
-    private nonisolated static func collectBuckets(claudeSessions: Set<String>, spans: [LoginSpan],
-                                                   cache: [String: (modified: Date, events: [UsageEvent])])
-        -> (buckets: [HourlyBucket], accounts: [AccountBucket], cache: [String: (modified: Date, events: [UsageEvent])]) {
+    /// What a sync keeps for the next one: each transcript's read position, parser state and
+    /// events; where each Claude session's transcript is; which Codex rollouts agterm started.
+    struct Memory {
+        struct Tail {
+            var offset: UInt64
+            var parser: any TranscriptLineParser
+            var events: [UsageEvent]
+        }
+        var tails: [String: Tail] = [:]
+        var claudeFiles: [String: [URL]] = [:]
+        var codexStarted: [String: Bool] = [:]
+    }
+
+    private nonisolated static func collectBuckets(claudeSessions: Set<String>, spans: [LoginSpan], memory: Memory)
+        -> (buckets: [HourlyBucket], accounts: [AccountBucket], memory: Memory) {
         let cutoff = Date().addingTimeInterval(-windowDays * 86400)
-        // Costs are set per event while reading, as agmux does.
+        // Costs are set per event when a line is first read, as agmux does.
         let prices = PriceList.current()
-        var next: [String: (modified: Date, events: [UsageEvent])] = [:]
+        var next = Memory(claudeFiles: memory.claudeFiles, codexStarted: memory.codexStarted)
         var events: [UsageEvent] = []
 
-        func use(_ url: URL, parse: (String) -> [UsageEvent]) {
-            guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                  modified >= cutoff else { return }
-            if let hit = cache[url.path], hit.modified == modified {
-                next[url.path] = hit
-                events += hit.events
-                return
+        // Agents only append, so only the lines added since the last sync are read.
+        func use(_ file: URL, parser makeParser: () -> any TranscriptLineParser) {
+            // Per file, so URLs and strings made while reading are freed as it goes.
+            autoreleasepool {
+                // Not URL.resourceValues: it caches on the URL.
+                guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                      let modified = attributes[.modificationDate] as? Date, modified >= cutoff,
+                      let size = attributes[.size] as? UInt64 else { return }
+                var tail = memory.tails[file.path]
+                // A shorter file was replaced or rewritten: start over.
+                if tail == nil || size < tail!.offset { tail = Memory.Tail(offset: 0, parser: makeParser(), events: []) }
+                guard var tail else { return }
+                if size > tail.offset {
+                    guard let end = TranscriptFile.read(file.path, from: tail.offset, line: { tail.parser.feed($0) }) else { return }
+                    tail.offset = end
+                    tail.events = tail.parser.events
+                }
+                next.tails[file.path] = tail
+                events += tail.events
             }
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
-            let parsedEvents = parse(text)
-            next[url.path] = (modified, parsedEvents)
-            events += parsedEvents
         }
 
         let home = URL(fileURLWithPath: NSHomeDirectory())
         // Claude: ~/.claude/projects/<encoded cwd>/<session id>.jsonl, only for sessions seen in agterm.
-        let projects = home.appendingPathComponent(".claude/projects")
-        for dir in (try? FileManager.default.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil)) ?? [] {
-            for id in claudeSessions {
-                let file = dir.appendingPathComponent(id + ".jsonl")
-                guard FileManager.default.fileExists(atPath: file.path) else { continue }
-                use(file) { ClaudeTranscript.parse(lines: $0, sessionID: id, fallbackDir: dir.lastPathComponent, prices: prices) }
+        let unfound = claudeSessions.filter { next.claudeFiles[$0] == nil }
+        if !unfound.isEmpty {
+            let projects = home.appendingPathComponent(".claude/projects")
+            for dir in (try? FileManager.default.contentsOfDirectory(at: projects, includingPropertiesForKeys: nil)) ?? [] {
+                for id in unfound {
+                    let file = dir.appendingPathComponent(id + ".jsonl")
+                    if FileManager.default.fileExists(atPath: file.path) { next.claudeFiles[id, default: []].append(file) }
+                }
             }
         }
-        // Codex: rollouts whose header says they were started in agterm.
+        for id in claudeSessions {
+            for file in next.claudeFiles[id] ?? [] {
+                let dir = file.deletingLastPathComponent().lastPathComponent
+                use(file) { ClaudeTranscript.Parser(sessionID: id, fallbackDir: dir, prices: prices) }
+            }
+        }
+        // Codex: rollouts whose header says they were started in agterm. A header never changes.
         let codexHome = ProcessInfo.processInfo.environment["CODEX_HOME"].map(URL.init(fileURLWithPath:))
             ?? home.appendingPathComponent(".codex")
         let sessions = codexHome.appendingPathComponent("sessions")
-        if let walker = FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: [.contentModificationDateKey]) {
+        if let walker = FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: nil) {
             for case let file as URL in walker where file.pathExtension == "jsonl" {
-                guard let header = firstLine(of: file), CodexTranscript.originator(header: header) == "agterm" else { continue }
-                use(file) { CodexTranscript.parse(lines: $0, sessionID: file.deletingPathExtension().lastPathComponent, prices: prices) }
+                let started = next.codexStarted[file.path] ?? autoreleasepool {
+                    firstLine(of: file).map { CodexTranscript.originator(header: $0) == "agterm" }
+                }
+                // A header still being written (or unreadable) is asked again next time.
+                if let started { next.codexStarted[file.path] = started }
+                guard started == true else { continue }
+                use(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent, prices: prices) }
             }
         }
         let now = Date()
@@ -104,17 +137,18 @@ final class TeamsSync {
         return (buckets, accounts, next)
     }
 
+    /// The first line, once it's complete (ends in a newline within the first 256 KB).
     private nonisolated static func firstLine(of url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 256 * 1024) else { return nil }
-        return String(decoding: data, as: UTF8.self).split(separator: "\n", maxSplits: 1).first.map(String.init)
+        guard let data = try? handle.read(upToCount: 256 * 1024), let end = data.firstIndex(of: 0x0A) else { return nil }
+        return String(decoding: data[..<end], as: UTF8.self)
     }
 
     /// The exact upload body for these Claude sessions plus agterm's Codex sessions, without sending
     /// it (self-test and debugging).
     nonisolated static func previewPayload(claudeSessions: Set<String>) -> [String: Any] {
-        let collected = collectBuckets(claudeSessions: claudeSessions, spans: TeamsLoginSpans.shared.all, cache: [:])
+        let collected = collectBuckets(claudeSessions: claudeSessions, spans: TeamsLoginSpans.shared.all, memory: Memory())
         return payload(buckets: collected.buckets, accounts: collected.accounts, labels: [])
     }
 

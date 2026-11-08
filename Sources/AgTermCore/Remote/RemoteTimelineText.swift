@@ -7,12 +7,20 @@ enum ClaudeText {
     private static let systemTags: NSRegularExpression = {
         let tags = ["system-reminder", "command-name", "command-message", "command-args", "local-command-caveat",
                     "local-command-stdout", "context_guidance", "context_window_protection", "task-notification",
-                    "ide_opened_file", "persisted-output"]
+                    "ide_opened_file", "persisted-output", "tools-used-before-summary", "bash-input", "bash-stdout",
+                    "bash-stderr"]
         let pattern = "(?s)" + tags.map { "<\($0)[^>]*>.*?</\($0)>" }.joined(separator: "|")
         // The pattern is a constant; failing to compile it is a programming error.
         // swiftlint:disable:next force_try
         return try! NSRegularExpression(pattern: pattern)
     }()
+
+    /// What's between `<tag>` and `</tag>`, when `text` has that tag.
+    static func tagBody(_ text: String, _ tag: String) -> String? {
+        guard let open = text.range(of: "<\(tag)>"),
+              let close = text.range(of: "</\(tag)>", range: open.upperBound..<text.endIndex) else { return nil }
+        return String(text[open.upperBound..<close.lowerBound])
+    }
 
     static func stripSystemTags(_ text: String) -> String {
         let range = NSRange(text.startIndex..., in: text)

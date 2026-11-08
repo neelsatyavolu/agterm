@@ -38,6 +38,9 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         didSet { if name != oldValue { onChange?() } }
     }
     private(set) var signals = StatusSignals()
+    /// When each recent stretch of typing in this tab stopped (the newest 64): a Grok
+    /// conversation made just after one is this tab's `/new`, not one started elsewhere.
+    private(set) var typingStops: [Date] = []
     private(set) var status: TabStatus = .idle
     let shellName: String
     private let shellPath: String
@@ -264,6 +267,8 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         view.onInput = { [weak self] bytes in
             guard let self else { return }
             let now = Date()
+            let sameStretch = self.typingStops.last.map { now.timeIntervalSince($0) < 2 } ?? false
+            self.typingStops = Array(((sameStretch ? self.typingStops.dropLast() : self.typingStops[...]) + [now]).suffix(64))
             self.signals.lastInput = now
             // Esc or Ctrl-C to an agent ends its turn now, not when a spinner happens to go stale.
             if StatusRules.isInterrupt(bytes), self.agentName != nil || self.status == .working {

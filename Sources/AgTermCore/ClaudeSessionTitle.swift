@@ -11,17 +11,28 @@ public enum ClaudeSessionTitle {
 
     /// The latest `ai-title`, else the first prompt without its leading slash command.
     public static func parse(lines: String) -> String? {
-        var aiTitle: String?, firstPrompt: String?
-        for line in lines.split(separator: "\n") {
+        var scanner = Scanner()
+        lines.split(separator: "\n").forEach { scanner.feed($0) }
+        return scanner.title
+    }
+
+    /// `parse`, a line at a time, so a growing transcript is read once rather than on every change.
+    public struct Scanner {
+        private var aiTitle: String?, firstPrompt: String?
+
+        public init() {}
+
+        public var title: String? { aiTitle ?? firstPrompt.flatMap(ClaudeSessionTitle.promptTitle) }
+
+        public mutating func feed<Line: StringProtocol>(_ line: Line) {
             guard line.contains("\"ai-title\"") || (firstPrompt == nil && line.contains("\"last-prompt\"")),
-                  let record = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
+                  let record = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return }
             if record["type"] as? String == "ai-title", let title = record["aiTitle"] as? String, !title.isEmpty {
                 aiTitle = title
             } else if record["type"] as? String == "last-prompt", let prompt = record["lastPrompt"] as? String {
                 firstPrompt = prompt
             }
         }
-        return aiTitle ?? firstPrompt.flatMap(promptTitle)
     }
 
     private static func promptTitle(_ prompt: String) -> String? {

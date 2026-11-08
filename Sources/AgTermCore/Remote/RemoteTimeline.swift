@@ -25,6 +25,16 @@ public enum RemoteTimeline {
         capped(CodexTimeline.entries(rollout: rollout))
     }
 
+    /// Timeline for a Grok session's `chat_history.jsonl`, newest 250 rows, only kinds the phone paints.
+    public static func grok(chatHistory: String) -> [MobileTimelineEntry] {
+        capped(GrokTimeline.entries(chatHistory: chatHistory).filter { isRenderableKind($0.kind) })
+    }
+
+    /// The model of a Grok session's latest reply (`grok-4.7-build-fast`).
+    public static func modelLabel(grok chatHistory: String) -> String? {
+        GrokTimeline.modelLabel(chatHistory: chatHistory)
+    }
+
     /// The `model` agmux puts on a Claude terminal's thread row: the raw model
     /// id of the latest assistant turn (e.g. `claude-opus-4-5-20251101`). The
     /// phone shortens it for display (`shortModel` → "Opus 4.5").

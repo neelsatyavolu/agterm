@@ -26,6 +26,7 @@ struct TabLaunch: Codable {
     let args: [String]
     let startedAt: Date
     /// Grok: the conversation it runs, when known (it doesn't say which one itself).
+    /// Codex: the session `codex resume <id>` reopens.
     var sessionID: String? = nil
     /// Claude/Codex: the login's identity hash (as agmux computes it), when its files say.
     var identityHash: String? = nil
@@ -78,7 +79,7 @@ final class AccountStore: ObservableObject {
     static var dir: URL { AgentIntegration.supportDir.appendingPathComponent("accounts", isDirectory: true) }
     private static var settingsURL: URL { dir.appendingPathComponent("accounts.json") }
     private static var routingURL: URL { dir.appendingPathComponent("routing.json") }
-    private static var launchesDir: URL { dir.appendingPathComponent("launches", isDirectory: true) }
+    static var launchesDir: URL { dir.appendingPathComponent("launches", isDirectory: true) }
     static var requestsDir: URL { dir.appendingPathComponent("requests", isDirectory: true) }
 
     static func home(_ id: String) -> URL { dir.appendingPathComponent(id, isDirectory: true) }

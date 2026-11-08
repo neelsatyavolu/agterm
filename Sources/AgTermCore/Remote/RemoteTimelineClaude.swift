@@ -8,7 +8,8 @@ enum ClaudeChatItem: Equatable {
     case assistantText(text: String, timestamp: String, uuid: String)
     case assistantThinking(thinking: String, timestamp: String, uuid: String)
     case toolUse(id: String, name: String, input: JSONValue, timestamp: String, uuid: String)
-    case toolResult(toolUseID: String, content: String, isError: Bool, timestamp: String, uuid: String)
+    /// `patch`: the real unified diff Claude Code recorded for an edit (`toolUseResult.structuredPatch`).
+    case toolResult(toolUseID: String, content: String, isError: Bool, timestamp: String, uuid: String, patch: String? = nil)
 }
 
 /// Claude Code transcript (`~/.claude/projects/<dir>/<session>.jsonl`) → timeline,
@@ -18,8 +19,8 @@ enum ClaudeTimeline {
     /// Queued messages are recent by nature; the overlay scans only this tail.
     static let queueTailBytes = 256 * 1024
 
-    static func entries(transcript: String) -> [MobileTimelineEntry] {
-        let base = itemsToEntries(items(transcript: transcript))
+    static func entries(transcript: String, chatMarkers: Bool = false) -> [MobileTimelineEntry] {
+        let base = itemsToEntries(items(transcript: transcript), chatMarkers: chatMarkers)
         return applyingQueueOverlay(base, transcript: transcript)
     }
 
@@ -38,7 +39,18 @@ enum ClaudeTimeline {
     }
 
     static func parseLine(_ line: String) -> [ClaudeChatItem] {
-        guard let v = JSONValue.parse(line), let type = v["type"]?.string else { return [] }
+        JSONValue.parse(line).map(parseRecord) ?? []
+    }
+
+    /// Only `user` and `assistant` records make rows. A cheap look at the raw line, so the
+    /// big records Claude Code also writes (attachments, request blobs, progress) aren't parsed.
+    static func mayHaveRows(_ line: String) -> Bool {
+        line.containsBytes("\"type\":\"user\"") || line.containsBytes("\"type\":\"assistant\"")
+            || line.containsBytes("\"type\": \"user\"") || line.containsBytes("\"type\": \"assistant\"")
+    }
+
+    static func parseRecord(_ v: JSONValue) -> [ClaudeChatItem] {
+        guard let type = v["type"]?.string else { return [] }
         let timestamp = v["timestamp"]?.string ?? ""
         let uuid = v["uuid"]?.string ?? ""
         switch type {
@@ -56,6 +68,11 @@ enum ClaudeTimeline {
         guard let content = v.pointer("/message/content") else { return [] }
         if let text = content.string { return [.userMessage(content: text, timestamp: timestamp, uuid: uuid)] }
         guard let blocks = content.array else { return [] }
+        // A message with pictures is one row: its text plus an image marker.
+        if !blocks.contains(where: { $0["type"]?.string == "tool_result" }), let text = textWithImages(blocks) {
+            return [.userMessage(content: text, timestamp: timestamp, uuid: uuid)]
+        }
+        let patch = v["toolUseResult"].flatMap(structuredPatch)
         let multi = blocks.count > 1
         return blocks.enumerated().compactMap { index, block in
             let blockUUID = multi ? "\(uuid)-\(index)" : uuid
@@ -65,11 +82,35 @@ enum ClaudeTimeline {
             case "tool_result":
                 return .toolResult(toolUseID: block["tool_use_id"]?.string ?? "",
                                    content: block["content"].map(toolResultText) ?? "",
-                                   isError: block["is_error"]?.bool ?? false, timestamp: timestamp, uuid: blockUUID)
+                                   isError: block["is_error"]?.bool ?? false, timestamp: timestamp, uuid: blockUUID,
+                                   patch: blocks.count == 1 ? patch : nil)
             default:
                 return nil
             }
         }
+    }
+
+    /// Text blocks joined, with `[image]` for each picture the text doesn't already name
+    /// (`[Image #1]`); nil when the blocks hold no image.
+    static func textWithImages(_ blocks: [JSONValue]) -> String? {
+        let images = blocks.filter { $0["type"]?.string == "image" }.count
+        guard images > 0 else { return nil }
+        let text = blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
+        if text.containsBytes("[Image") { return text }
+        let marker = Array(repeating: "[image]", count: images).joined(separator: " ")
+        return text.isBlank ? marker : text + "\n" + marker
+    }
+
+    /// `toolUseResult.structuredPatch` hunks as one unified diff.
+    static func structuredPatch(_ result: JSONValue) -> String? {
+        guard let hunks = result["structuredPatch"]?.array, !hunks.isEmpty else { return nil }
+        let diff = hunks.map { hunk -> String in
+            let header = "@@ -\(hunk["oldStart"]?.int ?? 0),\(hunk["oldLines"]?.int ?? 0) "
+                + "+\(hunk["newStart"]?.int ?? 0),\(hunk["newLines"]?.int ?? 0) @@"
+            let lines = hunk["lines"]?.array?.compactMap(\.string) ?? []
+            return ([header] + lines).joined(separator: "\n")
+        }.joined(separator: "\n")
+        return TimelineTools.looksLikeDiff(diff) ? diff : nil
     }
 
     private static func assistantItems(_ v: JSONValue, timestamp: String, uuid: String) -> [ClaudeChatItem] {
@@ -80,7 +121,7 @@ enum ClaudeTimeline {
             switch block["type"]?.string {
             case "text":
                 return block["text"]?.string.map { .assistantText(text: $0, timestamp: timestamp, uuid: blockUUID) }
-            case "thinking":
+            case "thinking", "redacted_thinking":
                 return .assistantThinking(thinking: block["thinking"]?.string ?? "", timestamp: timestamp, uuid: blockUUID)
             case "tool_use":
                 return .toolUse(id: block["id"]?.string ?? "", name: block["name"]?.string ?? "",
@@ -93,49 +134,104 @@ enum ClaudeTimeline {
 
     /// `extract_tool_result_content`.
     private static func toolResultText(_ value: JSONValue) -> String {
-        if let text = value.string { return text }
-        if let blocks = value.array {
-            return blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
+        let text: String
+        if let s = value.string {
+            text = s
+        } else if let blocks = value.array {
+            text = blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
+        } else {
+            return value.serdeString
         }
-        return value.serdeString
+        // Claude Code wraps a failed call's message in `<tool_use_error>`.
+        return ClaudeText.tagBody(text, "tool_use_error") ?? text
     }
 
     // MARK: Items → entries
 
     /// `claude_items_to_entries`.
-    static func itemsToEntries(_ items: [ClaudeChatItem]) -> [MobileTimelineEntry] {
-        var out: [MobileTimelineEntry] = []
-        var toolIndex: [String: Int] = [:]
-        for item in items {
+    static func itemsToEntries(_ items: [ClaudeChatItem], chatMarkers: Bool = false) -> [MobileTimelineEntry] {
+        var fold = Fold(chatMarkers: chatMarkers)
+        items.forEach { fold.add($0) }
+        return fold.entries
+    }
+
+    /// `claude_items_to_entries` an item at a time, so a growing transcript is folded once.
+    struct Fold {
+        private(set) var entries: [MobileTimelineEntry] = []
+        private var toolIndex: [String: Int] = [:]
+        /// Chat view extras the phone doesn't get: a line for thinking Claude kept to itself
+        /// (signed but empty, or redacted), and `!` shell commands as command rows.
+        var chatMarkers = false
+        /// The last `!` command row, for the output record that follows it.
+        private var bangIndex: Int?
+
+        init(chatMarkers: Bool = false) {
+            self.chatMarkers = chatMarkers
+        }
+
+        mutating func add(_ item: ClaudeChatItem) {
             switch item {
             case let .userMessage(content, timestamp, uuid):
-                guard let text = ClaudeText.clean(content) else { continue }
-                out.append(MobileTimelineEntry(id: uuid, kind: "user", text: text, ts: parseLogTimestamp(timestamp)))
+                if chatMarkers, addBangShell(content, ts: parseLogTimestamp(timestamp), uuid: uuid) { return }
+                guard let text = ClaudeText.clean(content) else { return }
+                entries.append(MobileTimelineEntry(id: uuid, kind: "user", text: text, ts: parseLogTimestamp(timestamp)))
             case let .assistantText(text, timestamp, uuid):
-                guard let text = ClaudeText.clean(text) else { continue }
-                out.append(MobileTimelineEntry(id: uuid, kind: "assistant", text: text, ts: parseLogTimestamp(timestamp)))
+                guard let text = ClaudeText.clean(text) else { return }
+                entries.append(MobileTimelineEntry(id: uuid, kind: "assistant", text: text, ts: parseLogTimestamp(timestamp)))
             case let .assistantThinking(thinking, timestamp, uuid):
                 // Empty thinking blocks still appear in Claude JSONL.
-                guard !thinking.isBlank else { continue }
-                out.append(MobileTimelineEntry(id: uuid, kind: "thinking", text: thinking, ts: parseLogTimestamp(timestamp)))
+                guard chatMarkers || !thinking.isBlank else { return }
+                entries.append(MobileTimelineEntry(id: uuid, kind: "thinking", text: thinking, ts: parseLogTimestamp(timestamp)))
             case let .toolUse(id, name, input, timestamp, uuid):
                 let (subject, detail) = TimelineTools.subjectDetail(name, input)
                 let entry = MobileTimelineEntry(id: uuid, kind: "tool", lead: TimelineTools.lead(name), subject: subject,
                                                 detail: detail, status: "running", requestId: id, toolName: name,
                                                 ts: parseLogTimestamp(timestamp))
-                toolIndex[id] = out.count
-                out.append(TimelineTools.filled(entry, input: input))
-            case let .toolResult(toolUseID, content, isError, timestamp, uuid):
+                toolIndex[id] = entries.count
+                entries.append(TimelineTools.filled(entry, input: input))
+            case let .toolResult(toolUseID, content, isError, timestamp, uuid, patch):
                 if let index = toolIndex[toolUseID] {
-                    out[index] = TimelineTools.applyingResult(out[index], content: content, isError: isError)
+                    let isAgent = TimelineTools.isAgentTool(entries[index].toolName ?? "")
+                    var entry = TimelineTools.applyingResult(entries[index], content: isAgent ? ClaudeText.stripSystemTags(content) : content,
+                                                             isError: isError)
+                    if !isError, let patch, TimelineTools.fileMutation(entry.toolName ?? "") != nil {
+                        let counts = TimelineTools.countDiffPlusMinus(patch)
+                        entry.body = timelineTruncate(patch, TimelineTools.diffBodyLimit)
+                        entry.additions = counts.additions > 0 ? counts.additions : nil
+                        entry.deletions = counts.deletions > 0 ? counts.deletions : nil
+                    }
+                    if chatMarkers { entry.endTs = parseLogTimestamp(timestamp) }
+                    entries[index] = entry
                 } else {
-                    out.append(MobileTimelineEntry(id: uuid, kind: "tool", lead: "Result", status: isError ? "error" : "ok",
-                                                   body: timelineTruncate(content, TimelineTools.resultBodyLimit),
-                                                   requestId: toolUseID, ts: parseLogTimestamp(timestamp)))
+                    entries.append(MobileTimelineEntry(id: uuid, kind: "tool", lead: "Result", status: isError ? "error" : "ok",
+                                                       body: timelineTruncate(content, TimelineTools.resultBodyLimit),
+                                                       requestId: toolUseID, ts: parseLogTimestamp(timestamp)))
                 }
             }
         }
-        return out
+
+        /// `!cmd` typed in Claude Code: `<bash-input>` opens a command row, the
+        /// `<bash-stdout>`/`<bash-stderr>` record after it fills its output. True when handled.
+        private mutating func addBangShell(_ content: String, ts: Int, uuid: String) -> Bool {
+            let text = content.rustTrimmed
+            if let cmd = ClaudeText.tagBody(text, "bash-input") {
+                bangIndex = entries.count
+                entries.append(MobileTimelineEntry(id: uuid, kind: "tool", lead: "Ran", subject: timelineTruncate(cmd.rustTrimmed, 120),
+                                                   status: "running", toolName: "Bash", ts: ts))
+                return true
+            }
+            guard text.startsWith("<bash-stdout>") || text.startsWith("<bash-stderr>") else { return false }
+            let out = (ClaudeText.tagBody(text, "bash-stdout") ?? "").rustTrimEnd
+            let err = (ClaudeText.tagBody(text, "bash-stderr") ?? "").rustTrimEnd
+            let body = [out, err].filter { !$0.isBlank }.joined(separator: "\n")
+            if let index = bangIndex, index < entries.count {
+                entries[index].status = out.isBlank && !err.isBlank ? "error" : "ok"
+                entries[index].body = body.isEmpty ? nil : timelineTruncate(body, TimelineTools.resultBodyLimit)
+                entries[index].endTs = ts
+                bangIndex = nil
+            }
+            return true
+        }
     }
 
     // MARK: Queue overlay
@@ -159,6 +255,9 @@ enum ClaudeTimeline {
     static func scanQueue(_ lines: [String]) -> (delivered: [Delivered], pending: [Pending]) {
         var delivered: [Delivered] = []
         var pending: [Pending] = []
+        // Claude Code's queue isn't FIFO, so a content-less dequeue can't say which
+        // item left. Count those and settle them after every named remove has matched.
+        var unnamedDequeues = 0
         for line in lines {
             guard let v = JSONValue.parse(line) else { continue }
             let ts = parseLogTimestamp(v["timestamp"]?.string ?? "")
@@ -170,22 +269,33 @@ enum ClaudeTimeline {
                 case "enqueue":
                     pending.append(Pending(content: content, ts: ts))
                 case "dequeue", "remove", "popAll":
-                    // A content-less dequeue sends the front of the queue.
-                    let match = pending.firstIndex { $0.content == content }
-                        ?? ((op == "dequeue" && content.isEmpty && !pending.isEmpty) ? 0 : nil)
-                    if let match { pending.remove(at: match) }
+                    if op == "dequeue" && content.isEmpty {
+                        unnamedDequeues += 1
+                    } else if let match = pending.firstIndex(where: { $0.content == content }) {
+                        pending.remove(at: match)
+                    } else if unnamedDequeues > 0 {
+                        // An earlier unnamed dequeue already sent this one.
+                        unnamedDequeues -= 1
+                    }
                 default:
                     break
                 }
             case "attachment":
                 guard let att = v["attachment"], att["type"]?.string == "queued_command",
-                      let prompt = att["prompt"]?.string else { continue }
+                      let prompt = att["prompt"]?.string ?? att["prompt"]?.array.map(queuedPromptText) else { continue }
                 delivered.append(Delivered(uuid: v["uuid"]?.string ?? "queued-att", prompt: prompt, ts: ts))
             default:
                 continue
             }
         }
+        // Whatever the unnamed dequeues sent, the oldest items are the best guess.
+        pending.removeFirst(min(unnamedDequeues, pending.count))
         return (delivered, pending)
+    }
+
+    /// A queued prompt sent as blocks (text plus pictures).
+    private static func queuedPromptText(_ blocks: [JSONValue]) -> String {
+        textWithImages(blocks) ?? blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
     }
 
     /// `merge_claude_queue`.
@@ -198,13 +308,16 @@ enum ClaudeTimeline {
             }
         }
         // Delivered steering at its chronological position.
+        // Task and monitor notifications arrive this way too; their XML is plumbing.
         for d in delivered where !out.contains(where: { $0.id == d.uuid }) {
+            guard let text = ClaudeText.clean(d.prompt) else { continue }
             let pos = out.firstIndex { $0.ts > d.ts } ?? out.count
-            out.insert(MobileTimelineEntry(id: d.uuid, kind: "user", text: d.prompt, ts: d.ts), at: pos)
+            out.insert(MobileTimelineEntry(id: d.uuid, kind: "user", text: text, ts: d.ts), at: pos)
         }
         // Still-pending queue → trailing "queued" bubbles.
-        for (i, p) in pending.enumerated() where !p.content.isBlank {
-            out.append(MobileTimelineEntry(id: "queued-\(i)", kind: "user", text: p.content, state: "queued", ts: p.ts))
+        for (i, p) in pending.enumerated() {
+            guard let text = ClaudeText.clean(p.content) else { continue }
+            out.append(MobileTimelineEntry(id: "queued-\(i)", kind: "user", text: text, state: "queued", ts: p.ts))
         }
         return out
     }
@@ -230,8 +343,13 @@ enum ClaudeTimeline {
         return headLines.lazy.compactMap(assistantModel).first
     }
 
-    private static func assistantModel(_ line: String) -> String? {
-        guard !line.isBlank, let v = JSONValue.parse(line), v["type"]?.string == "assistant",
+    static func assistantModel(_ line: String) -> String? {
+        guard !line.isBlank, let v = JSONValue.parse(line) else { return nil }
+        return assistantModel(v)
+    }
+
+    static func assistantModel(_ v: JSONValue) -> String? {
+        guard v["type"]?.string == "assistant",
               let model = v.pointer("/message/model")?.string, !model.isEmpty, !model.startsWith("<") else { return nil }
         return model
     }

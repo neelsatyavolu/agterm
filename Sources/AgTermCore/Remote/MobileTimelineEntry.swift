@@ -27,6 +27,13 @@ public struct MobileTimelineEntry: Codable, Equatable, Sendable {
     public var message: String?
     /// Milliseconds since the Unix epoch; 0 when the source had no timestamp.
     public var ts: Int
+    /// When a tool's result arrived (ms), for the chat's durations. Not on the wire.
+    public var endTs: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, text, streaming, lead, subject, detail, status, additions, deletions, body, requestId, toolName,
+             state, message, ts
+    }
 
     public init(id: String, kind: String, text: String? = nil, streaming: Bool? = nil,
                 lead: String? = nil, subject: String? = nil, detail: String? = nil,

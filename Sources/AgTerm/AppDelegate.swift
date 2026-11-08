@@ -192,6 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Actual Size", #selector(MainWindowController.resetFont), "0"),
             .separator(),
             item("Tabs on the Left", #selector(MainWindowController.toggleTabsOnLeft), "s", [.command, .control]),
+            .separator(),
+            item("Chat", #selector(MainWindowController.toggleChat), "`", [.control]),
         ]))
         var windowItems: [NSMenuItem] = [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),

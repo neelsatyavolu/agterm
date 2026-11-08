@@ -11,6 +11,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     var topLayout: [NSLayoutConstraint] = []
     var sideLayout: [NSLayoutConstraint] = []
     let container = PaneHostView()
+    /// Panes showing Chat instead of their terminal, by tab ID (MainWindowController+Chat).
+    var chats: [String: ChatPaneView] = [:]
     /// What a new, empty pane shows until you choose a tab for it (Split Right / Split Down).
     let panePicker = PanePickerView()
     /// Paints the margins around the terminal; the terminal paints its own area, so a
@@ -28,9 +30,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private var appearanceSubscription: AnyCancellable?
     private let git = GitPoller()
     private let transcripts = TranscriptDiff()
-    /// When each folder was last asked of git. Idle folders are asked only every `idleGitInterval`.
+    /// When each folder was last asked of git. Idle folders are asked only every `idleGitInterval`,
+    /// busy ones not on screen every `backgroundGitInterval`.
     private var gitPolledAt: [String: Date] = [:]
     private static let idleGitInterval: TimeInterval = 30
+    private static let backgroundGitInterval: TimeInterval = 15
     private let commandBar = CommandBar()
     private let cdSuggestions = CdSuggestions()
     /// The tab the open command bar answers for; its command only ever goes there.
@@ -179,16 +183,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     }
 
     /// One git call per distinct folder, fanned out to every tab in it. A folder whose tabs printed
-    /// nothing since the last call is skipped, apart from a slow check for edits made elsewhere.
+    /// nothing since the last call is skipped, apart from a slow check for edits made elsewhere,
+    /// and a busy folder with no tab on screen is asked less often.
     private func pollGit() {
         let now = Date()
         let paths = Set(sessions.map(\.cwd))
+        let onScreen = window?.occlusionState.contains(.visible) == true
+            ? Set(sessions.filter { selectedGroup?.layout.contains($0.tabID) == true }.map(\.cwd)) : []
+        var asked = Set<String>()
         gitPolledAt = gitPolledAt.filter { paths.contains($0.key) }
         for path in paths {
             let last = gitPolledAt[path] ?? .distantPast
             let active = sessions.contains { $0.cwd == path && ($0.signals.lastOutput ?? .distantPast) > last }
-            guard active || now.timeIntervalSince(last) >= Self.idleGitInterval else { continue }
+            let wait = !active ? Self.idleGitInterval : onScreen.contains(path) ? 0 : Self.backgroundGitInterval
+            guard now.timeIntervalSince(last) >= wait else { continue }
             gitPolledAt[path] = now
+            asked.insert(path)
             git.refresh(path: path) { [weak self] summary in
                 self?.sessions.filter { $0.cwd == path }.forEach { $0.updateGit(summary) }
             }
@@ -208,6 +218,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 continue
             }
             if let baseline = session.agentBaseline {
+                // On the same schedule as its folder's git status.
+                guard asked.contains(session.cwd) else { continue }
                 git.agentDiff(baseline) { [weak session] diff in session?.updateAgentDiff(diff) }
             } else if !session.agentBaselineRequested {
                 session.agentBaselineRequested = true
@@ -658,7 +670,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         alert.beginSheetModal(for: window) { [weak self, weak session] response in
             guard let self, let session else { return }
             if response == .alertFirstButtonReturn { session.name = TabName.cleaned(field.stringValue) }
-            if self.focusedSession === session { window.makeFirstResponder(session.view) }
+            if self.focusedSession === session { window.makeFirstResponder(self.responder(for: session)) }
         }
     }
 
@@ -746,7 +758,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         showSelectedPanes()
         if let focused {
             focused.view.needsDisplay = true
-            window?.makeFirstResponder(focused.view)
+            window?.makeFirstResponder(responder(for: focused))
         } else {
             window?.makeFirstResponder(panePicker)
         }
@@ -761,9 +773,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         var views: [String: NSView] = [:]
         for session in sessions {
             let shown = group.layout.contains(session.tabID)
-            session.view.isHidden = !shown
+            let chat = chats[session.tabID]
+            session.view.isHidden = !shown || chat != nil
+            chat?.isHidden = !shown
             session.setFocused(shown && session.tabID == group.focused && key, now: now)
-            if shown { views[session.tabID] = session.view }
+            if shown { views[session.tabID] = paneView(for: session) }
         }
         panePicker.isHidden = group.picker == nil
         if let slot = group.picker {
@@ -852,6 +866,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     let cloudState = CloudState()
 
     func render() {
+        dropEndedChats()
         updateCloudButton()
         let models = sessions.map(tabModel)
         if tabsOnLeft { sidebar.update(models) } else { tabBar.update(models) }
@@ -859,6 +874,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             window?.title = focused.topic
             titleStrip.title = focused.topic
             titleStrip.logo = focused.agentName.flatMap(AgentLogo.image(for:))
+            updateTitleStrip(focused)
         }
     }
 
@@ -884,6 +900,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         container.needsDisplay = true
         commandBar.refreshAppearance()
         sessions.forEach { $0.applyAppearance() }
+        applyChatAppearance()
         window.invalidateShadow()
     }
 
@@ -947,7 +964,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         commandBar.cancelRun()
         commandBar.removeFromSuperview()
         commandBarTarget = nil
-        if refocus, let session = focusedSession { window?.makeFirstResponder(session.view) }
+        if refocus, let session = focusedSession { window?.makeFirstResponder(responder(for: session)) }
     }
 
     // ⌘= / ⌘- / ⌘0 change the saved font size, so Settings stays in sync.

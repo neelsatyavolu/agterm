@@ -3,12 +3,12 @@ import Foundation
 /// Spots an agent waiting for you to pick an answer, from the bottom of its screen. Claude Code
 /// doesn't ring the bell for permission prompts, so the screen is the only sign.
 ///
-/// Recorded shapes (Claude Code 2.1.310, Codex 0.163):
+/// Recorded shapes (Claude Code 2.1.310, Codex 0.163, Grok 1.0.79):
 ///
-///     Do you want to proceed?            Hooks need review
-///     ❯ 1. Yes                           › 1. Review hooks
-///       2. No                              2. Trust all and continue
-///     Esc to cancel · Tab to amend         enter confirm · esc skip
+///     Do you want to proceed?            Hooks need review               ┃  ›  Remove notes.txt
+///     ❯ 1. Yes                           › 1. Review hooks               ┃  1 (●) Yes, proceed
+///       2. No                              2. Trust all and continue     ┃  2 (○) No, reject
+///     Esc to cancel · Tab to amend         enter confirm · esc skip        1/2:select  │  Tab:next option
 public enum PermissionPrompt {
     /// How far up from the bottom to look, in non-blank lines.
     static let window = 15
@@ -20,6 +20,7 @@ public enum PermissionPrompt {
     public static func isVisible(_ lines: [String]) -> Bool {
         let tail = lines.map { $0.trimmingCharacters(in: borders) }.filter { !$0.isEmpty }.suffix(window)
         let choosing = tail.contains { line in
+            if radioChoice(line)?.selected == true { return true }
             guard let first = line.first, cursors.contains(first) else { return false }
             let rest = line.dropFirst().drop { $0 == " " }
             return rest.prefix { $0.isNumber }.count > 0 && rest.drop { $0.isNumber }.hasPrefix(". ")
@@ -30,6 +31,7 @@ public enum PermissionPrompt {
             // "esc to interrupt" is a working agent's hint, not a question.
             return line.hasSuffix("?") || (lower.contains("esc to") && !lower.contains("interrupt"))
                 || lower.contains("esc skip") || lower.contains("esc cancel") || lower.contains("esc back")
+                || lower.contains(":select")
         }
     }
 
@@ -54,6 +56,7 @@ public enum PermissionPrompt {
         // or else the first line of the paragraph above the choices ("Hooks need review").
         let question = tail[..<first].last { $0.contains("?") && !$0.contains("? for shortcuts") }
             .map { String($0[...$0.firstIndex(of: "?")!]) }
+            ?? grokAction(tail[..<first], radio: radioChoice(tail[cursor]) != nil)
             ?? heading(above: rows[first], in: trimmed, from: rows[0])
         return PromptInfo(question: question, choices: parsed[first...last].compactMap { $0 })
     }
@@ -68,8 +71,26 @@ public enum PermissionPrompt {
         return lines[start]
     }
 
-    /// `❯ 2. No` or `2. No` as a choice; nil for any other line.
+    /// Grok names what it wants to do on a `›  Remove notes.txt` line above its choices.
+    private static func grokAction(_ above: ArraySlice<String>, radio: Bool) -> String? {
+        guard radio, let line = above.last(where: { $0.hasPrefix("›") }) else { return nil }
+        let action = line.dropFirst().trimmingCharacters(in: .whitespaces)
+        return action.isEmpty ? nil : action
+    }
+
+    /// Grok's `3 (●) Yes, proceed` / `4 (○) No, reject`; nil for any other line.
+    private static func radioChoice(_ line: String) -> PromptChoice? {
+        let digits = line.prefix { $0.isNumber }
+        guard (1...3).contains(digits.count), digits.allSatisfy(\.isASCII) else { return nil }
+        let rest = line.dropFirst(digits.count)
+        let selected = rest.hasPrefix(" (●) ")
+        guard selected || rest.hasPrefix(" (○) ") else { return nil }
+        return PromptChoice(key: String(digits), label: rest.dropFirst(5).trimmingCharacters(in: .whitespaces), selected: selected)
+    }
+
+    /// `❯ 2. No` or `2. No` (or Grok's radio shape) as a choice; nil for any other line.
     private static func choice(_ line: String) -> PromptChoice? {
+        if let radio = radioChoice(line) { return radio }
         var rest = Substring(line)
         let selected = rest.first.map(cursors.contains) ?? false
         if selected { rest = rest.dropFirst().drop { $0 == " " } }

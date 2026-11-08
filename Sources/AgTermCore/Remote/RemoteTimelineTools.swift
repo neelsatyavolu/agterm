@@ -89,7 +89,9 @@ enum TimelineTools {
         }
         if ["task", "agent", "spawn_subagent", "dispatch_agent", "get_command_or_subagent_output", "await_subagent"].contains(lower) {
             let taskCount = input["task_ids"]?.array.map { "\($0.count) task(s)" }
-            return ((prompt ?? taskCount).map(cut), nil)
+            // The short description, not the whole prompt.
+            let short = input["description"]?.string.flatMap { $0.isBlank ? nil : $0 }
+            return ((short ?? prompt ?? taskCount).map(cut), nil)
         }
         if isAgentTool(name) { return (prompt.map(cut), nil) }
         return (path ?? cmd.map(cut) ?? query.map(cut), nil)
@@ -97,8 +99,12 @@ enum TimelineTools {
 
     // MARK: Diffs
 
+    /// Lines as `rustLines` counts them: a final newline doesn't start another line.
     static func contentLineCount(_ text: String) -> Int {
-        text.isEmpty ? 0 : text.utf8.split(separator: 0x0A, omittingEmptySubsequences: false).count
+        let bytes = text.utf8
+        guard !bytes.isEmpty else { return 0 }
+        let newlines = bytes.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+        return bytes.last == 0x0A ? newlines : newlines + 1
     }
 
     static func looksLikeDiff(_ text: String) -> Bool {

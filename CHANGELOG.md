@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.8 — 2026-11-08
+- Added: Chat view for Claude Code, Codex and Grok tabs. Press ⌃` (View → Chat), or click Chat in the strip above the tab, to read the conversation as a transcript: replies with formatting, folded file reads, edits as diffs, commands with their results and errors. Type in the box at the bottom to message the agent; Esc interrupts it. Approval prompts show as buttons; menus Chat can't read show the bottom of the screen, and ⌃` takes you back to the terminal. The agent keeps running in its terminal either way, and each pane of a split keeps its own view.
+- Changed: agterm Remote reads Claude Code and Codex transcripts only as far as they grew since the last read.
+- Changed: agterm uses much less memory with many agents running. Teams usage sync and tab titles read only what was added to each transcript instead of whole files, and agterm Remote forgets a conversation once you close it on your phone.
+- Changed: Git status for busy tabs that aren't on screen is checked every 15 seconds instead of every 3, so agterm starts far fewer git processes. Tabs you can see still update every 3 seconds.
+
 ## 1.1.7 — 2026-11-08
 - Fixed: Starting claude in a folder that was deleted or that macOS blocks agterm from reading no longer hangs and uses up tens of gigabytes of memory; claude starts normally.
 - Changed: agterm uses far less CPU while Claude Code and Codex run. It reads only the new part of each session's transcript, not the whole file every few seconds, checks git only in folders where something happened, and agterm Remote loads a conversation only while you have it open on your phone.

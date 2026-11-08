@@ -33,6 +33,8 @@ enum Theme {
     static var accentMuted: NSColor { color(palette.accent, alpha: 0.45) }
     static var ok: NSColor { color(palette.ok) }
     static var danger: NSColor { color(palette.danger) }
+    /// The palette's yellow (ANSI 3): something waits on you, like an approval prompt.
+    static var warn: NSColor { color(palette.ansi[3]) }
     static var appearance: NSAppearance? { NSAppearance(named: palette.isDark ? .darkAqua : .aqua) }
     /// Light themes keep text at 3:1 contrast or more, because most terminal programs (Claude Code's
     /// default theme among them) pick colors for a dark background. Dark themes draw colors as sent.

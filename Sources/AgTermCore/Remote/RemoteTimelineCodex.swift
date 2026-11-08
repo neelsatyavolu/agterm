@@ -8,6 +8,12 @@ enum CodexTimeline {
         itemsToEntries(CodexHistoryParser.items(rollout: rollout))
     }
 
+    /// The chat view's timeline from already-parsed rollout records, with interrupted turns
+    /// and still-running commands marked.
+    static func chatEntries(records: [JSONValue]) -> [MobileTimelineEntry] {
+        itemsToEntries(CodexHistoryParser.items(records: records, chatMarkers: true))
+    }
+
     /// The model agmux reports for a Codex session: the last non-empty
     /// `turn_context.model` (`scan_live_snapshot_uncached`).
     static func modelLabel(rollout: String) -> String? {
@@ -28,34 +34,57 @@ enum CodexTimeline {
             || content.containsBytes("<turn_aborted>")
     }
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
     static func itemsToEntries(_ items: [CodexHistoryItem]) -> [MobileTimelineEntry] {
-        var out: [MobileTimelineEntry] = []
-        var toolIndex: [String: Int] = [:]
-        var seenFirstUser = false
-        for (i, item) in items.enumerated() {
+        var converter = Converter()
+        items.forEach { converter.add($0) }
+        return converter.entries
+    }
+
+    /// `codex_items_to_entries` an item at a time, so a growing rollout is converted once.
+    struct Converter {
+        private(set) var entries: [MobileTimelineEntry] = []
+        private var toolIndex: [String: Int] = [:]
+        private var seenFirstUser = false
+        private var count = 0
+        private var last: CodexHistoryItem?
+
+        /// Results only patch rows of calls still open; settled calls are forgotten.
+        mutating func forgetCalls() {
+            toolIndex = [:]
+        }
+
+        // swiftlint:disable:next cyclomatic_complexity function_body_length
+        mutating func add(_ item: CodexHistoryItem) {
+            if let last, CodexHistoryParser.isDuplicate(item, after: last) { return }
+            last = item
             let ts = parseLogTimestamp(item.timestamp)
-            let id = "codex-\(i)"
+            let id = "codex-\(count)"
+            count += 1
+            var out = entries
+            entries = []
+            defer { entries = out }
             switch item.role {
             case "user":
                 let text = item.content.rustTrimmed
-                if text.isEmpty { continue }
+                if text.isEmpty { return }
                 if !seenFirstUser {
                     seenFirstUser = true
-                    if text.startsWith("# AGENTS.md") { continue }
+                    if text.startsWith("# AGENTS.md") { return }
                 }
-                if isSystemUserMessage(text) { continue }
+                if isSystemUserMessage(text) { return }
                 out.append(MobileTimelineEntry(id: id, kind: "user", text: text, ts: ts))
+            case "interrupted":
+                out.append(MobileTimelineEntry(id: id, kind: "interrupted", ts: ts))
             case "assistant", "thinking":
                 let text = item.content.rustTrimmed
-                if text.isEmpty { continue }
+                if text.isEmpty { return }
                 out.append(MobileTimelineEntry(id: id, kind: item.role, text: text, ts: ts))
             case "command":
                 // "$ <cmd>\n<output>\n[exit: N]" splits back into subject and body.
                 let (cmd, output, exitCode) = splitCommand(item.content)
                 let errored = item.toolError == true || (exitCode ?? 0) != 0
                 out.append(MobileTimelineEntry(id: id, kind: "tool", lead: "Ran", subject: timelineTruncate(cmd, 120),
-                                               status: errored ? "error" : "ok",
+                                               status: errored ? "error" : item.running ? "running" : "ok",
                                                body: output.isBlank ? nil : timelineTruncate(output, TimelineTools.resultBodyLimit),
                                                toolName: "Shell", ts: ts))
             case "file":
@@ -72,14 +101,14 @@ enum CodexTimeline {
                     if !item.content.isBlank {
                         out.append(MobileTimelineEntry(id: id, kind: "assistant", text: item.content, ts: ts))
                     }
-                    continue
+                    return
                 }
                 let input = item.toolInput ?? .object([:])
                 let callID = input["callId"]?.string.flatMap { $0.isEmpty ? nil : $0 }
                 let isError = item.toolError == true
                 if name == "ToolResult", let callID, let index = toolIndex[callID] {
                     out[index] = TimelineTools.applyingResult(out[index], content: item.content, isError: isError)
-                    continue
+                    return
                 }
                 let (subject, detail) = TimelineTools.subjectDetail(name, input)
                 let status = isError ? "error"
@@ -94,7 +123,6 @@ enum CodexTimeline {
                 out.append(entry)
             }
         }
-        return out
     }
 
     /// `split_codex_command`: (command, output, exit code); output and the

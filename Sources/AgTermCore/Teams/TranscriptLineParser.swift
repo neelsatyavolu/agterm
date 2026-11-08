@@ -13,14 +13,20 @@ extension TranscriptLineParser {
     /// Feeds every complete line in `chunk` and returns how many bytes that used: up to and
     /// including the last newline. A trailing partial line is left for the next chunk.
     public mutating func feed(chunk: Data) -> Int {
-        guard let end = chunk.lastIndex(of: 0x0A) else { return 0 }
-        let complete = chunk[chunk.startIndex...end]
-        for piece in complete.split(separator: 0x0A, omittingEmptySubsequences: false).dropLast() {
-            let trimmed = piece.last == 0x0D ? piece.dropLast() : piece
-            feed(String(decoding: trimmed, as: UTF8.self))
-        }
-        return complete.count
+        forEachCompleteLine(in: chunk) { feed($0) }
     }
+}
+
+/// Calls `body` with every complete line in `chunk` (without its newline or a trailing `\r`)
+/// and returns how many bytes that used: up to and including the last newline.
+func forEachCompleteLine(in chunk: Data, _ body: (String) -> Void) -> Int {
+    guard let end = chunk.lastIndex(of: 0x0A) else { return 0 }
+    let complete = chunk[chunk.startIndex...end]
+    for piece in complete.split(separator: 0x0A, omittingEmptySubsequences: false).dropLast() {
+        let trimmed = piece.last == 0x0D ? piece.dropLast() : piece
+        body(String(decoding: trimmed, as: UTF8.self))
+    }
+    return complete.count
 }
 
 extension CodexTranscript {

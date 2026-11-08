@@ -50,11 +50,11 @@ final class RemoteClient: ObservableObject {
     private var sentScreen: [String: String] = [:]
     /// Conversations agterm Remote is reading, until when. agmux's subscriptions never lapse.
     private var chatLeases: [String: Date] = [:]
-    /// Agent tabs render from the agent's transcript (like agmux), rebuilt off the main thread
-    /// only when the file changes.
-    private struct Transcript { var path: URL; var modified: Date; var entries: [MobileTimelineEntry]; var model: String? }
+    /// Agent tabs render from the agent's transcript (like agmux), read off the main thread and
+    /// only as far as the file grew (`TranscriptFollower`).
+    private struct Transcript { var path: URL; var version: Int; var entries: [MobileTimelineEntry]; var model: String? }
     private var transcripts: [String: Transcript] = [:]
-    private var transcriptPaths: [String: URL] = [:]
+    private var followers: [String: TranscriptFollower] = [:]
     private var refreshing = Set<String>()
     private let reader = DispatchQueue(label: "agterm.remote-transcripts", qos: .utility)
 
@@ -357,6 +357,11 @@ final class RemoteClient: ObservableObject {
         let sessions = tabs()
         // Only tabs the phone has open need their timeline; rebuilding one reads the whole transcript.
         sessions.filter { isWatched($0.tabID) }.forEach(refreshTranscript)
+        // Timelines of tabs the phone closed (or that closed) aren't kept: they hold whole conversations.
+        for id in Set(transcripts.keys).union(followers.keys) where !isWatched(id) {
+            transcripts[id] = nil
+            followers[id] = nil
+        }
         let rows = sessions.map(row)
         let options = newTabOptions(sessions)
         if let data = try? JSONSerialization.data(withJSONObject: [rows, options], options: .sortedKeys),
@@ -382,41 +387,29 @@ final class RemoteClient: ObservableObject {
         subscribed.union(chatLeases.keys).forEach(sendTimeline)
     }
 
-    /// Finds the tab's transcript and rebuilds its entries in the background when it changed.
+    /// Finds the tab's transcript and reads what's new in the background.
     private func refreshTranscript(_ s: TerminalSession) {
         let id = s.tabID
-        guard s.agentName == "claude" || s.agentName == "codex", !refreshing.contains(id) else {
-            if s.agentName == nil { transcripts[id] = nil; transcriptPaths[id] = nil }
+        guard s.agentName == "claude" || s.agentName == "codex", let target = TranscriptFollower.Target(s), !refreshing.contains(id) else {
+            if s.agentName == nil { transcripts[id] = nil; followers[id] = nil }
             return
         }
-        let agent = s.agentName, session = s.claudeSessionID, cwd = s.cwd, start = s.agentStartedAt
-        let known = transcriptPaths[id], cached = transcripts[id]
+        let follower = followers[id] ?? TranscriptFollower()
+        followers[id] = follower
         refreshing.insert(id)
         reader.async { [weak self] in
-            let path: URL? = {
-                if agent == "claude", let session {
-                    if let known, known.lastPathComponent == session + ".jsonl" { return known }
-                    return TranscriptDiff.claudeTranscript(session)
-                }
-                if agent == "codex", let start { return known ?? TranscriptDiff.codexRollout(cwd: cwd, since: start) }
-                return nil
-            }()
-            var result: Transcript?
-            // Not URL.resourceValues: it caches on the URL, and `known` is reused, so the date never moved.
-            if let path, let modified = (try? FileManager.default.attributesOfItem(atPath: path.path))?[.modificationDate] as? Date {
-                if let cached, cached.path == path, cached.modified == modified {
-                    result = cached
-                } else if let text = try? String(contentsOf: path, encoding: .utf8) {
-                    let entries = agent == "claude" ? RemoteTimeline.claude(transcript: text) : RemoteTimeline.codex(rollout: text)
-                    let model = agent == "claude" ? RemoteTimeline.modelLabel(claude: text) : RemoteTimeline.modelLabel(codex: text)
-                    result = Transcript(path: path, modified: modified, entries: entries, model: model)
-                }
+            follower.refresh(target)
+            // What `RemoteTimeline.claude/.codex` give the phone: kinds it paints, newest 250. The feed adds chat-only rows.
+            let result = follower.path.map { path in
+                Transcript(path: path, version: follower.version,
+                           entries: Array(follower.entries.filter { RemoteTimeline.isRenderableKind($0.kind) }.suffix(RemoteTimeline.maxEntries)),
+                           model: follower.model)
             }
             Task { @MainActor in
                 guard let self else { return }
                 self.refreshing.remove(id)
-                self.transcriptPaths[id] = path
-                let changed = result?.modified != self.transcripts[id]?.modified || result?.model != self.transcripts[id]?.model
+                let old = self.transcripts[id]
+                let changed = result?.path != old?.path || result?.version != old?.version || result?.model != old?.model
                 self.transcripts[id] = result
                 if changed {
                     self.lastThreads = ""
@@ -435,7 +428,7 @@ final class RemoteClient: ObservableObject {
         // A transcript still loading sends when it's read, rather than the screen first.
         if transcripts[thread] == nil, refreshing.contains(thread) { return }
         if let transcript = transcripts[thread], !transcript.entries.isEmpty {
-            let digest = "t:\(transcript.path.path):\(transcript.modified.timeIntervalSince1970)"
+            let digest = "t:\(transcript.path.path):\(transcript.version)"
             guard sentTimeline[thread] != digest else { return }
             let encoder = JSONEncoder()
             var entries = transcript.entries.compactMap { try? JSONSerialization.jsonObject(with: encoder.encode($0)) }

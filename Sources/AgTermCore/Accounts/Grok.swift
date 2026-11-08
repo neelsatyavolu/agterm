@@ -221,20 +221,85 @@ public enum GrokSessions {
     /// The one conversation Grok in `cwd` wrote to since `since`, for a run agterm didn't name
     /// (`--continue`). Nil when none did, or several did: then it can't tell which is this tab's.
     public static func written(in sessions: URL, cwd: String, since: Date) -> String? {
-        let fm = FileManager.default
-        let folder = ((try? fm.contentsOfDirectory(atPath: sessions.path)) ?? [])
+        let recent = conversations(in: sessions, cwd: cwd).filter { $0.modified >= since }
+        return recent.count == 1 ? recent[0].id : nil
+    }
+
+    /// The conversation in `cwd` written to most recently, if that was since `since`: what a chat
+    /// view follows when a new conversation (`/new`, `/clear`) replaces the one it showed.
+    public static func latest(in sessions: URL, cwd: String, since: Date, excluding: Set<String> = []) -> String? {
+        conversations(in: sessions, cwd: cwd).filter { $0.modified >= since && !excluding.contains($0.id) }
+            .max { $0.modified < $1.modified }?.id
+    }
+
+    /// Which conversation a tab's Grok run shows: its own (`own`, the one agterm started or
+    /// resumed), or a newer one in the same folder that this run started with `/new` or `/clear`.
+    /// A newer one counts only when it was made after the run started, no other agterm tab runs it
+    /// (`others`), and the tab was typed in just before it was made (`inputs`, when typing in the
+    /// tab stopped) without its own conversation answering, so a conversation started outside agterm or in another tab isn't taken.
+    /// `following` is the one shown now, kept while it is still the newest.
+    public static func follow(in sessions: URL, cwd: String, own: String?, since: Date, others: Set<String>,
+                              inputs: [Date], following: String? = nil) -> String? {
+        let ownFile = own.flatMap { chatHistory(in: sessions, cwd: cwd, sessionID: $0) == nil ? nil : $0 }
+        guard latest(in: sessions, cwd: cwd, since: since).map({ $0 != own }) == true,
+              let newest = latest(in: sessions, cwd: cwd, since: since, excluding: others.subtracting([own].compactMap { $0 })),
+              newest != own, chatHistory(in: sessions, cwd: cwd, sessionID: newest) != nil else { return ownFile }
+        if own == nil || newest == following { return newest }
+        // Typing its own conversation answered afterwards was a message to it, not `/new`.
+        let answered = conversations(in: sessions, cwd: cwd).first { $0.id == own }?.modified
+        let unanswered = inputs.filter { input in answered.map { $0 <= input.addingTimeInterval(answerSlack) } ?? true }
+        guard let made = createdDate(in: sessions, cwd: cwd, sessionID: newest), made >= since.addingTimeInterval(-5),
+              typed(before: made, inputs: unanswered) else { return ownFile }
+        return newest
+    }
+
+    /// Grok may touch the old conversation's files as `/new` leaves it.
+    static let answerSlack: TimeInterval = 2
+
+    /// How long before a conversation is made the tab's typing (`/new`, then the prompt) may stop.
+    static let typingWindow: TimeInterval = 60
+
+    static func typed(before made: Date, inputs: [Date]) -> Bool {
+        inputs.contains { $0 >= made.addingTimeInterval(-typingWindow) && $0 <= made.addingTimeInterval(5) }
+    }
+
+    /// When the conversation's folder was made.
+    static func createdDate(in sessions: URL, cwd: String, sessionID: String) -> Date? {
+        guard let dir = folder(in: sessions, cwd: cwd) else { return nil }
+        return (try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent(sessionID).path))?[.creationDate] as? Date
+    }
+
+    /// The conversation `grok -c` reopens: the one in `cwd` written most recently.
+    /// Nil for other runs, and for `--fork-session`, which starts a new one.
+    public static func continued(_ userArgs: [String], in sessions: URL, cwd: String) -> String? {
+        guard userArgs.contains(where: { $0 == "-c" || $0 == "--continue" }), !userArgs.contains("--fork-session") else { return nil }
+        return latest(in: sessions, cwd: cwd, since: .distantPast)
+    }
+
+    /// A conversation's `chat_history.jsonl`, when it exists.
+    public static func chatHistory(in sessions: URL, cwd: String, sessionID: String) -> URL? {
+        guard let dir = folder(in: sessions, cwd: cwd) else { return nil }
+        let file = dir.appendingPathComponent(sessionID).appendingPathComponent("chat_history.jsonl")
+        return FileManager.default.fileExists(atPath: file.path) ? file : nil
+    }
+
+    private static func folder(in sessions: URL, cwd: String) -> URL? {
+        let folder = ((try? FileManager.default.contentsOfDirectory(atPath: sessions.path)) ?? [])
             .first { $0.removingPercentEncoding.map(standardized) == standardized(cwd) }
-        guard let folder else { return nil }
-        let dir = sessions.appendingPathComponent(folder, isDirectory: true)
-        let written = ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).compactMap { id -> (String, Date)? in
+        return folder.map { sessions.appendingPathComponent($0, isDirectory: true) }
+    }
+
+    /// Each conversation in `cwd` and when it was last written.
+    private static func conversations(in sessions: URL, cwd: String) -> [(id: String, modified: Date)] {
+        guard let dir = folder(in: sessions, cwd: cwd) else { return [] }
+        let fm = FileManager.default
+        return ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).compactMap { id -> (id: String, modified: Date)? in
             guard id.range(of: #"^[0-9A-Za-z-]{8,64}$"#, options: .regularExpression) != nil else { return nil }
             let modified = ["chat_history.jsonl", "events.jsonl"].compactMap {
                 (try? fm.attributesOfItem(atPath: dir.appendingPathComponent(id).appendingPathComponent($0).path))?[.modificationDate] as? Date
             }.max()
             return modified.map { (id, $0) }
         }
-        let recent = written.filter { $0.1 >= since }
-        return recent.count == 1 ? recent[0].0 : nil
     }
 
     /// The folder a Grok run works in: its `--cwd`, else where it was started.

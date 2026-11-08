@@ -40,7 +40,8 @@ final class TranscriptDiff {
     private var tails: [String: (offset: UInt64, parser: any TranscriptLineParser, usage: AgentUsage)] = [:]
     /// Where each Claude session's transcript was found, so polls don't list ~/.claude/projects.
     private var claudePaths: [String: URL] = [:]
-    private var titleCache: [String: (modified: Date, title: String?)] = [:]
+    /// Per transcript: how far it has been scanned for a title, and the scan so far.
+    private var titles: [String: (offset: UInt64, scanner: ClaudeSessionTitle.Scanner)] = [:]
     private let lock = NSLock()
 
     /// Claude Code: the session's transcript under ~/.claude/projects.
@@ -55,17 +56,20 @@ final class TranscriptDiff {
     func claudeTitle(sessionID: String, completion: @escaping (String?) -> Void) {
         run(key: "claude-title:" + sessionID, completion: completion) {
             guard let file = self.claudeFile(sessionID),
-                  let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date else { return nil }
+                  let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? UInt64 else { return nil }
             self.lock.lock()
-            let hit = self.titleCache[file.path]
+            var scan = self.titles[file.path]
             self.lock.unlock()
-            if let hit, hit.modified == modified { return hit.title }
-            guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
-            let title = ClaudeSessionTitle.parse(lines: text)
+            if let hit = scan, hit.offset == size { return hit.scanner.title }
+            // A shorter file was replaced or rewritten: start over.
+            if scan == nil || size < scan!.offset { scan = (0, ClaudeSessionTitle.Scanner()) }
+            guard var (offset, scanner) = scan,
+                  let end = TranscriptFile.read(file.path, from: offset, line: { scanner.feed($0) }) else { return nil }
+            offset = end
             self.lock.lock()
-            self.titleCache[file.path] = (modified, title)
+            self.titles[file.path] = (offset, scanner)
             self.lock.unlock()
-            return title
+            return scanner.title
         }
     }
 
@@ -98,10 +102,9 @@ final class TranscriptDiff {
         if let hit = tail, hit.offset == size { return hit.usage }
         // A shorter file was replaced or rewritten: start over.
         if tail == nil || size < tail!.offset { tail = (0, makeParser(), AgentUsage()) }
-        guard var (offset, parser, _) = tail, let handle = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? handle.close() }
-        guard (try? handle.seek(toOffset: offset)) != nil, let chunk = try? handle.readToEnd() else { return nil }
-        offset += UInt64(parser.feed(chunk: chunk))
+        guard var (offset, parser, _) = tail,
+              let end = TranscriptFile.read(file.path, from: offset, line: { parser.feed($0) }) else { return nil }
+        offset = end
         let usage = AgentUsage(parser.events)
         lock.lock()
         tails[file.path] = (offset, parser, usage)
@@ -140,14 +143,34 @@ final class TranscriptDiff {
             for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey])) ?? []
             where file.pathExtension == "jsonl" {
                 guard let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
-                      created >= start.addingTimeInterval(-10),
-                      let header = firstLine(file), CodexTranscript.originator(header: header) == "agterm",
-                      header.contains("\"cwd\":\"\(cwd.replacingOccurrences(of: "/", with: "\\/"))\"") || header.contains("\"cwd\":\"\(cwd)\"")
+                      created >= start.addingTimeInterval(-10), isAgtermRollout(file, cwd: cwd)
                 else { continue }
                 candidates.append((file, created))
             }
         }
         return candidates.max { $0.1 < $1.1 }?.0
+    }
+
+    /// What each rollout's header said, so a folder listed every few seconds is read once.
+    nonisolated(unsafe) private static var headerVerdicts: [String: Bool] = [:]
+    private static let headerLock = NSLock()
+
+    /// True when the rollout was started by agterm in `cwd` (its header, which never changes).
+    private static func isAgtermRollout(_ file: URL, cwd: String) -> Bool {
+        let key = file.path + "\0" + cwd
+        headerLock.lock()
+        let cached = headerVerdicts[key]
+        headerLock.unlock()
+        if let cached { return cached }
+        // A file Codex just made may not have its header yet: look again next time.
+        guard let header = firstLine(file) else { return false }
+        let verdict = CodexTranscript.originator(header: header) == "agterm"
+            && (header.contains("\"cwd\":\"\(cwd.replacingOccurrences(of: "/", with: "\\/"))\"") || header.contains("\"cwd\":\"\(cwd)\""))
+        guard verdict || header.hasSuffix("}") || header.utf8.count >= 128 * 1024 else { return false }
+        headerLock.lock()
+        headerVerdicts[key] = verdict
+        headerLock.unlock()
+        return verdict
     }
 
     private static func firstLine(_ url: URL) -> String? {

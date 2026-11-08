@@ -12,6 +12,8 @@ struct CodexHistoryItem: Equatable {
     var toolName: String?
     var toolInput: JSONValue?
     var toolError: Bool?
+    /// A command with no output yet (chat view only).
+    var running = false
 
     init(role: String, content: String, timestamp: String, filePath: String? = nil, additions: Int? = nil,
          deletions: Int? = nil, toolName: String? = nil, toolInput: JSONValue? = nil, toolError: Bool? = nil) {
@@ -161,8 +163,9 @@ enum CodexHistoryRows {
             let whole = content.isEmpty ? unified : content
             let (add, del, diff): (Int, Int, String)
             switch change["type"]?.string ?? "update" {
-            case "add": (add, del, diff) = (rustLines(whole).count, 0, whole)
-            case "delete": (add, del, diff) = (0, rustLines(whole).count, whole)
+            // A new or deleted file carries its whole text; sign it so it reads as a diff.
+            case "add": (add, del, diff) = (rustLines(whole).count, 0, signed(whole, "+"))
+            case "delete": (add, del, diff) = (0, rustLines(whole).count, signed(whole, "-"))
             default:
                 if !unified.isEmpty {
                     let counts = countDiffLines(unified)
@@ -175,6 +178,12 @@ enum CodexHistoryRows {
             if add == 0 && del == 0 && diff.isBlank { return nil }
             return CodexFileChange(path: path, diff: diff, additions: add, deletions: del)
         }
+    }
+
+    /// Every line of `text` with `sign` in front, unless it's already a unified diff.
+    static func signed(_ text: String, _ sign: String) -> String {
+        if text.isEmpty || text.startsWith("@@") || text.startsWith("diff ") { return text }
+        return rustLines(text).map { sign + $0 }.joined(separator: "\n")
     }
 
     /// `parse_apply_patch_history_changes`: one change per `*** … File:` section.

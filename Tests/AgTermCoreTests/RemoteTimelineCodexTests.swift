@@ -87,7 +87,7 @@ final class RemoteTimelineCodexTests: XCTestCase {
     func testHistoryPreservesDistinctCallsAndIdenticalOutputs() {
         let payloads: [[String: Any]] = [
             ["type": "function_call", "name": "send_message", "call_id": "a", "arguments": "{}"],
-            ["type": "custom_tool_call", "name": "exec", "call_id": "b", "input": "text(1);"],
+            ["type": "custom_tool_call", "name": "js_repl", "call_id": "b", "input": "text(1);"],
             ["type": "function_call_output", "call_id": "a", "output": #"{"accepted":true}"#],
             ["type": "custom_tool_call_output", "call_id": "b", "output": #"{"accepted":true}"#],
             ["type": "function_call", "name": "send_message", "call_id": "c", "arguments": "{}"],

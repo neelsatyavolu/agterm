@@ -21,8 +21,38 @@ enum JSONValue: Equatable {
 
     static func parse(data: Data) -> JSONValue? {
         guard let raw = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return nil }
+        #if canImport(Darwin)
+        return JSONValue(object: raw as AnyObject)
+        #else
         return JSONValue(foundation: raw)
+        #endif
     }
+
+    #if canImport(Darwin)
+    /// `init(foundation:)` by Core Foundation type, without Swift's dynamic casts and eager
+    /// collection bridging: several times faster on multi-megabyte transcripts.
+    private init?(object: AnyObject) {
+        let type = CFGetTypeID(object)
+        if type == CFStringGetTypeID() {
+            self = .string(String(unsafeDowncast(object, to: NSString.self)))
+        } else if type == CFDictionaryGetTypeID() {
+            let dict = unsafeDowncast(object, to: NSDictionary.self)
+            var fields = [String: JSONValue](minimumCapacity: dict.count)
+            dict.enumerateKeysAndObjects { key, value, _ in
+                if let key = key as? String, let value = JSONValue(object: value as AnyObject) { fields[key] = value }
+            }
+            self = .object(fields)
+        } else if type == CFArrayGetTypeID() {
+            let array = unsafeDowncast(object, to: NSArray.self)
+            var items: [JSONValue] = []
+            items.reserveCapacity(array.count)
+            for value in array { if let item = JSONValue(object: value as AnyObject) { items.append(item) } }
+            self = .array(items)
+        } else {
+            self.init(foundation: object)
+        }
+    }
+    #endif
 
     private init?(foundation raw: Any) {
         switch raw {
@@ -33,7 +63,7 @@ enum JSONValue: Equatable {
                 self = .bool(number.boolValue)
             } else if Self.isFloat(number) {
                 self = .double(number.doubleValue)
-            } else if let exact = Int(exactly: number.int64Value), number.int64Value.description == number.stringValue {
+            } else if let exact = Self.exactInt(number) {
                 self = .int(exact)
             } else {
                 // Integers beyond Int64 (serde's u64 range) are kept as numbers only.
@@ -48,6 +78,17 @@ enum JSONValue: Equatable {
         default:
             return nil
         }
+    }
+
+    /// The integer, unless it doesn't fit an Int (a u64 above Int64.max, a decimal). Checks the
+    /// stored type first: formatting every number to compare digits is slow on big transcripts.
+    private static func exactInt(_ number: NSNumber) -> Int? {
+        let code = UInt8(bitPattern: number.objCType.pointee)
+        if "silqcSILC".utf8.contains(code), !(code == UInt8(ascii: "Q") || code == UInt8(ascii: "L")) || number.int64Value >= 0 {
+            return Int(exactly: number.int64Value)
+        }
+        let value = number.int64Value
+        return value.description == number.stringValue ? Int(exactly: value) : nil
     }
 
     #if canImport(Darwin)

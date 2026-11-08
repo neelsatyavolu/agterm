@@ -91,8 +91,28 @@ extension String {
     /// Byte-wise `ends_with`.
     func endsWith(_ suffix: String) -> Bool { utf8.reversed().starts(with: suffix.utf8.reversed()) }
 
-    /// Byte-wise `contains`.
-    func containsBytes(_ needle: String) -> Bool { range(of: needle, options: .literal) != nil }
+    /// Byte-wise `contains`, scanning the UTF-8 directly (multi-megabyte transcript lines).
+    func containsBytes(_ needle: String) -> Bool {
+        let found = utf8.withContiguousStorageIfAvailable { hay in
+            needle.utf8.withContiguousStorageIfAvailable { pin in utf8Contains(hay, pin) }
+        }
+        return (found ?? nil) ?? (range(of: needle, options: .literal) != nil)
+    }
+}
+
+private func utf8Contains(_ hay: UnsafeBufferPointer<UInt8>, _ pin: UnsafeBufferPointer<UInt8>) -> Bool {
+    guard let first = pin.first, let base = hay.baseAddress else { return pin.isEmpty }
+    guard hay.count >= pin.count else { return false }
+    let last = hay.count - pin.count
+    var i = 0
+    while i <= last {
+        // memchr finds the next candidate first byte quickly.
+        guard let hit = memchr(base + i, Int32(first), last - i + 1) else { return false }
+        i = base.distance(to: hit.assumingMemoryBound(to: UInt8.self))
+        if memcmp(base + i, pin.baseAddress!, pin.count) == 0 { return true }
+        i += 1
+    }
+    return false
 }
 
 /// agmux `truncate`: at most `max` chars (Unicode scalars, as Rust `chars()`),

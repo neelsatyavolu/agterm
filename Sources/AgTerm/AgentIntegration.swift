@@ -156,7 +156,11 @@ enum AgentIntegration {
         // Grok doesn't say which conversation it's in, so a new one gets an id of agterm's.
         let grok = agent == "grok" ? GrokSessions.launch(args) { UUID().uuidString.lowercased() } : nil
         if let grok { argv = grok.extra + argv }
-        if let provider = AccountProvider(rawValue: agent), let home = useAccount(provider, args: args, env: env, sessionID: grok?.sessionID),
+        // Recorded so the Chat view can show a resumed conversation before anything is written to it.
+        let sessionID = agent == "codex" ? CodexSessions.resumed(args)
+            : grok?.sessionID ?? (agent == "grok" ? GrokSessions.continued(args, in: AccountStore.nativeGrokHome.appendingPathComponent("sessions"),
+                                                                           cwd: GrokSessions.folder(userArgs: args, processCwd: FileManager.default.currentDirectoryPath)) : nil)
+        if let provider = AccountProvider(rawValue: agent), let home = useAccount(provider, args: args, env: env, sessionID: sessionID),
            provider == .grok, !args.contains(where: { $0 == "--leader-socket" || $0.hasPrefix("--leader-socket=") }) {
             argv = ["--leader-socket", AccountStore.grokLeaderSocket(home)] + argv
         }

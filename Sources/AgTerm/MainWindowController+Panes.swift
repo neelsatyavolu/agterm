@@ -105,11 +105,11 @@ extension MainWindowController {
     func observeFocus() {
         focusObservation = window?.observe(\.firstResponder, options: [.new]) { [weak self] window, _ in
             DispatchQueue.main.async {
-                guard let self, let view = window.firstResponder as? AgentTerminalView,
-                      let group = self.selectedGroup,
-                      let session = self.sessions.first(where: { $0.view === view }),
-                      group.layout.contains(session.tabID), group.focused != session.tabID else { return }
-                self.focus(session.tabID)
+                guard let self, let view = window.firstResponder as? NSView, let group = self.selectedGroup,
+                      let tabID = (view as? AgentTerminalView).flatMap({ view in self.sessions.first { $0.view === view }?.tabID })
+                          ?? self.chatTab(containing: view),
+                      group.layout.contains(tabID), group.focused != tabID else { return }
+                self.focus(tabID)
             }
         }
     }
@@ -158,6 +158,10 @@ extension MainWindowController {
             return (selectedGroup?.layout.panes.count ?? 0) > 1
         case #selector(splitRight), #selector(splitDown):
             return focusedSession != nil
+        case #selector(toggleChat):
+            let chat = focusedSession.map { chats[$0.tabID] != nil } ?? false
+            item.state = chat ? .on : .off
+            return chat || focusedSession.map(canChat) == true
         default:
             return true
         }
@@ -186,30 +190,4 @@ extension MainWindowController {
         model.logo = s.agentName.flatMap(AgentLogo.image(for:))
         return model
     }
-}
-
-/// The strip above the terminal when the tabs are on the left: the tab's title, after its
-/// agent's logo, and room to drag the window by.
-final class TitleStripView: NSView {
-    static let height: CGFloat = 40
-    private static let logoSize: CGFloat = 16
-    var title = "" { didSet { if title != oldValue { needsDisplay = true } } }
-    var logo: NSImage? { didSet { if logo !== oldValue { needsDisplay = true } } }
-
-    override var mouseDownCanMoveWindow: Bool { false }
-    override func mouseDown(with event: NSEvent) { WindowDrag.mouseDown(event, in: window) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let text = TabCardDrawing.text(title, Theme.topicFont, Theme.fg3)
-        let logoWidth = logo == nil ? 0 : Self.logoSize + 8
-        let width = min(ceil(text.size().width) + logoWidth, bounds.width - 24)
-        let x = max(12, (bounds.width - width) / 2)
-        if let logo {
-            logo.draw(in: NSRect(x: x, y: (bounds.height - Self.logoSize) / 2, width: Self.logoSize, height: Self.logoSize),
-                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        }
-        TabCardDrawing.draw(text, x: x + logoWidth, y: (bounds.height - 17) / 2, maxX: bounds.width - 12)
-    }
-
-    override var isFlipped: Bool { true }
 }

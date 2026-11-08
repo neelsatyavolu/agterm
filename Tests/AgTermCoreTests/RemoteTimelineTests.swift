@@ -38,6 +38,19 @@ final class RemoteTimelineTests: XCTestCase {
         XCTAssertEqual(pending.map(\.content), ["second"])
     }
 
+    /// Claude Code's queue isn't FIFO: an unnamed dequeue is settled after named removes match.
+    func testClaudeQueueUnnamedDequeueIsSettledLast() {
+        let log = [
+            #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-24T18:04:51.000Z","content":"B"}"#,
+            #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-24T18:04:52.000Z","content":"G"}"#,
+            #"{"type":"queue-operation","operation":"dequeue","timestamp":"2026-09-24T18:04:53.000Z"}"#,
+            #"{"type":"queue-operation","operation":"remove","timestamp":"2026-09-24T18:04:54.000Z","content":"B"}"#,
+            #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-24T18:04:55.000Z","content":"A"}"#,
+        ]
+        XCTAssertEqual(ClaudeTimeline.scanQueue(log).pending.map(\.content), ["A"])
+        XCTAssertTrue(ClaudeTimeline.scanQueue(log + [#"{"type":"queue-operation","operation":"dequeue","timestamp":"2026-09-24T18:04:56.000Z"}"#]).pending.isEmpty)
+    }
+
     func testClaudeQueuePopAllReturnsMessageToInput() {
         let log = [
             #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-24T18:04:51.084Z","content":"fix the tests"}"#,
