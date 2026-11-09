@@ -5,10 +5,11 @@ import SwiftUI
 /// the agent's replies, its thinking and the tools it ran.
 struct ChatView: View {
     /// Without a transcript the Mac sends its screen as one `screen-` entry; Screen shows that better.
+    /// Rows with nothing to draw are dropped, or the stack's spacing leaves blank gaps.
     private let entries: [MobileTimelineEntry]?
 
     init(entries: [MobileTimelineEntry]?) {
-        self.entries = entries?.filter { !$0.id.hasPrefix("screen-") }
+        self.entries = entries?.filter { !$0.id.hasPrefix("screen-") && RemoteTimeline.showsOnPhone($0) }
     }
 
     @State private var position = ScrollPosition(edge: .bottom)

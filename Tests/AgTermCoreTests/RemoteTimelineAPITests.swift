@@ -123,4 +123,16 @@ final class RemoteTimelineAPITests: XCTestCase {
         XCTAssertEqual(parseLogTimestamp(""), 0)
         XCTAssertEqual(parseLogTimestamp("yesterday"), 0)
     }
+
+    /// The Mac's chat feed keeps Claude's empty thinking blocks; the phone drew each as a blank
+    /// line plus row spacing, leaving gaps between tool rows and before replies.
+    func testPhoneSkipsRowsWithNothingToShow() {
+        XCTAssertFalse(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "a", kind: "thinking", text: "", ts: 0)))
+        XCTAssertFalse(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "b", kind: "thinking", ts: 0)))
+        XCTAssertFalse(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "c", kind: "assistant", text: " \n", ts: 0)))
+        XCTAssertFalse(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "d", kind: "interrupted", ts: 0)))
+        XCTAssertTrue(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "e", kind: "thinking", text: "Checking", ts: 0)))
+        XCTAssertTrue(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "f", kind: "tool", ts: 0)))
+        XCTAssertTrue(RemoteTimeline.showsOnPhone(MobileTimelineEntry(id: "g", kind: "user", text: "hi", ts: 0)))
+    }
 }

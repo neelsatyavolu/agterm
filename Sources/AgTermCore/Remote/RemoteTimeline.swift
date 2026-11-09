@@ -63,6 +63,13 @@ public enum RemoteTimeline {
         ["user", "assistant", "thinking", "tool"].contains(kind)
     }
 
+    /// Whether the phone draws anything for `entry`: a renderable kind, and text unless it's a
+    /// tool row. The Mac's feed keeps empty thinking blocks for its own chat view.
+    public static func showsOnPhone(_ entry: MobileTimelineEntry) -> Bool {
+        guard isRenderableKind(entry.kind) else { return false }
+        return entry.kind == "tool" || !(entry.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     public struct RenderError: Error, Equatable, CustomStringConvertible {
         public let description: String
     }
