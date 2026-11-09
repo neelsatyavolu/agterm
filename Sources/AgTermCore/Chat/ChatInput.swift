@@ -8,20 +8,42 @@ public enum ChatInput {
     public static let enter = "\r"
     public static let escape = "\u{1b}"
     public static let backTab = "\u{1b}[Z"
+    public static let tab = "\t"
+
+    public enum Arrow: Character, Sendable { case up = "A", down = "B", right = "C", left = "D" }
+
+    /// An arrow key as the terminal sends it: `ESC O A` when the agent turned on application
+    /// cursor keys, else `ESC [ A`.
+    public static func arrow(_ arrow: Arrow, applicationCursor: Bool) -> String {
+        "\u{1b}" + (applicationCursor ? "O" : "[") + String(arrow.rawValue)
+    }
     /// The pause between the text and Enter.
     public static let submitDelay: TimeInterval = 0.3
+    /// The pause when images go too, so the agent has read them in first.
+    public static let imageSubmitDelay: TimeInterval = 1.0
 
     /// The keys for a message, or nil when there's nothing to send. Several lines go as one
     /// bracketed paste when the terminal has it on; otherwise newlines would press Enter, so the
-    /// lines are joined with spaces.
-    public static func typing(_ message: String, bracketedPaste: Bool) -> String? {
-        let text = message.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        guard text.contains("\n") else { return clearLine + text }
-        if bracketedPaste { return clearLine + "\u{1b}[200~" + text + "\u{1b}[201~" }
-        return clearLine + text.split(separator: "\n", omittingEmptySubsequences: true)
-            .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+    /// lines are joined with spaces. Each image's path goes first as a paste of its own, which
+    /// Claude Code, Codex and Grok all attach as an image, the way a file dragged in from Finder
+    /// arrives; without bracketed paste the paths go in the text.
+    public static func typing(_ message: String, images: [String] = [], bracketedPaste: Bool) -> String? {
+        var text = message.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !bracketedPaste, !images.isEmpty { text = (images + [text]).joined(separator: " ").trimmingCharacters(in: .whitespaces) }
+        let pastes = bracketedPaste ? images.map(paste).joined() : ""
+        guard !text.isEmpty || !pastes.isEmpty else { return nil }
+        let lines = text.contains("\n")
+        if lines, !bracketedPaste {
+            text = text.split(separator: "\n", omittingEmptySubsequences: true)
+                .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+        }
+        // An `@path` at the end would leave the agent's file list open, and Enter would pick
+        // from it instead of sending; a space after it closes the list.
+        if text.split(whereSeparator: \.isWhitespace).last?.hasPrefix("@") == true { text += " " }
+        return clearLine + pastes + (lines && bracketedPaste ? paste(text) : text)
     }
+
+    private static func paste(_ text: String) -> String { "\u{1b}[200~" + text + "\u{1b}[201~" }
 
     /// What stops an agent's turn: Grok takes ⌃C, the others Esc.
     public static func interrupt(agent: String?) -> String {

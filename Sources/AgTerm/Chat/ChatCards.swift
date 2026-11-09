@@ -53,7 +53,7 @@ final class ChatPromptCard: NSView {
         case .screen(let lines):
             lines.forEach { stack.addArrangedSubview(label($0, Theme.fg2, ChatStyle.smallFont)) }
             stack.setCustomSpacing(10, after: stack.arrangedSubviews.last ?? stack)
-            stack.addArrangedSubview(label("⌃` to answer in the terminal", Theme.fg3, ChatStyle.smallFont))
+            stack.addArrangedSubview(label("↑↓ ⏎ ⇥ Esc go to the agent from an empty box · ⌃` terminal", Theme.fg3, ChatStyle.smallFont))
         case nil:
             break
         }

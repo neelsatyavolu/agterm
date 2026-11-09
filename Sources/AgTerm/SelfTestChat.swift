@@ -7,7 +7,7 @@ extension SelfTest {
     /// Codex, Grok and agl chats fed from fixture transcripts written to `<dir>/chat-fixtures`, takes
     /// `chat-<agent>-ink.png` and `-paper.png`, then checks streaming appends, a half-written last
     /// line, the approval card, the composer typing into the terminal, ⌃` and back, split panes
-    /// each with their own view, and a 12,000-row transcript opening in time.
+    /// each with their own view, the composer's `/` and `@` menus and image paste, and a 12,000-row transcript opening in time.
     static func chatCheck(_ controller: MainWindowController, outDir: String) {
         guard let window = controller.window else { exit(1) }
         let wasLeft = controller.tabsOnLeft
@@ -123,9 +123,11 @@ extension SelfTest {
                     controller.setChat(true, for: claude, fixture: .init(agent: .claude, cwd: outDir, fixed: file))
                     report("chat shows again", controller.chats[claude.tabID] != nil, "")
                     otherPrompts(controller, window, outDir, report: report) {
+                    slashCheck(controller, window, outDir, report: report) {
                     splitCheck(controller, window, outDir, report: report) {
                         largeCheck(controller, outDir, report: report)
                         done()
+                    }
                     }
                     }
                 }

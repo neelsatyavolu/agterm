@@ -2,6 +2,11 @@
 
 ## 1.2.4 — 2026-11-08
 - Added: When the tabs kept from before an update still run in a session helper the update replaced, agterm says at launch that they've lost Full Disk Access (agents there get "Operation not permitted" in Documents) and offers Quit and End Sessions. Helpers started by 1.2.1 or later aren't affected.
+- Added: Typing `/` in the Chat view's message box lists the agent's commands with what each does, and narrows the list as you type, as Claude Code, Codex, Grok and agl do in the terminal. The list includes your skills, custom commands, Codex prompts and Claude Code plugin commands for the tab's folder. ↑↓ move, ⇥ fills the name in, ⏎ runs it and Esc closes the list.
+- Added: Typing `@` in the Chat view's message box lists the files and folders in the tab's folder, for Claude Code, Codex and Grok. Keep typing to narrow the list; ⇥ or ⏎ fills the path in.
+- Added: Paste or drop an image into the Chat view's message box to send it to Claude Code, Codex or Grok. It shows as `[Image #1]` until you send.
+- Added: ↑ in the Chat view's empty message box brings back messages you sent earlier, and ↓ goes forward again.
+- Fixed: When an agent shows a picker or a question in the Chat view (`/model`, `/resume`), you can answer it there: ↑↓←→, ⏎ and ⇥ from the empty message box go to the agent. Before, you had to switch to the terminal.
 
 ## 1.2.3 — 2026-11-08
 - Changed: agl looks cleaner. A new conversation opens with a short welcome showing the model, where it runs and the folder. Tool calls read as Read, Edit (with the lines changed), Write and Run (with the first lines of output). A spinner line shows what's running and for how long, and the footer shows how much of the model's context is used. Typing `/` lists every command with what it does.

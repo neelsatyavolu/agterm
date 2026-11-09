@@ -27,6 +27,11 @@ final class ChatPaneView: NSView {
     private(set) var model: String?
     /// The transcript named a different model.
     var onModel: () -> Void = {}
+    /// When the `/` menu's commands were last read; skills added since show up after this long.
+    private var commandsReadAt: Date?
+    static let commandsMaxAge: TimeInterval = 10
+    /// When the `@` menu's files were last listed.
+    private var filesReadAt: Date?
 
     init(session: TerminalSession, fixture: TranscriptFollower.Target? = nil) {
         tabID = session.tabID
@@ -36,9 +41,15 @@ final class ChatPaneView: NSView {
         let agent = fixture?.agent.rawValue ?? session.agentName ?? "agent"
         composer.agentTitle = agent
         transcript.placeholder = "waiting for \(agent)'s first reply"
-        composer.onSend = { [weak self] text in self?.type(text) }
+        composer.onSend = { [weak self] text, images in self?.type(text, images: images) }
         composer.onKey = { [weak self] key in self?.press(key) }
         card.onKey = { [weak self] key in self?.press(key) }
+        composer.onWantsCommands = { [weak self] in self?.loadCommands() }
+        composer.onWantsFiles = { [weak self] in self?.loadFiles() }
+        composer.onArrow = { [weak self] arrow in
+            guard let self, let terminal = self.session?.view.getTerminal() else { return }
+            self.press(ChatInput.arrow(arrow, applicationCursor: terminal.applicationCursor))
+        }
         card.isHidden = true
         layoutParts()
     }
@@ -138,6 +149,11 @@ final class ChatPaneView: NSView {
         }
         composer.status = status
         composer.answersPrompt = card.isApproval
+        composer.drivesScreen = !card.isHidden && !card.isApproval
+        let readsFiles = [.claude, .codex, .grok].contains(fixture?.agent ?? session.agentName.flatMap(TimelineFeed.Agent.init(rawValue:)))
+        if composer.mentionsFiles != readsFiles { composer.mentionsFiles = readsFiles }
+        // A cloud tab's agent can't read a file saved on this Mac.
+        composer.attachesImages = readsFiles && !session.isCloud
         readTranscript(working: working)
     }
 
@@ -181,13 +197,41 @@ final class ChatPaneView: NSView {
         }
     }
 
+    // MARK: The / menu
+
+    /// Reads the agent's commands for this folder off the main thread, at most every few seconds.
+    private func loadCommands() {
+        guard commandsReadAt.map({ Date().timeIntervalSince($0) > Self.commandsMaxAge }) ?? true,
+              let agent = fixture?.agent ?? session?.agentName.flatMap(TimelineFeed.Agent.init(rawValue:)) else { return }
+        commandsReadAt = Date()
+        let cwd = fixture?.cwd ?? session?.cwd ?? ""
+        let homes = SlashCatalog.Homes(user: FileManager.default.homeDirectoryForCurrentUser, claude: AccountStore.nativeClaudeHome,
+                                       codex: AccountStore.nativeCodexHome, grok: AccountStore.nativeGrokHome)
+        Self.reader.async { [weak self] in
+            let commands = SlashCatalog.commands(for: agent, cwd: cwd, homes: homes)
+            DispatchQueue.main.async { self?.composer.commands = commands }
+        }
+    }
+
+    /// Lists the tab folder's files off the main thread, at most every few seconds.
+    private func loadFiles() {
+        guard filesReadAt.map({ Date().timeIntervalSince($0) > Self.commandsMaxAge }) ?? true else { return }
+        filesReadAt = Date()
+        let cwd = fixture?.cwd ?? session?.cwd ?? ""
+        Self.reader.async { [weak self] in
+            let files = FileMention.files(in: cwd)
+            DispatchQueue.main.async { self?.composer.files = files }
+        }
+    }
+
     // MARK: Typing into the agent
 
-    private func type(_ text: String) {
+    private func type(_ text: String, images: [String] = []) {
         guard let view = session?.view,
-              let keys = ChatInput.typing(text, bracketedPaste: view.getTerminal().bracketedPasteMode) else { return }
+              let keys = ChatInput.typing(text, images: images, bracketedPaste: view.getTerminal().bracketedPasteMode) else { return }
         view.send(txt: keys)
-        DispatchQueue.main.asyncAfter(deadline: .now() + ChatInput.submitDelay) { [weak view] in view?.send(txt: ChatInput.enter) }
+        let delay = images.isEmpty ? ChatInput.submitDelay : ChatInput.imageSubmitDelay
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak view] in view?.send(txt: ChatInput.enter) }
         transcript.scrollToBottom()
     }
 
