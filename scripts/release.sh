@@ -62,6 +62,8 @@ if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
     echo "error: CHANGELOG.md has no entries under \"## $VERSION\"; add them first" >&2
     exit 1
 fi
+# agterm.dev/changelog is built from the same file.
+[ "$DRY_RUN" = 1 ] || python3 scripts/site-changelog.py --check
 
 echo "Loading signing and notarization credentials from 1Password…"
 # shellcheck disable=SC1091

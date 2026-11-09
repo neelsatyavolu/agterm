@@ -1,0 +1,20 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "createdAt": "2026-11-09T01:21:50.569Z",
+        "reason": "user's global CLAUDE.md design system (Blackletter) specifies Geist / Geist Mono"
+      },
+      {
+        "rule": "overused-font",
+        "value": "geist mono",
+        "createdAt": "2026-11-09T01:21:50.590Z",
+        "reason": "user's global CLAUDE.md design system (Blackletter) specifies Geist / Geist Mono"
+      }
+    ]
+  }
+}
