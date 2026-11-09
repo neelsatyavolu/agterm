@@ -95,13 +95,14 @@ final class TimelineFeedTests: XCTestCase {
     // MARK: Partial lines
 
     func testTruncatedLastLineIsLeftForTheNextChunk() {
-        for agent in [TimelineFeed.Agent.claude, .codex, .grok] {
+        for agent in [TimelineFeed.Agent.claude, .codex, .grok, .agl] {
             let line: String
             switch agent {
             case .claude: line = claudeLine("assistant", uuid: "a", content: [["type": "text", "text": "partial reply"]])
             case .codex: line = jsonLine(["timestamp": ts, "type": "response_item",
                                           "payload": ["type": "message", "role": "assistant", "content": [["type": "output_text", "text": "partial reply"]]]])
             case .grok: line = GrokTimelineTests.assistant("partial reply")
+            case .agl: line = jsonLine(["type": "assistant", "text": "partial reply", "reasoning": "", "ts": 1])
             }
             var feed = TimelineFeed(agent: agent)
             let data = Data((line + "\n").utf8)

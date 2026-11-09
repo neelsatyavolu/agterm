@@ -10,7 +10,7 @@ extension MainWindowController {
         setChat(chats[session.tabID] == nil, for: session)
     }
 
-    /// Whether agterm can show this tab as a chat: Claude Code, Codex or Grok, with its
+    /// Whether agterm can show this tab as a chat: Claude Code, Codex, Grok or agl, with its
     /// transcript on this Mac (not a cloud tab).
     func canChat(_ session: TerminalSession) -> Bool {
         TranscriptFollower.Target(session) != nil

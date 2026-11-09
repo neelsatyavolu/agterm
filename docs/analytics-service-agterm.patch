@@ -347,7 +347,7 @@ diff -ruN -x web orig/analytics-service/src/validate.ts new/analytics-service/sr
 +
 +/** agterm's AgentKind ids (agterm Sources/AgTermCore/AgentKind.swift). */
 +export const AGTERM_AGENTS = new Set([
-+  "claude", "codex", "grok", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
++  "claude", "codex", "grok", "agl", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
 +  "amp", "qwen", "crush", "copilot", "droid", "kilo", "cline", "goose", "auggie", "qodo",
 +  "kiro", "continue", "pi",
 +]);

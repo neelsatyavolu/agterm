@@ -48,6 +48,8 @@ public struct AgentKind: Hashable, Sendable {
     /// "needs you" and the New Agent Tab menu.
     public static let all: [AgentKind] = [
         .claude, .codex, .grok,
+        // agl runs local models and has no permission prompts.
+        AgentKind("agl", "agl", utility: ["models", "pull", "rm", "help"]),
         AgentKind("gemini", "Gemini CLI", bypass: ["--yolo"], utility: ["mcp", "extensions"],
                   permission: ["-y", "--approval-mode"]),
         AgentKind("agy", "Antigravity", bypass: ["--dangerously-skip-permissions"]),

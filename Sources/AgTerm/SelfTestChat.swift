@@ -3,8 +3,8 @@ import AgTermCore
 import AppKit
 
 extension SelfTest {
-    /// Chat view: `AGTERM_CHAT_CHECK=1 AGTERM_SELFTEST=<dir>`. Opens three tabs as Claude Code,
-    /// Codex and Grok chats fed from fixture transcripts written to `<dir>/chat-fixtures`, takes
+    /// Chat view: `AGTERM_CHAT_CHECK=1 AGTERM_SELFTEST=<dir>`. Opens four tabs as Claude Code,
+    /// Codex, Grok and agl chats fed from fixture transcripts written to `<dir>/chat-fixtures`, takes
     /// `chat-<agent>-ink.png` and `-paper.png`, then checks streaming appends, a half-written last
     /// line, the approval card, the composer typing into the terminal, ⌃` and back, split panes
     /// each with their own view, and a 12,000-row transcript opening in time.
@@ -15,6 +15,7 @@ extension SelfTest {
         UserDefaults.standard.set(true, forKey: MainWindowController.tabsOnLeftKey)
         controller.applyTabPlacement()
         window.setContentSize(NSSize(width: 1180, height: 780))
+        controller.newTab()
         controller.newTab()
         controller.newTab()
         controller.showWindow(nil)
@@ -35,7 +36,7 @@ extension SelfTest {
         }
 
         after(1.0) {
-            let agents: [TimelineFeed.Agent] = [.claude, .codex, .grok]
+            let agents: [TimelineFeed.Agent] = [.claude, .codex, .grok, .agl]
             for (index, agent) in agents.enumerated() {
                 let session = controller.sessions[index]
                 controller.focus(session.tabID)
@@ -71,7 +72,7 @@ extension SelfTest {
 
     private static func snapshots(_ controller: MainWindowController, _ window: NSWindow, _ outDir: String, _ theme: String,
                                   done: @escaping () -> Void) {
-        let names = ["claude", "codex", "grok"]
+        let names = ["claude", "codex", "grok", "agl"]
         func shoot(_ index: Int) {
             guard index < names.count else { return done() }
             controller.focus(controller.sessions[index].tabID)

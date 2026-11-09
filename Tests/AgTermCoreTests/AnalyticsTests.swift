@@ -51,7 +51,7 @@ final class AnalyticsTests: XCTestCase {
     /// docs/analytics-service-agterm.patch). A new AgentKind fails this until it's added there too.
     func testAgentIDsMatchTheServiceAllowList() {
         XCTAssertEqual(AgentKind.all.map(\.id), [
-            "claude", "codex", "grok", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
+            "claude", "codex", "grok", "agl", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
             "amp", "qwen", "crush", "copilot", "droid", "kilo", "cline", "goose", "auggie", "qodo",
             "kiro", "continue", "pi",
         ])

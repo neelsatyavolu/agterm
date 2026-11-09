@@ -14,7 +14,8 @@ final class TranscriptFollower: @unchecked Sendable {
         var cwd: String
         /// When the agent started: Codex and Grok files written before it aren't this run's.
         var since: Date?
-        /// The agent's process group: Codex holds its rollout open, which finds a resumed one.
+        /// The agent's process group: Codex holds its rollout open, which finds a resumed one;
+        /// agl names its session in `~/.agl/run/<pid>.json`.
         var group: pid_t?
         /// The Grok conversation agterm started or resumed for this run (`--session-id`, `--resume`, `-c`).
         var grokSession: String?
@@ -32,7 +33,7 @@ final class TranscriptFollower: @unchecked Sendable {
             let since = session.agentStartedAt
             let launched = agent == .claude ? nil : TranscriptFollower.launchSession(tabID: session.tabID, agent: agent, since: since)
             self.init(agent: agent, claudeSession: session.claudeSessionID, cwd: session.cwd, since: since,
-                      group: agent == .codex ? session.foregroundGroup : nil,
+                      group: agent == .codex || agent == .agl ? session.foregroundGroup : nil,
                       grokSession: agent == .grok ? launched : nil, codexSession: agent == .codex ? launched : nil,
                       typing: agent == .grok ? session.typingStops.filter { stop in since.map { stop >= $0 } ?? false } : [])
         }
@@ -146,6 +147,9 @@ final class TranscriptFollower: @unchecked Sendable {
                 ?? target.codexSession.flatMap(codexRollout(sessionID:))
         case .grok:
             return locateGrok(target, following: following)
+        case .agl:
+            // The shell makes agl its job's group leader, so the group id is agl's pid.
+            return target.group.flatMap { AglSessions.running(pid: $0) }
         }
     }
 

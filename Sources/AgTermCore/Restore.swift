@@ -272,12 +272,41 @@ public enum AgentResume {
             .joined(separator: " ")
     }
 
+    /// `agl --resume <session>` for the session file this tab's agl is writing, with the options
+    /// it was started with (`--model`, `--base-url`, `--max-steps`, `--plain`). Nil for one-shot
+    /// runs (`-p`) and subcommands (`models`, `pull`, `rm`).
+    public static func aglCommandLine(argv: [String], session: URL) -> String? {
+        let args = Array(argv.dropFirst())
+        guard AgentKind.named("agl")?.startsSession(args) ?? false,
+              !args.contains(where: { ["-p", "--prompt"].contains($0) || $0.hasPrefix("--prompt=") }) else { return nil }
+        let valueFlags: Set = ["--model", "--base-url", "--max-steps"]
+        var kept: [String] = []
+        var i = 0
+        while i < args.count {
+            let arg = args[i]
+            if valueFlags.contains(arg), i + 1 < args.count {
+                kept += [arg, args[i + 1]]
+                i += 2
+                continue
+            }
+            if arg == "--resume" {
+                // Its value is optional.
+                i += i + 1 < args.count && !args[i + 1].hasPrefix("-") ? 2 : 1
+                continue
+            }
+            if arg == "--plain" || valueFlags.contains(where: { arg.hasPrefix($0 + "=") }) { kept.append(arg) }
+            i += 1
+        }
+        let id = session.deletingPathExtension().lastPathComponent
+        return (["command", "agl", "--resume", id] + kept.map(ShellEscape.path)).joined(separator: " ")
+    }
+
     /// Agents whose conversation id agterm can't read: each one's own way to continue its
     /// latest conversation (most are per folder, and the tab reopens in the same folder).
     /// Flags come from each CLI's --help. Claude Code and Codex resume the exact conversation
     /// instead (`commandLine`, `codexCommandLine`).
     static let continueLatest: [String: [String]] = [
-        "grok": ["--continue"], "gemini": ["--resume", "latest"], "agy": ["--continue"],
+        "grok": ["--continue"], "agl": ["--resume"], "gemini": ["--resume", "latest"], "agy": ["--continue"],
         "cursor-agent": ["--continue"], "opencode": ["--continue"], "kimi": ["--continue"],
         "aider": ["--restore-chat-history"], "droid": ["--resume"], "kilo": ["--continue"],
         "auggie": ["--continue"], "pi": ["--continue"], "copilot": ["--continue"], "goose": ["session", "--resume"],
