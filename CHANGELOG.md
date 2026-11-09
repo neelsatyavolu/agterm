@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.8 — 2026-11-09
+- Fixed: In the Chat view, the title strip's context window, tokens, cost and changed lines no longer all disappear when they don't fit. The tokens and cost go first, then the changed lines; the context window stays.
+- Added: The Chat view's title strip shows the tab's name after the agent's.
+
 ## 1.2.7 — 2026-11-09
 - Added: In the Chat view, the title strip shows how full the agent's context window is (`184k / 1M`), for Claude Code, Codex and Grok.
 - Added: The Chat view shows files an agent wrote or edited through its shell as diffs, like its other edits: `cat > file <<'EOF'` writes, and Python scripts that replace text in a file.

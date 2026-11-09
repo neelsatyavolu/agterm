@@ -85,10 +85,12 @@ final class TitleStripView: NSView {
 
     private var plainTitle: NSMutableAttributedString { TabCardDrawing.text(title, Theme.topicFont, Theme.fg3) }
 
-    /// `claude  opus 5.5  agterm  ⎇ main`.
+    /// `Claude Code  Fix the sidebar dot  Opus 5.5  agterm  ⎇ main`: the agent, the tab's name, then where it runs.
     private func chatTitle(_ info: ChatInfo) -> NSMutableAttributedString {
         let out = TabCardDrawing.text(info.agent, Theme.topicFont, Theme.fg2)
-        for (part, color) in [(info.model, Theme.fg3), (info.folder, Theme.fg3), (info.branch.map { "⎇ " + $0 }, Theme.fg3)] {
+        let name = title.count > 48 ? String(title.prefix(47)) + "…" : title
+        let named = name.isEmpty || name.caseInsensitiveCompare(info.agent) == .orderedSame ? nil : name
+        for (part, color) in [(named, Theme.fg2), (info.model, Theme.fg3), (info.folder, Theme.fg3), (info.branch.map { "⎇ " + $0 }, Theme.fg3)] {
             guard let part, !part.isEmpty else { continue }
             out.append(TabCardDrawing.text("   " + part, Theme.metaFont, color))
         }
@@ -96,18 +98,27 @@ final class TitleStripView: NSView {
     }
 
     /// `412k / 1M   48.2k · $0.41   +86 −12`, right-aligned at `maxX`; returns where it starts.
+    /// In a narrow strip the tokens and cost go first, then the diff; the context window stays longest.
     private func drawStats(_ info: ChatInfo, maxX: CGFloat) -> CGFloat {
-        let text = NSMutableAttributedString()
-        if let context = info.context { text.append(TabCardDrawing.text(context + "   ", Theme.metaFont, Theme.fg2)) }
-        if let usage = info.usage { text.append(TabCardDrawing.text(usage + "   ", Theme.metaFont, Theme.fg3)) }
+        let context = info.context.map { TabCardDrawing.text($0, Theme.metaFont, Theme.fg2) }
+        let usage = info.usage.map { TabCardDrawing.text($0, Theme.metaFont, Theme.fg3) }
+        var diff: NSMutableAttributedString?
         if info.added > 0 || info.removed > 0 {
-            text.append(TabCardDrawing.text("+\(info.added)", Theme.metaFont, Theme.ok))
-            text.append(TabCardDrawing.text(" −\(info.removed)", Theme.metaFont, Theme.danger))
+            diff = TabCardDrawing.text("+\(info.added)", Theme.metaFont, Theme.ok)
+            diff?.append(TabCardDrawing.text(" −\(info.removed)", Theme.metaFont, Theme.danger))
         }
-        let width = ceil(text.size().width)
-        guard width > 0, maxX - width > bounds.width / 2 else { return maxX }
-        text.draw(at: NSPoint(x: maxX - width, y: (bounds.height - text.size().height) / 2))
-        return maxX - width
+        for parts in [[context, usage, diff], [context, diff], [context]] {
+            let text = NSMutableAttributedString()
+            for part in parts.compactMap({ $0 }) {
+                if text.length > 0 { text.append(TabCardDrawing.text("   ", Theme.metaFont, Theme.fg3)) }
+                text.append(part)
+            }
+            let width = ceil(text.size().width)
+            guard width > 0, maxX - width > bounds.width / 2 else { continue }
+            text.draw(at: NSPoint(x: maxX - width, y: (bounds.height - text.size().height) / 2))
+            return maxX - width
+        }
+        return maxX
     }
 
     /// The two-part control at the right edge; returns its left edge.
