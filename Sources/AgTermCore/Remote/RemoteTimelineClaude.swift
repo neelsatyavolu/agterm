@@ -173,6 +173,7 @@ enum ClaudeTimeline {
             switch item {
             case let .userMessage(content, timestamp, uuid):
                 if chatMarkers, addBangShell(content, ts: parseLogTimestamp(timestamp), uuid: uuid) { return }
+                if let note = Subagents.claudeNotification(content) { finish(note, ts: parseLogTimestamp(timestamp)) }
                 guard let text = ClaudeText.clean(content) else { return }
                 entries.append(MobileTimelineEntry(id: uuid, kind: "user", text: text, ts: parseLogTimestamp(timestamp)))
             case let .assistantText(text, timestamp, uuid):
@@ -201,6 +202,12 @@ enum ClaudeTimeline {
                         entry.deletions = counts.deletions > 0 ? counts.deletions : nil
                     }
                     if chatMarkers { entry.endTs = parseLogTimestamp(timestamp) }
+                    // A background agent or workflow runs on until its task notification.
+                    if !isError, Subagents.isSpawn(entry.toolName ?? ""), Subagents.isBackgroundLaunch(content) {
+                        entry.status = "running"
+                        entry.body = nil
+                        entry.endTs = nil
+                    }
                     entries[index] = entry
                 } else {
                     entries.append(MobileTimelineEntry(id: uuid, kind: "tool", lead: "Result", status: isError ? "error" : "ok",
@@ -208,6 +215,14 @@ enum ClaudeTimeline {
                                                        requestId: toolUseID, ts: parseLogTimestamp(timestamp)))
                 }
             }
+        }
+
+        /// A background agent or workflow finished: its row takes the notification's status and result.
+        private mutating func finish(_ note: Subagents.Notification, ts: Int) {
+            guard let index = toolIndex[note.toolUseID], index < entries.count else { return }
+            entries[index].status = note.failed ? "error" : "ok"
+            entries[index].body = note.result.map { timelineTruncate($0, TimelineTools.resultBodyLimit) }
+            if chatMarkers { entries[index].endTs = ts }
         }
 
         /// `!cmd` typed in Claude Code: `<bash-input>` opens a command row, the

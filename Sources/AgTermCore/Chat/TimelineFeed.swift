@@ -25,6 +25,7 @@ public struct TimelineFeed {
     private var codexParser = CodexHistoryParser(chatMarkers: true)
     private var codexConverter = CodexTimeline.Converter()
     private var codexTail: [JSONValue] = []
+    private var codexSubagents = CodexSubagents()
     private var grok = GrokTimeline()
     private var agl = AglTimeline()
 
@@ -74,6 +75,7 @@ public struct TimelineFeed {
             if record["type"]?.string == "turn_context", let model = record.pointer("/payload/model")?.string, !model.isEmpty {
                 self.model = model
             }
+            codexSubagents.consume(record)
             // No string in it can be longer than the line itself.
             codexTail.append(trimmed.utf8.count > Self.codexStringLimit ? record.cappingStrings(at: Self.codexStringLimit) : record)
         case .grok:
@@ -103,11 +105,11 @@ public struct TimelineFeed {
                 codexConverter.forgetCalls()
                 codexParser = parser
                 codexTail = []
-                entries = codexConverter.entries
+                entries = codexSubagents.apply(to: codexConverter.entries, settled: codexConverter.entries.count)
             } else {
                 var converter = codexConverter
                 parser.finishedItems().forEach { converter.add($0) }
-                entries = converter.entries
+                entries = codexSubagents.apply(to: converter.entries, settled: codexConverter.entries.count)
             }
         case .grok:
             entries = grok.entries

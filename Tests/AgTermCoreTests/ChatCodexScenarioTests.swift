@@ -29,6 +29,7 @@ final class ChatCodexScenarioTests: XCTestCase {
             case let .edit(e): return "edit: \(e.verb) \(e.path) +\(e.additions) -\(e.deletions) lines=\(e.lines.count)"
             case let .command(c): return "command[\(c.status)]: \(c.command) | \(c.summary ?? "-")"
             case let .tool(t): return "tool[\(t.status)]: \(t.lead) \(t.subject ?? "") | \(t.body?.prefix(60) ?? "-")"
+            case let .agent(a): return "agent[\(a.status)]: \(a.title ?? "") | \(a.result?.prefix(60) ?? "-")"
             case .interrupted: return "interrupted"
             }
         }.joined(separator: "\n")
@@ -209,8 +210,12 @@ final class ChatCodexScenarioTests: XCTestCase {
             assistant("done"),
         ]))
         let tools = rows.compactMap { row -> ChatTool? in if case let .tool(t) = row { return t }; return nil }
-        XCTAssertEqual(tools.count, 3, dump(rows))
+        XCTAssertEqual(tools.count, 2, dump(rows))
         XCTAssertTrue(tools.allSatisfy { $0.status == .ok }, dump(rows))
+        let agents = rows.compactMap { row -> ChatAgent? in if case let .agent(a) = row { return a }; return nil }
+        XCTAssertEqual(agents.map(\.title), ["verify"], dump(rows))
+        XCTAssertEqual(agents.first?.type, "fact-checker")
+        XCTAssertEqual(agents.first?.status, .running, "no SubAgentActivity completed record yet")
         XCTAssertEqual(rows.last?.kindName, "assistant")
     }
 

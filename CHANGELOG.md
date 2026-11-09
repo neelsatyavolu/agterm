@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.2 — 2026-11-08
+- Added: The Chat view shows subagents and Claude Code workflows as rows of their own: what each was asked to do, its kind of agent or workflow name, and whether it's still running. Background agents and workflows stay running until they finish, then show how long they took; click the row to read what they came back with. Works for Claude Code's agents and workflows, Codex's spawned agents and Grok's subagents, and agterm Remote shows background ones as running too.
+- Fixed: The Usage window opens in seconds instead of a minute or more on a Mac with a lot of Claude Code history. It now reads transcripts on every core and skips the tool output lines, which never hold token counts.
+- Fixed: The buttons at the top right (worktrees, hand off, commit, usage, changes, session timeline) and the tab bar's buttons show their tooltips when you hover over them.
+
 ## 1.2.1 — 2026-11-08
 - Fixed: Tabs kept running across an update or reinstall no longer lose Full Disk Access and agterm's other privacy permissions. The sessions helper now runs from its own copy of agterm, which updates don't replace. Tabs started before this version still need agterm → Quit and End Sessions once.
 

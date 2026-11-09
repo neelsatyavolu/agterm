@@ -33,6 +33,8 @@ enum ChatRowText {
             return ChatCardText.command(command, expanded: expanded, gap: gap)
         case .tool(let tool):
             return single(tool, expanded: expanded, gap: gap)
+        case .agent(let agent):
+            return subagent(agent, expanded: expanded, gap: gap)
         case .interrupted:
             return line([("■ interrupted", Theme.danger)], gap: gap)
         }
@@ -74,11 +76,7 @@ enum ChatRowText {
     }
 
     private static func single(_ tool: ChatTool, expanded: Bool, gap: CGFloat) -> NSAttributedString {
-        let (glyph, color): (String, NSColor) = switch tool.status {
-        case .running: ("◐", Theme.accent)
-        case .error: ("✕", Theme.danger)
-        case .ok: ("✓", Theme.ok)
-        }
+        let (glyph, color) = statusGlyph(tool.status)
         let canExpand = tool.status != .error && !(tool.body ?? "").isEmpty
         var parts: [(String, NSColor)] = [(glyph + " ", color), (tool.lead, Theme.fg)]
         if let subject = tool.subject, !subject.isEmpty { parts.append((" " + timelineCut(subject, 200), Theme.fg2)) }
@@ -91,6 +89,36 @@ enum ChatRowText {
             out.append(Self.body(body, color: Theme.fg2))
         }
         return out
+    }
+
+    /// `◐ Agent Review the branch  code-reviewer  2m 5s ▸`; opened, the agent's answer as markdown.
+    private static func subagent(_ agent: ChatAgent, expanded: Bool, gap: CGFloat) -> NSAttributedString {
+        let (glyph, color) = statusGlyph(agent.status)
+        let result = agent.result.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        let canExpand = agent.status != .error && result != nil
+        var parts: [(String, NSColor)] = [(glyph + " ", color), (agent.label, Theme.fg)]
+        if let title = agent.title, !title.isEmpty { parts.append((" " + timelineCut(title, 200), Theme.fg2)) }
+        if let type = agent.type, !type.isEmpty { parts.append(("  " + timelineCut(type, 60), Theme.fg3)) }
+        if agent.status == .running { parts.append(("  running", Theme.fg3)) }
+        if let time = ChatStyle.duration(agent.durationMs) { parts.append(("  " + time, Theme.fg3)) }
+        if canExpand { parts.append((expanded ? "  ▾" : "  ▸", Theme.fg3)) }
+        let out = NSMutableAttributedString(attributedString: line(parts, gap: gap, toggle: canExpand ? agent.id : nil))
+        if agent.status == .error, let result {
+            out.append(ChatCardText.well(Array(result.components(separatedBy: "\n").prefix(ChatRows.errorPreviewLines)), color: Theme.danger))
+        } else if expanded, let result {
+            let lines = result.components(separatedBy: "\n")
+            let shown = lines.prefix(bodyLines).joined(separator: "\n") + (lines.count > bodyLines ? "\n\n… \(lines.count - bodyLines) more lines" : "")
+            out.append(ChatStyle.markdown(timelineCut(shown, bodyChars), gap: 6))
+        }
+        return out
+    }
+
+    private static func statusGlyph(_ status: ChatToolStatus) -> (String, NSColor) {
+        switch status {
+        case .running: ("◐", Theme.accent)
+        case .error: ("✕", Theme.danger)
+        case .ok: ("✓", Theme.ok)
+        }
     }
 
     // MARK: Pieces

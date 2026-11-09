@@ -36,6 +36,10 @@ enum TimelineTools {
     private static let deleteNames: Set = ["delete", "delete_file", "remove_file"]
 
     static func lead(_ name: String) -> String {
+        if Subagents.isWorkflow(name) { return "Workflow" }
+        if Subagents.isSpawn(name) { return "Agent" }
+        // Codex's other collaboration tools (wait_agent, list_agents, followup_task, …) manage agents already spawned.
+        if name.startsWith("collaboration.") { return "Subagent" }
         let base = baseName(name)
         let lower = asciiLowercased(base)
         if readNames.contains(lower) { return "Read" }
@@ -77,6 +81,11 @@ enum TimelineTools {
         let lower = asciiLowercased(base)
         let cut = { (text: String) in timelineTruncate(text, 120) }
 
+        if Subagents.isSpawn(name) { return Subagents.subjectDetail(name, input) }
+        if name.startsWith("collaboration.") {
+            let target = input.firstPresent(["target", "task_name", "agent_path", "agent"])?.string
+            return (target.map(cut) ?? humanizeSnake(String(name.dropFirst("collaboration.".count))), nil)
+        }
         if name.startsWith("mcp__") || name.startsWith("mcp_") {
             let subject: String = query ?? path ?? cmd ?? humanizeSnake(base)
             return (cut(subject), nil)

@@ -86,6 +86,25 @@ public struct ChatCommand: Equatable, Sendable {
     private var outputLines: [String] { output.map(rustLines) ?? [] }
 }
 
+/// A subagent or workflow the agent started, and what it came back with.
+public struct ChatAgent: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable { case agent, workflow }
+    public let id: String
+    public let kind: Kind
+    /// What it was asked to do ("Review the branch").
+    public let title: String?
+    /// Which kind of agent ("code-reviewer", "explorer"), or the workflow's name.
+    public let type: String?
+    public let status: ChatToolStatus
+    /// Its final answer, once it finished.
+    public let result: String?
+    /// From start to finish; nil while it runs or when the transcript has no times.
+    public let durationMs: Int?
+
+    /// "Agent" or "Workflow".
+    public var label: String { kind == .workflow ? "Workflow" : "Agent" }
+}
+
 /// One row of the chat transcript.
 public enum ChatRow: Equatable, Sendable {
     case user(id: String, text: String, queued: Bool)
@@ -97,6 +116,7 @@ public enum ChatRow: Equatable, Sendable {
     case edit(ChatEdit)
     case command(ChatCommand)
     case tool(ChatTool)
+    case agent(ChatAgent)
     case interrupted(id: String)
 
     public var id: String {
@@ -106,6 +126,7 @@ public enum ChatRow: Equatable, Sendable {
         case .edit(let edit): return edit.id
         case .command(let command): return command.id
         case .tool(let tool): return tool.id
+        case .agent(let agent): return agent.id
         }
     }
 
@@ -119,6 +140,7 @@ public enum ChatRow: Equatable, Sendable {
         case .edit: return "edit"
         case .command: return "command"
         case .tool: return "tool"
+        case .agent: return "agent"
         case .interrupted: return "interrupted"
         }
     }
@@ -199,6 +221,11 @@ public enum ChatRows {
             return .command(ChatCommand(id: e.id, command: e.subject ?? "", status: status, output: e.body,
                                         durationMs: status == .running ? nil
                                             : e.endTs.flatMap { span(e.ts, $0) } ?? duration(from: e.ts, toEntryAt: index + 1, in: entries)))
+        }
+        if Subagents.isSpawn(e.toolName ?? "") {
+            return .agent(ChatAgent(id: e.id, kind: Subagents.isWorkflow(e.toolName ?? "") ? .workflow : .agent, title: e.subject,
+                                    type: e.detail, status: status, result: e.body,
+                                    durationMs: status == .running ? nil : e.endTs.flatMap { span(e.ts, $0) }))
         }
         if let verb = editVerbs[e.lead ?? ""], status != .error, let body = e.body, TimelineTools.looksLikeDiff(body) {
             return .edit(ChatEdit(id: e.id, verb: verb, path: e.subject ?? "", additions: e.additions ?? 0,

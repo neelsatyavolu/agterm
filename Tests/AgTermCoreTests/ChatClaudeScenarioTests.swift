@@ -186,10 +186,11 @@ final class ChatClaudeScenarioTests: XCTestCase {
         let r = rows([toolUse("a1", id: "t1", name: "Agent", input: ["description": "Count lines", "subagent_type": "general-purpose", "prompt": "count"]),
                       toolResult("u1", id: "t1", content: [["type": "text", "text": "3 lines"]]),
                       toolUse("a2", id: "t2", name: "Task", input: ["description": "Explore", "prompt": "look"])])
-        XCTAssertEqual(r.map(\.kindName), ["tool", "tool"])
-        guard case .tool(let t)? = r.first else { return XCTFail() }
-        XCTAssertEqual(t.lead, "Agent")
-        XCTAssertEqual(t.body, "3 lines")
+        XCTAssertEqual(r.map(\.kindName), ["agent", "agent"])
+        guard case .agent(let a)? = r.first else { return XCTFail() }
+        XCTAssertEqual(a.label, "Agent")
+        XCTAssertEqual(a.type, "general-purpose")
+        XCTAssertEqual(a.result, "3 lines")
     }
 
     func testWebAndMCPTools() {
@@ -351,10 +352,10 @@ final class ChatClaudeScenarioTests: XCTestCase {
         let r = rows([toolUse("a1", id: "t1", name: "Agent", input: ["description": "Count lines in notes.txt",
                                                                       "prompt": "Count the lines in the file named notes.txt. The primary working directory is /tmp"]),
                       toolResult("u1", id: "t1", content: [["type": "text", "text": "<tools-used-before-summary>Bash</tools-used-before-summary>\n\n3 lines"]])])
-        guard case .tool(let t)? = r.first else { return XCTFail("\(r)") }
-        XCTAssertEqual(t.subject, "Count lines in notes.txt")
-        XCTAssertFalse(t.body?.contains("<tools-used") ?? true, t.body ?? "")
-        XCTAssertEqual(t.body?.trimmingCharacters(in: .whitespacesAndNewlines), "3 lines")
+        guard case .agent(let a)? = r.first else { return XCTFail("\(r)") }
+        XCTAssertEqual(a.title, "Count lines in notes.txt")
+        XCTAssertFalse(a.result?.contains("<tools-used") ?? true, a.result ?? "")
+        XCTAssertEqual(a.result?.trimmingCharacters(in: .whitespacesAndNewlines), "3 lines")
     }
 
     func testWriteWithTrailingNewlineCountsItsLines() {
@@ -555,6 +556,7 @@ final class ChatClaudeScenarioTests: XCTestCase {
         case .edit(let e): return "edit \(e.verb) \(e.path) +\(e.additions) -\(e.deletions) lines=\(e.lines.count)"
         case .command(let c): return "command \(c.status) $ \(cut(c.command)) → \(c.summary ?? "-") \(c.durationMs ?? -1)ms"
         case .tool(let t): return "tool \(t.status) \(t.lead) [\(t.verb)] \(cut(t.subject ?? "")) body=\(cut(t.body ?? ""))"
+        case .agent(let a): return "agent \(a.status) \(a.label) \(cut(a.title ?? "")) result=\(cut(a.result ?? ""))"
         case .interrupted: return "■ interrupted"
         }
     }

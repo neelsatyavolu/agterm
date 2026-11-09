@@ -5,13 +5,23 @@ import Foundation
 /// `remote::timeline::codex_items_to_entries`.
 enum CodexTimeline {
     static func entries(rollout: String) -> [MobileTimelineEntry] {
-        itemsToEntries(CodexHistoryParser.items(rollout: rollout))
+        let records = rustLines(rollout).compactMap { line -> JSONValue? in
+            let trimmed = line.rustTrimmed
+            return trimmed.isEmpty ? nil : JSONValue.parse(trimmed)
+        }
+        return withSubagents(itemsToEntries(CodexHistoryParser.items(records: records)), records)
     }
 
     /// The chat view's timeline from already-parsed rollout records, with interrupted turns
     /// and still-running commands marked.
     static func chatEntries(records: [JSONValue]) -> [MobileTimelineEntry] {
-        itemsToEntries(CodexHistoryParser.items(records: records, chatMarkers: true))
+        withSubagents(itemsToEntries(CodexHistoryParser.items(records: records, chatMarkers: true)), records)
+    }
+
+    private static func withSubagents(_ entries: [MobileTimelineEntry], _ records: [JSONValue]) -> [MobileTimelineEntry] {
+        var subagents = CodexSubagents()
+        records.forEach { subagents.consume($0) }
+        return subagents.apply(to: entries)
     }
 
     /// The model agmux reports for a Codex session: the last non-empty

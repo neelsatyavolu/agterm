@@ -9,6 +9,8 @@ struct GrokTimeline {
     /// The latest assistant `model_id` (`grok-4.7-build-fast`).
     private(set) var model: String?
     private var toolIndex: [String: Int] = [:]
+    /// Background subagents by id: the row of the `spawn_subagent` call that started each.
+    private var subagentIndex: [String: Int] = [:]
     private var line = 0
 
     static func entries(chatHistory: String) -> [MobileTimelineEntry] {
@@ -51,10 +53,13 @@ struct GrokTimeline {
     // MARK: Lines
 
     private mutating func addUser(_ v: JSONValue, id: String) {
-        // Reminders, task notices and compaction summaries are plumbing; an interjection is the user typing mid-turn.
-        if let reason = v["synthetic_reason"]?.string, reason != "interjection" { return }
         let blocks = v["content"]?.array ?? (v["content"]?.string).map { [.object(["type": .string("text"), "text": .string($0)])] } ?? []
         let raw = blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
+        // Reminders, task notices and compaction summaries are plumbing; an interjection is the user typing mid-turn.
+        if let reason = v["synthetic_reason"]?.string, reason != "interjection" {
+            if reason == "task_completed", let done = Subagents.grokTaskCompleted(raw) { finishSubagent(done.id, failed: done.failed, output: nil) }
+            return
+        }
         if raw.startsWith("[Image extracted from tool result") { return }
         let images = blocks.filter { $0["type"]?.string == "image" }.count
         guard var text = raw.containsBytes("<user_query>") ? Self.userQuery(raw) : ClaudeText.clean(raw) else { return }
@@ -123,11 +128,31 @@ struct GrokTimeline {
         if let index = toolIndex[callID] {
             let (body, isError) = Self.result(content, command: entries[index].lead == "Ran")
             entries[index] = TimelineTools.applyingResult(entries[index], content: body, isError: isError)
+            trackSubagents(at: index, content: content, isError: isError)
         } else {
             let (body, isError) = Self.result(content, command: false)
             entries.append(MobileTimelineEntry(id: id, kind: "tool", lead: "Result", status: isError ? "error" : "ok",
                                                body: timelineTruncate(body, TimelineTools.resultBodyLimit), requestId: callID, ts: 0))
         }
+    }
+
+    /// A subagent started in the background keeps its row running; a later output check finishes it.
+    private mutating func trackSubagents(at index: Int, content: String, isError: Bool) {
+        guard !isError else { return }
+        let name = entries[index].toolName ?? ""
+        if Subagents.isSpawn(name), Subagents.isBackgroundLaunch(content) {
+            entries[index].status = "running"
+            entries[index].body = nil
+            if let id = Subagents.grokSubagentID(content) { subagentIndex[id] = index }
+        } else if Subagents.base(name) == "get_command_or_subagent_output" {
+            Subagents.grokFinishedTasks(content).forEach { finishSubagent($0.id, failed: $0.failed, output: $0.output) }
+        }
+    }
+
+    private mutating func finishSubagent(_ id: String, failed: Bool, output: String?) {
+        guard let index = subagentIndex[id], index < entries.count else { return }
+        entries[index].status = failed ? "error" : "ok"
+        if let output { entries[index].body = timelineTruncate(output, TimelineTools.resultBodyLimit) }
     }
 
     /// Grok marks failures only in the text: a non-zero `exit: N` first line on commands, or an error prefix.

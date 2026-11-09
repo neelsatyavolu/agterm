@@ -175,11 +175,14 @@ final class ChatGrokScenarioTests: XCTestCase {
             G.result("c-0", "done"), G.result("c-1", "<html>"), G.result("c-2", "ok"), G.result("c-3", "ok"),
             jsonLine(["type": "backend_tool_call", "kind": ["tool_type": "web_search", "action": ["query": "swift"]]]),
         ]))
-        XCTAssertEqual(rows.map(\.kindName), ["user", "tool", "tool", "tool", "tool", "tool"])
+        XCTAssertEqual(rows.map(\.kindName), ["user", "agent", "tool", "tool", "tool", "tool"])
+        guard case .agent(let agent) = rows[1] else { return XCTFail() }
+        XCTAssertEqual(agent.title, "explore")
+        XCTAssertEqual(agent.result, "done")
         let tools = rows.compactMap { row -> ChatTool? in if case .tool(let t) = row { return t } else { return nil } }
         XCTAssertTrue(tools.allSatisfy { $0.status == .ok && !$0.lead.isEmpty })
-        XCTAssertEqual(tools[1].subject, "https://example.com")
-        XCTAssertEqual(tools[4].subject, "swift")
+        XCTAssertEqual(tools[0].subject, "https://example.com")
+        XCTAssertEqual(tools[3].subject, "swift")
     }
 
     func testImagesInterruptAndInterjection() {

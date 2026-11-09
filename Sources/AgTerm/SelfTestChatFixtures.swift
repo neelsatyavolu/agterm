@@ -9,9 +9,9 @@ enum ChatFixtures {
     static let ts = "2026-11-08T12:00:00.000Z"
 
     static let expectedKinds: [TimelineFeed.Agent: Set<String>] = [
-        .claude: ["user", "assistant", "thinking", "tools", "edit", "command", "tool", "interrupted"],
-        .codex: ["user", "assistant", "thinking", "command", "edit", "interrupted"],
-        .grok: ["user", "assistant", "thinking", "tools", "command"],
+        .claude: ["user", "assistant", "thinking", "tools", "edit", "command", "tool", "agent", "interrupted"],
+        .codex: ["user", "assistant", "thinking", "command", "edit", "agent", "interrupted"],
+        .grok: ["user", "assistant", "thinking", "tools", "command", "agent"],
         .agl: ["user", "assistant", "thinking", "edit", "command"],
     ]
 
@@ -136,6 +136,13 @@ enum ChatFixtures {
                                            use("t9", "mcp__figma__get_frame", ["id": "12:3"])], minute: 7),
             claudeLine("user", "r5", [result("t7", "All palettes have a yellow."), result("t8", "page text"),
                                       result("t9", "Failed to call tool", error: true)], minute: 8),
+            claudeLine("assistant", "a5b", [use("t11", "Agent", ["description": "Review the dot change", "subagent_type": "code-reviewer",
+                                                                 "prompt": "review", "run_in_background": true]),
+                                            use("t12", "Workflow", ["script": "export const meta = { name: 'theme-audit', description: 'Audit every theme for a waiting color' }"])], minute: 8),
+            claudeLine("user", "r5b", [result("t11", "Async agent launched successfully.\nagentId: a1"),
+                                       result("t12", "Workflow launched in background. Task ID: w1")], minute: 8),
+            claudeLine("user", "n5", "<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>t11</tool-use-id>\n<status>completed</status>\n"
+                       + "<result>No issues. The **amber** dot reads well in Ink and Paper.</result>\n</task-notification>", minute: 9),
             json(["type": "progress", "uuid": "p1", "data": ["unknown": true]]),
             claudeLine("assistant", "a6", [["type": "text", "text": markdown]], minute: 9),
             claudeLine("user", "u2", "[Request interrupted by user]", minute: 10),
@@ -158,6 +165,12 @@ enum ChatFixtures {
                                      "input": "*** Begin Patch\n*** Update File: Sources/a.swift\n@@\n-let a = 1\n+let a = 2\n*** End Patch"]),
             record("response_item", ["type": "custom_tool_call_output", "call_id": "p1",
                                      "output": json(["output": "Success. Updated the following files:\nM Sources/a.swift", "metadata": ["exit_code": 0]])]),
+            record("response_item", ["type": "function_call", "name": "spawn_agent", "namespace": "collaboration", "call_id": "s1",
+                                     "arguments": json(["task_name": "check_themes", "agent_type": "explorer", "message": "check"])]),
+            record("response_item", ["type": "function_call_output", "call_id": "s1", "output": json(["task_name": "/root/check_themes"])]),
+            record("event_msg", ["type": "item_completed", "item": ["type": "SubAgentActivity", "kind": "completed", "agent_path": "/root/check_themes"]]),
+            record("response_item", ["type": "agent_message", "author": "/root/check_themes",
+                                     "content": [["type": "input_text", "text": "Message Type: FINAL_ANSWER\nPayload:\nAll themes have a yellow."]]]),
             record("response_item", ["type": "message", "role": "assistant", "content": [["type": "output_text", "text": markdown]]]),
             record("response_item", ["type": "function_call", "name": "exec_command", "call_id": "c2", "arguments": json(["cmd": "sleep 100"])]),
             record("event_msg", ["type": "turn_aborted", "reason": "interrupted"]),
@@ -188,6 +201,8 @@ enum ChatFixtures {
             json(["type": "tool_result", "tool_call_id": "g3", "content": "- run.sh"]),
             assistant("", [call("g4", "run_terminal_command", ["command": "ops/run.sh"])]),
             json(["type": "tool_result", "tool_call_id": "g4", "content": "exit: 1\nnode: command not found"]),
+            assistant("", [call("g6", "spawn_subagent", ["description": "Find other run scripts", "subagent_type": "explore", "prompt": "look"])]),
+            json(["type": "tool_result", "tool_call_id": "g6", "content": "Subagent started in background.\nsubagent_id: sa1"]),
             json(["type": "backend_tool_call", "name": "web_search"]),
             assistant(markdown),
             assistant("", [call("g5", "run_terminal_command", ["command": "npm ci"])]),
