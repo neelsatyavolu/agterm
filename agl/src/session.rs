@@ -82,12 +82,13 @@ fn pointer_path(root: &Path, pid: u32) -> PathBuf {
     root.parent().unwrap_or(root).join("run").join(format!("{pid}.json"))
 }
 
-/// Records that process `pid` is writing `session`. Failures are ignored: only agterm reads it.
-pub fn write_pointer(root: &Path, pid: u32, session: &Path) {
+/// Records that process `pid` is writing `session` with `model`. Failures are ignored: agterm
+/// reads it to find the conversation, and other agl processes to see which models are in use.
+pub fn write_pointer(root: &Path, pid: u32, session: &Path, model: &str) {
     let path = pointer_path(root, pid);
     let Some(dir) = path.parent() else { return };
     let tmp = dir.join(format!("{pid}.json.tmp"));
-    let body = json!({"session": session.to_string_lossy()}).to_string();
+    let body = json!({"session": session.to_string_lossy(), "model": model}).to_string();
     let _ = std::fs::create_dir_all(dir).and_then(|_| std::fs::write(&tmp, body)).and_then(|_| std::fs::rename(&tmp, &path));
 }
 
@@ -259,14 +260,15 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let root = home.path().join("sessions");
         let a = Session::create(&root, Path::new("/w"), "m", "u").unwrap();
-        write_pointer(&root, 4242, &a.path);
+        write_pointer(&root, 4242, &a.path, "m");
         let file = home.path().join("run/4242.json");
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(v["session"], a.path.to_string_lossy().as_ref());
         let b = Session::create(&root, Path::new("/w"), "m", "u").unwrap();
-        write_pointer(&root, 4242, &b.path);
+        write_pointer(&root, 4242, &b.path, "m2");
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(v["session"], b.path.to_string_lossy().as_ref());
+        assert_eq!(v["model"], "m2");
         remove_pointer(&root, 4242);
         assert!(!file.exists());
     }

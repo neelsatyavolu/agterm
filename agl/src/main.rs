@@ -107,7 +107,8 @@ fn main() {
         repl::finish();
         exit(1)
     });
-    session::write_pointer(&session::default_root(), std::process::id(), &st.session.path);
+    models::release::note(&st.cfg.base_url, &st.cfg.model);
+    repl::point(&st);
     let full_screen = !args.plain && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let mut term = ui::Term::new();
     let code = match &args.prompt {

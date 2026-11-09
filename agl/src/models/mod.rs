@@ -2,6 +2,7 @@
 
 pub mod catalog;
 pub mod discover;
+pub mod release;
 pub mod serve;
 pub mod store;
 

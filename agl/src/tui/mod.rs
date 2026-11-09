@@ -27,6 +27,8 @@ pub fn restore() {
 pub fn run(st: crate::repl::State) -> i32 {
     let mut app = App::new(&st.cfg.model, &st.cfg.base_url, st.cfg.context_window);
     app.items = worker::history(&st);
+    app.tokens = crate::budget::estimate(&st.msgs);
+    app.cwd = st.ctx.cwd.to_string_lossy().into_owned();
     let (cmd_tx, cmd_rx) = channel::<Cmd>();
     let (ev_tx, ev_rx) = channel::<Event>();
     std::thread::spawn(move || worker::run(st, cmd_rx, ev_tx));
