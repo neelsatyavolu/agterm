@@ -57,6 +57,14 @@ extension SelfTest {
                 report("title strip shows Chat control", controller.titleStrip.chatMode == true && controller.titleStrip.chatInfo != nil)
                 report("title strip shows the model", controller.titleStrip.chatInfo?.model == "Opus 5.5"
                        && controller.titleStrip.logo != nil, controller.titleStrip.chatInfo?.model ?? "none")
+                if let transcript = controller.chats[claude.tabID]?.transcript {
+                    let scrolls = transcript.scrolls
+                    after(1.0) {
+                        report("idle transcript doesn't keep scrolling", transcript.scrolls - scrolls < 3, "\(transcript.scrolls - scrolls) in 1s")
+                        let space = transcript.spaceBelowText
+                        report("no blank space under the last row", space >= 0 && space <= 12, "\(space)pt")
+                    }
+                }
                 snapshots(controller, window, outDir, "ink") {
                     Preferences.shared.update { $0.themeID = "paper" }
                     after(0.6) {

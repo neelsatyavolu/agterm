@@ -70,7 +70,7 @@ final class ChatPaneView: NSView {
             transcript.topAnchor.constraint(equalTo: topAnchor),
             transcript.leadingAnchor.constraint(equalTo: leadingAnchor),
             transcript.trailingAnchor.constraint(equalTo: trailingAnchor),
-            transcript.bottomAnchor.constraint(equalTo: bottom.topAnchor, constant: -6),
+            transcript.bottomAnchor.constraint(equalTo: bottom.topAnchor),
             bottom.leadingAnchor.constraint(equalTo: leadingAnchor),
             bottom.trailingAnchor.constraint(equalTo: trailingAnchor),
             bottom.bottomAnchor.constraint(equalTo: bottomAnchor),

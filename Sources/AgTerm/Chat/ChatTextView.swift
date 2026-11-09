@@ -3,6 +3,13 @@ import AppKit
 /// The transcript's text view (TextKit 1): draws each `ChatBox` (cards, wells, the user's band)
 /// behind its paragraphs, only for what's in the dirty rect.
 final class ChatTextView: NSTextView {
+    /// Every row ends in a newline, so TextKit lays out an empty line after the last one in these
+    /// attributes; a hairline keeps it from adding a row gap and a line of space above the composer.
+    override var typingAttributes: [NSAttributedString.Key: Any] {
+        get { [.font: NSFont.systemFont(ofSize: 1)] }
+        set {}
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         drawBoxes(.chatBox, in: dirtyRect)
         drawBoxes(.chatLineBox, in: dirtyRect)

@@ -2,6 +2,8 @@
 
 ## 1.2.6 — 2026-11-08
 - Fixed: agterm Remote's Chat view no longer leaves blank gaps between tool rows and before replies.
+- Fixed: The Chat view no longer leaves a band of empty space between the last message and the status line above the message box.
+- Fixed: An open Chat view no longer keeps scrolling itself to the end in the background, which used CPU while nothing changed.
 
 ## 1.2.5 — 2026-11-08
 - Fixed: agterm Remote's Chat view no longer runs paragraphs together, or shows `**` around bold text, when a reply has a stray backtick (such as the one in the ⌃ backtick shortcut). Each paragraph and list item now keeps its own formatting.

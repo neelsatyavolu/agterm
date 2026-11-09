@@ -149,8 +149,22 @@ final class ChatTranscriptView: NSScrollView, NSTextViewDelegate {
         following = true
         textView.layoutManager?.ensureLayout(forCharacterRange: NSRange(location: max(0, storage.length - 1), length: storage.length > 0 ? 1 : 0))
         textView.sizeToFit()
+        // Something leaves the document view off its clip view's origin; measure from zero.
+        if textView.frame.origin != .zero { textView.setFrameOrigin(.zero) }
         contentView.scroll(to: NSPoint(x: 0, y: max(0, textView.frame.height - contentView.bounds.height)))
         reflectScrolledClipView(contentView)
+        scrolls += 1
+    }
+
+    /// The size the last `tile` laid out for: scrolling tiles again, so only a new size scrolls.
+    private var tiledSize = NSSize.zero
+    /// How many times it scrolled to the end, and the space left below the last row (self-tests).
+    private(set) var scrolls = 0
+    var spaceBelowText: CGFloat {
+        guard let manager = textView.layoutManager, let container = textView.textContainer else { return 0 }
+        manager.ensureLayout(for: container)
+        let end = textView.convert(NSPoint(x: 0, y: manager.usedRect(for: container).maxY + textView.textContainerOrigin.y), to: contentView)
+        return contentView.bounds.maxY - end.y
     }
 
     /// The column is at most `maxColumns` wide, so long lines stay readable in a wide window.
@@ -164,6 +178,8 @@ final class ChatTranscriptView: NSScrollView, NSTextViewDelegate {
         textView.maxSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         if textView.frame.width != width { textView.setFrameSize(NSSize(width: width, height: textView.frame.height)) }
         // After the layout pass that resized the view, so the end is measured at the new size.
+        guard contentSize != tiledSize else { return }
+        tiledSize = contentSize
         if following { DispatchQueue.main.async { [weak self] in if self?.following == true { self?.scrollToBottom() } } }
     }
 }
