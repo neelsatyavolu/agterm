@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.4 — 2026-11-08
+- Added: When the tabs kept from before an update still run in a session helper the update replaced, agterm says at launch that they've lost Full Disk Access (agents there get "Operation not permitted" in Documents) and offers Quit and End Sessions. Helpers started by 1.2.1 or later aren't affected.
+
 ## 1.2.3 — 2026-11-08
 - Changed: agl looks cleaner. A new conversation opens with a short welcome showing the model, where it runs and the folder. Tool calls read as Read, Edit (with the lines changed), Write and Run (with the first lines of output). A spinner line shows what's running and for how long, and the footer shows how much of the model's context is used. Typing `/` lists every command with what it does.
 - Fixed: Closing an agl tab, or switching models in agl, unloads the model agl made Ollama or LM Studio load, so it stops using memory. Models you loaded yourself, or that another agl tab is using, stay loaded. agl's own model server also stops when its tab closes, even if agl is killed.

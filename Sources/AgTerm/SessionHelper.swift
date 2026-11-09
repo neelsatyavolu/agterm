@@ -36,6 +36,14 @@ enum SessionHelper {
         client.map { $0.helperBuild != $0.build } ?? false
     }
 
+    /// The helper in use runs from a file an update or reinstall has since replaced (helpers from
+    /// before 1.2.1 ran from the app itself), so macOS no longer honors its privacy permissions:
+    /// its tabs can't read Documents and the like until Quit and End Sessions. Main queue only.
+    static var lostPermissions: Bool {
+        guard let client = shared(), let pid = client.pid, let executable = Bundle.main.executableURL else { return false }
+        return HelperBundle.runsReplacedFile(pid: pid, executable: executable)
+    }
+
     /// The app's own executable: `Contents/MacOS/agterm` in a copy of the bundle in the state
     /// folder (`HelperBundle`: an update replacing the app would cost the helper its privacy
     /// permissions), or in the bundle itself if the copy fails; `.build/debug/AgTerm` in development.

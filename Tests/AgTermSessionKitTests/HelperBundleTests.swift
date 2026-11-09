@@ -76,6 +76,55 @@ final class HelperBundleTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
     }
 
+    /// Helpers from before 1.2.1 ran from the app itself: an update replaced the file under them.
+    func testTellsWhenAProcesssFileWasReplacedAfterItStarted() throws {
+        let binary = root.appendingPathComponent("sleeper")
+        try buildSleeper(at: binary)
+        let sleeper = Process()
+        sleeper.executableURL = binary
+        sleeper.arguments = ["30"]
+        try sleeper.run()
+        defer { sleeper.terminate() }
+        XCTAssertFalse(HelperBundle.runsReplacedFile(pid: sleeper.processIdentifier, executable: binary))
+        XCTAssertFalse(HelperBundle.runsReplacedFile(pid: sleeper.processIdentifier, executable: executable))
+        Thread.sleep(forTimeInterval: 0.05)
+        let update = root.appendingPathComponent("sleeper-new")
+        try buildSleeper(at: update)
+        XCTAssertEqual(rename(update.path, binary.path), 0)
+        XCTAssertTrue(HelperBundle.runsReplacedFile(pid: sleeper.processIdentifier, executable: binary))
+    }
+
+    /// An update moves the old app away and deletes it; the kernel then has no path for the process.
+    func testTellsWhenAProcesssFileWasDeleted() throws {
+        let folder = root.appendingPathComponent("old.app")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let binary = folder.appendingPathComponent("sleeper")
+        try buildSleeper(at: binary)
+        let sleeper = Process()
+        sleeper.executableURL = binary
+        sleeper.arguments = ["30"]
+        try sleeper.run()
+        defer { sleeper.terminate() }
+        // Let it finish loading before its file goes.
+        Thread.sleep(forTimeInterval: 0.3)
+        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try buildSleeper(at: binary)
+        XCTAssertTrue(sleeper.isRunning)
+        XCTAssertTrue(HelperBundle.runsReplacedFile(pid: sleeper.processIdentifier, executable: binary))
+    }
+
+    private func buildSleeper(at binary: URL) throws {
+        let source = root.appendingPathComponent("sleeper.c")
+        try Data("#include <unistd.h>\nint main(void) { sleep(30); return 0; }\n".utf8).write(to: source)
+        let clang = Process()
+        clang.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        clang.arguments = ["clang", "-o", binary.path, source.path]
+        try clang.run()
+        clang.waitUntilExit()
+        XCTAssertEqual(clang.terminationStatus, 0)
+    }
+
     func testNilWhenTheExecutableIsntInTheApp() {
         XCTAssertNil(HelperBundle.executable(app: app, executable: URL(fileURLWithPath: "/bin/sh"), build: "1", folder: folder))
     }

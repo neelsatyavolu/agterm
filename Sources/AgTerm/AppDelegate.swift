@@ -81,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Asked on every launch until granted; "Later" keeps the app usable for this session.
     private func askForDiskAccessIfNeeded() {
+        if SessionHelper.lostPermissions { return offerToEndOldSessions() }
         guard DiskAccessMonitor.shared.status == .denied, let window = controller?.window else { return }
         let alert = NSAlert()
         alert.messageText = "Give agterm Full Disk Access"
@@ -95,6 +96,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Later")
         alert.beginSheetModal(for: window) { response in
             if response == .alertFirstButtonReturn { DiskAccessMonitor.openSystemSettings() }
+        }
+    }
+
+    /// The kept tabs run in a helper whose file an update replaced, so macOS blocks them from
+    /// Documents and other protected folders; only a new helper gets the permissions back.
+    private func offerToEndOldSessions() {
+        guard let window = controller?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Your tabs have lost Full Disk Access"
+        alert.informativeText = """
+            The tabs kept from before this update run in a session helper started by the old version \
+            of agterm. macOS stopped honoring its permissions when the update replaced it, so agents \
+            in these tabs get "Operation not permitted" in Documents and other protected folders.
+
+            Quit and End Sessions ends these tabs' programs; tabs you open after relaunching have \
+            agterm's permissions again. Future updates don't do this.
+            """
+        alert.addButton(withTitle: "Quit and End Sessions")
+        alert.addButton(withTitle: "Later")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.quitAndEndSessions() }
         }
     }
 

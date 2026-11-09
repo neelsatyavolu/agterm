@@ -22,6 +22,25 @@ public enum HelperBundle {
         return make(current, from: app) ? target : nil
     }
 
+    /// Whether process `pid` runs `executable` and that file was replaced after the process started,
+    /// so macOS no longer honors its privacy permissions. Helpers from before 1.2.1 ran from the
+    /// app itself, so updating the app does this to the tabs they keep.
+    public static func runsReplacedFile(pid: pid_t, executable: URL) -> Bool {
+        guard let real = realpath(executable.path, nil) else { return false }
+        let path = String(cString: real)
+        free(real)
+        var info = proc_bsdinfo()
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return false }
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        // A running process without a path: its file was deleted, as an update does to the old app.
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return true }
+        var file = stat()
+        guard String(cString: buffer) == path, stat(path, &file) == 0 else { return false }
+        let started = Double(info.pbi_start_tvsec) + Double(info.pbi_start_tvusec) / 1_000_000
+        let changed = Double(file.st_ctimespec.tv_sec) + Double(file.st_ctimespec.tv_nsec) / 1_000_000_000
+        return changed > started
+    }
+
     /// `<build>-<hash of the binary's size and modification date>`: a reinstall of the same
     /// build is another binary too.
     private static func key(for binary: String, build: String) -> String? {
