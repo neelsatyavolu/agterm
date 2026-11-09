@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.2.5 — 2026-11-08
-- Fixed: agterm Remote's Chat view no longer runs paragraphs together, or shows `**` around bold text, when a reply has a stray backtick (such as the ⌃\` shortcut). Each paragraph and list item now keeps its own formatting.
+- Fixed: agterm Remote's Chat view no longer runs paragraphs together, or shows `**` around bold text, when a reply has a stray backtick (such as the one in the ⌃ backtick shortcut). Each paragraph and list item now keeps its own formatting.
 
 ## 1.2.4 — 2026-11-08
 - Added: When the tabs kept from before an update still run in a session helper the update replaced, agterm says at launch that they've lost Full Disk Access (agents there get "Operation not permitted" in Documents) and offers Quit and End Sessions. Helpers started by 1.2.1 or later aren't affected.
