@@ -212,7 +212,15 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         let codexID = isCloud ? info.codexSessionID : codexRollout.flatMap(Self.firstLine).flatMap(AgentResume.codexSessionID)
         return AgentResume.commandLine(argv: info.argv, claudeSessionID: info.claudeSessionID, prompt: prompt)
             ?? codexResume(argv: info.argv, sessionID: codexID, prompt: prompt)
+            ?? aglResume(argv: info.argv)
             ?? agentName.flatMap { AgentResume.continueCommandLine(agent: $0, argv: info.argv) }
+    }
+
+    /// `agl --resume <id>` for the session this tab's agl is writing (named in `~/.agl/run/<pid>.json`).
+    private func aglResume(argv: [String]) -> String? {
+        guard !isCloud, agentName == "agl", let group = foregroundGroup,
+              let session = AglSessions.running(pid: group) else { return nil }
+        return AgentResume.aglCommandLine(argv: argv, session: session)
     }
 
     /// `codex resume <id>` for the conversation this tab's Codex has open (it keeps its rollout

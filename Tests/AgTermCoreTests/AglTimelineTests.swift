@@ -79,6 +79,16 @@ final class AglTimelineTests: XCTestCase {
         XCTAssertNil(AgentResume.continueCommandLine(agent: "agl", argv: ["agl", "-p", "x"]))
     }
 
+    func testRestoreResumesTheTabsOwnSessionWithItsOptions() {
+        let file = URL(fileURLWithPath: "/h/.agl/sessions/-w/20261108T235330Z-6cafcca4.jsonl")
+        XCTAssertEqual(AgentResume.aglCommandLine(argv: ["agl", "--model", "qwen3-4b", "--plain", "--resume", "old"], session: file),
+                       "command agl --resume 20261108T235330Z-6cafcca4 --model qwen3-4b --plain")
+        XCTAssertEqual(AgentResume.aglCommandLine(argv: ["/opt/bin/agl", "--resume"], session: file),
+                       "command agl --resume 20261108T235330Z-6cafcca4")
+        XCTAssertNil(AgentResume.aglCommandLine(argv: ["agl", "-p", "fix it"], session: file), "one-shot runs end")
+        XCTAssertNil(AgentResume.aglCommandLine(argv: ["agl", "models"], session: file))
+    }
+
     func testRunPointerNamesTheSession() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try? FileManager.default.createDirectory(at: dir.appendingPathComponent("run"), withIntermediateDirectories: true)
