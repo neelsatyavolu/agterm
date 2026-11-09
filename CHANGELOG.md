@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3 — 2026-11-08
+- Changed: agl looks cleaner. A new conversation opens with a short welcome showing the model, where it runs and the folder. Tool calls read as Read, Edit (with the lines changed), Write and Run (with the first lines of output). A spinner line shows what's running and for how long, and the footer shows how much of the model's context is used. Typing `/` lists every command with what it does.
+- Fixed: Closing an agl tab, or switching models in agl, unloads the model agl made Ollama or LM Studio load, so it stops using memory. Models you loaded yourself, or that another agl tab is using, stay loaded. agl's own model server also stops when its tab closes, even if agl is killed.
+
 ## 1.2.2 — 2026-11-08
 - Added: The Chat view shows subagents and Claude Code workflows as rows of their own: what each was asked to do, its kind of agent or workflow name, and whether it's still running. Background agents and workflows stay running until they finish, then show how long they took; click the row to read what they came back with. Works for Claude Code's agents and workflows, Codex's spawned agents and Grok's subagents, and agterm Remote shows background ones as running too.
 - Added: agterm now comes with agl, the coding agent for local models. Type `agl` in any tab, or pick it in Shell → New Tab With Agent; it uses models from Ollama, LM Studio or its own library (`agl models`).

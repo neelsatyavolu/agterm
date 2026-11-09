@@ -25,7 +25,7 @@ bash_timeout_secs = 120
 temperature = 0.2
 ```
 
-Commands: `/models` (pick or download a model), `/model NAME`, `/clear` (new session), `/exit`.
+Commands: `/models` (pick or download a model), `/model NAME`, `/clear` (new session), `/help`, `/exit`. Type `/` to see them with what each does; Up/Down choose, Tab completes, Enter runs.
 
 Keys in full screen: Enter sends, Alt+Enter or Ctrl-J adds a line, Esc or Ctrl-C stops a turn or download, Ctrl-C on an empty box quits, Up/Down recall sent messages, PgUp/PgDn and Shift+Up/Down scroll.
 
@@ -37,6 +37,8 @@ agl pull qwen3-coder-30b   # or hf:OWNER/REPO/FILE.gguf
 agl --model qwen3-coder-30b
 agl rm qwen3-coder-30b
 ```
+
+When agl exits, or you switch models, it unloads any model it made Ollama or LM Studio load, unless another running agl is using it; a model that was loaded before agl started stays loaded. Servers agl starts stop with it, even if agl is killed.
 
 A model a running server lists is used there. Otherwise agl starts what it needs: Ollama (`ollama serve`) or LM Studio (`lms server start`) for their models, and its own `llama-server --jinja` for GGUF files it downloaded to `~/.agl/models` (install with `brew install llama.cpp`). Servers agl starts stop when it exits; LM Studio keeps its own. With no server running and no model named, agl starts its first downloaded model. Downloads resume where they stopped.
 

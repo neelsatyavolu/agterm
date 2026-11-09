@@ -1,8 +1,40 @@
 //! What the full-screen interface shows and how keys change it. No terminal I/O here.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use serde_json::Value;
+use std::time::Instant;
 
 const TOOL_PREVIEW_LINES: usize = 5;
+
+/// A slash command and what it does, as the `/` menu shows it.
+#[derive(Debug, PartialEq)]
+pub struct Command {
+    pub name: &'static str,
+    pub about: &'static str,
+    /// Takes an argument, so choosing it fills in the name instead of running it.
+    pub arg: bool,
+}
+
+pub const COMMANDS: [Command; 6] = [
+    Command { name: "/models", about: "Pick a model, or download one", arg: false },
+    Command { name: "/model", about: "Switch to a model by name", arg: true },
+    Command { name: "/clear", about: "Start a new conversation", arg: false },
+    Command { name: "/help", about: "Keys and commands", arg: false },
+    Command { name: "/exit", about: "Quit agl", arg: false },
+    Command { name: "/quit", about: "Quit agl", arg: false },
+];
+
+const HELP: &str = "Commands
+  /models          pick a model, or download one
+  /model NAME      switch to a model by name
+  /clear           start a new conversation
+  /exit            quit
+Keys
+  Enter            send          Alt+Enter, Ctrl-J   new line
+  Esc              stop a reply, download or model load
+  Up / Down        earlier messages
+  PgUp / PgDn      scroll        Shift+Up / Down      scroll a line
+  Ctrl-C           clear the box, or quit when it's empty";
 
 /// One block of the conversation.
 #[derive(Debug, Clone, PartialEq)]
@@ -10,7 +42,8 @@ pub enum Item {
     User(String),
     Assistant(String),
     Reasoning(String),
-    Tool { summary: String, ok: Option<bool>, preview: Vec<String>, more: usize },
+    /// A tool call; `ok` is None while it runs. `preview` is the start of its output.
+    Tool { name: String, args: Value, ok: Option<bool>, preview: Vec<String>, more: usize },
     /// agl's own messages: errors, model switches, download progress.
     Note { text: String, error: bool },
 }
@@ -29,7 +62,7 @@ pub struct Choice {
 pub enum Event {
     Text(String),
     Reasoning(String),
-    ToolStart(String),
+    ToolStart { name: String, args: Value },
     ToolEnd { ok: bool, output: String },
     /// The turn ended; `Err` carries the message to show.
     TurnDone(Result<(), String>),
@@ -41,6 +74,8 @@ pub enum Event {
     Models(Vec<Choice>),
     ModelChanged { model: String, base_url: String, context: u32 },
     Cleared,
+    /// The conversation's estimated size in tokens.
+    Usage(u32),
 }
 
 /// To the worker thread.
@@ -90,6 +125,14 @@ pub struct App {
     recall: Option<usize>,
     /// The streaming assistant/reasoning block belongs to the current model call.
     streaming: bool,
+    /// The highlighted row of the `/` menu.
+    pub slash_sel: usize,
+    /// Estimated tokens in the conversation.
+    pub tokens: u32,
+    /// When the running turn, download or load started.
+    pub since: Option<Instant>,
+    /// The folder agl works in, for the welcome card.
+    pub cwd: String,
 }
 
 impl App {
@@ -110,6 +153,10 @@ impl App {
             history: Vec::new(),
             recall: None,
             streaming: false,
+            slash_sel: 0,
+            tokens: 0,
+            since: None,
+            cwd: String::new(),
         }
     }
 
@@ -130,9 +177,9 @@ impl App {
                     self.streaming = true;
                 }
             },
-            Event::ToolStart(summary) => {
+            Event::ToolStart { name, args } => {
                 self.streaming = false;
-                self.items.push(Item::Tool { summary, ok: None, preview: Vec::new(), more: 0 });
+                self.items.push(Item::Tool { name, args, ok: None, preview: Vec::new(), more: 0 });
             }
             Event::ToolEnd { ok: done, output } => {
                 let open = self.items.iter_mut().rev().find_map(|i| match i {
@@ -151,15 +198,22 @@ impl App {
                 self.cancelling = false;
                 self.streaming = false;
                 self.activity = None;
+                self.since = None;
                 if let Err(text) = r {
                     self.items.push(Item::Note { text, error: true });
                 }
             }
             Event::Note(text) => self.note(text, false),
             Event::Error(text) => self.note(text, true),
-            Event::Busy(s) => self.activity = Some(s),
+            Event::Busy(s) => {
+                self.since.get_or_insert_with(Instant::now);
+                self.activity = Some(s);
+            }
             Event::Idle => {
                 self.activity = None;
+                if !self.busy {
+                    self.since = None;
+                }
                 self.cancelling = self.cancelling && self.busy;
             }
             Event::Models(choices) => {
@@ -168,7 +222,7 @@ impl App {
                 }
             }
             Event::ModelChanged { model, base_url, context } => {
-                self.note(format!("model: {model} · {base_url}"), false);
+                self.note(format!("Now using {model}"), false);
                 self.model = model;
                 self.base_url = base_url;
                 self.context = context;
@@ -177,7 +231,9 @@ impl App {
                 self.items.clear();
                 self.scroll = 0;
                 self.streaming = false;
+                self.tokens = 0;
             }
+            Event::Usage(n) => self.tokens = n,
         }
     }
 
@@ -196,6 +252,11 @@ impl App {
             self.awaiting_models = false;
         }
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        if !self.slash_matches().is_empty() && !ctrl
+            && let Some(action) = self.slash_key(k)
+        {
+            return action;
+        }
         let running = self.running();
         match k.code {
             KeyCode::Char('c' | 'd') if ctrl && running => {
@@ -232,11 +293,15 @@ impl App {
             KeyCode::End => self.cursor = self.input.len(),
             KeyCode::Char('u') if ctrl => self.set_input(String::new()),
             KeyCode::Char('w') if ctrl => self.delete_word(),
-            KeyCode::Char(c) if !ctrl => self.insert(c.encode_utf8(&mut [0; 4])),
+            KeyCode::Char(c) if !ctrl => {
+                self.insert(c.encode_utf8(&mut [0; 4]));
+                self.slash_sel = 0;
+            }
             KeyCode::Backspace => {
                 if let Some(prev) = self.input[..self.cursor].chars().next_back() {
                     self.cursor -= prev.len_utf8();
                     self.input.remove(self.cursor);
+                    self.slash_sel = 0;
                 }
             }
             KeyCode::Delete if self.cursor < self.input.len() => {
@@ -259,6 +324,44 @@ impl App {
             _ => {}
         }
         Action::None
+    }
+
+    /// Commands matching what's typed, while the box holds just a `/word`.
+    pub fn slash_matches(&self) -> Vec<&'static Command> {
+        let t = self.input.as_str();
+        if !t.starts_with('/') || t.contains(char::is_whitespace) {
+            return Vec::new();
+        }
+        let mut v: Vec<&Command> = COMMANDS.iter().filter(|c| c.name.starts_with(t)).collect();
+        // /quit is the same as /exit: list it only when typed.
+        if !"/quit".starts_with(t) || t.len() < 2 {
+            v.retain(|c| c.name != "/quit");
+        }
+        // What's typed exactly comes first, so `/model` + Enter isn't `/models`.
+        v.sort_by_key(|c| c.name != t);
+        v
+    }
+
+    /// Keys while the `/` menu is open; None lets the key through.
+    fn slash_key(&mut self, k: KeyEvent) -> Option<Action> {
+        let matches = self.slash_matches();
+        let chosen = matches.get(self.slash_sel.min(matches.len() - 1)).copied()?;
+        match k.code {
+            KeyCode::Up => self.slash_sel = self.slash_sel.saturating_sub(1),
+            KeyCode::Down => self.slash_sel = (self.slash_sel + 1).min(matches.len() - 1),
+            KeyCode::Esc => self.set_input(String::new()),
+            KeyCode::Tab => self.set_input(format!("{}{}", chosen.name, if chosen.arg { " " } else { "" })),
+            KeyCode::Enter if k.modifiers.is_empty() => {
+                if chosen.arg {
+                    self.set_input(format!("{} ", chosen.name));
+                    return Some(Action::None);
+                }
+                self.set_input(chosen.name.to_string());
+                return Some(self.submit());
+            }
+            _ => return None,
+        }
+        Some(Action::None)
     }
 
     fn picker_key(&mut self, k: KeyEvent) -> Action {
@@ -290,6 +393,10 @@ impl App {
         match text.as_str() {
             "/exit" | "/quit" => return Action::Quit,
             "/clear" => return Action::Cmd(Cmd::Clear),
+            "/help" => {
+                self.note(HELP.to_string(), false);
+                return Action::None;
+            }
             "/models" | "/model" => {
                 self.awaiting_models = true;
                 return Action::Cmd(Cmd::ListModels);
@@ -303,6 +410,7 @@ impl App {
         self.items.push(Item::User(text.clone()));
         self.busy = true;
         self.streaming = false;
+        self.since = Some(Instant::now());
         Action::Cmd(Cmd::Send(text))
     }
 
@@ -315,6 +423,7 @@ impl App {
         self.cursor = s.len();
         self.input = s;
         self.recall = None;
+        self.slash_sel = 0;
     }
 
     fn insert(&mut self, s: &str) {
@@ -478,6 +587,72 @@ mod tests {
     }
 
     #[test]
+    fn slash_shows_matching_commands_with_descriptions() {
+        let mut a = app();
+        assert!(a.slash_matches().is_empty());
+        typed(&mut a, "/");
+        assert_eq!(a.slash_matches().len(), COMMANDS.len() - 1, "/quit only when typed");
+        typed(&mut a, "mo");
+        let names: Vec<&str> = a.slash_matches().iter().map(|c| c.name).collect();
+        assert_eq!(names, vec!["/models", "/model"]);
+        assert!(a.slash_matches()[0].about.contains("model"));
+        typed(&mut a, "dels x");
+        assert!(a.slash_matches().is_empty(), "closed once arguments start");
+    }
+
+    #[test]
+    fn slash_menu_keys_pick_complete_and_run() {
+        let mut a = app();
+        typed(&mut a, "/");
+        a.key(k(KeyCode::Down));
+        assert_eq!(a.slash_sel, 1);
+        a.key(k(KeyCode::Up));
+        a.key(k(KeyCode::Up));
+        assert_eq!(a.slash_sel, 0, "stops at the top");
+        typed(&mut a, "cl");
+        assert_eq!(a.slash_sel, 0, "typing resets the choice");
+        assert_eq!(a.key(k(KeyCode::Enter)), Action::Cmd(Cmd::Clear), "Enter runs the highlighted command");
+        typed(&mut a, "/mod");
+        a.key(k(KeyCode::Down));
+        a.key(k(KeyCode::Tab));
+        assert_eq!((a.input.as_str(), a.cursor), ("/model ", 7), "Tab completes; a command with an argument gets a space");
+        typed(&mut a, "/mod");
+        a.key(ctrl('u'));
+        typed(&mut a, "/mod");
+        a.key(k(KeyCode::Down));
+        assert_eq!(a.key(k(KeyCode::Enter)), Action::None, "/model needs a name: Enter completes it");
+        assert_eq!(a.input, "/model ");
+        typed(&mut a, "qwen3-4b");
+        assert_eq!(a.key(k(KeyCode::Enter)), Action::Cmd(Cmd::UseModel("qwen3-4b".into())));
+        typed(&mut a, "/he");
+        assert_eq!(a.key(k(KeyCode::Esc)), Action::None);
+        assert!(a.input.is_empty(), "Esc closes the menu");
+    }
+
+    #[test]
+    fn help_lists_commands_and_keys() {
+        let mut a = app();
+        typed(&mut a, "/help");
+        assert_eq!(a.key(k(KeyCode::Enter)), Action::None);
+        match a.items.last() {
+            Some(Item::Note { text, error: false }) => assert!(text.contains("/models") && text.contains("Esc"), "{text}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn usage_and_elapsed() {
+        let mut a = app();
+        a.apply(Event::Usage(3_200));
+        assert_eq!(a.tokens, 3_200);
+        typed(&mut a, "go");
+        a.key(k(KeyCode::Enter));
+        assert!(a.since.is_some());
+        a.apply(Event::TurnDone(Ok(())));
+        assert!(a.since.is_none());
+    }
+
+    #[test]
     fn esc_cancels_a_turn() {
         let mut a = app();
         assert_eq!(a.key(k(KeyCode::Esc)), Action::None);
@@ -492,13 +667,13 @@ mod tests {
         a.apply(Event::Reasoning("ing".into()));
         a.apply(Event::Text("Hel".into()));
         a.apply(Event::Text("lo".into()));
-        a.apply(Event::ToolStart("bash ls".into()));
+        a.apply(Event::ToolStart { name: "bash".into(), args: serde_json::json!({"command": "ls"}) });
         a.apply(Event::ToolEnd { ok: true, output: (1..=8).map(|i| i.to_string()).collect::<Vec<_>>().join("\n") });
         a.apply(Event::Text("done".into()));
         assert_eq!(a.items, vec![
             Item::Reasoning("thinking".into()),
             Item::Assistant("Hello".into()),
-            Item::Tool { summary: "bash ls".into(), ok: Some(true), preview: vec!["1".into(), "2".into(), "3".into(), "4".into(), "5".into()], more: 3 },
+            Item::Tool { name: "bash".into(), args: serde_json::json!({"command": "ls"}), ok: Some(true), preview: vec!["1".into(), "2".into(), "3".into(), "4".into(), "5".into()], more: 3 },
             Item::Assistant("done".into()),
         ]);
     }

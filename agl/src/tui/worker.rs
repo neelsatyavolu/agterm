@@ -23,7 +23,7 @@ impl Ui for ChannelUi<'_> {
         let _ = self.0.send(Event::Reasoning(s.into()));
     }
     fn tool_start(&mut self, c: &ToolCall) {
-        let _ = self.0.send(Event::ToolStart(crate::ui::summary(c)));
+        let _ = self.0.send(Event::ToolStart { name: c.name.clone(), args: c.arguments.clone() });
     }
     fn tool_end(&mut self, _c: &ToolCall, r: &ToolResult) {
         let _ = self.0.send(Event::ToolEnd { ok: r.ok, output: r.output.clone() });
@@ -45,6 +45,7 @@ pub fn handle(st: &mut State, cmd: Cmd, tx: &Sender<Event>) {
         Cmd::Send(text) => {
             let chat = st.cfg.clone();
             let r = repl::turn(st, &chat, &mut ChannelUi(tx), &text);
+            send(Event::Usage(crate::budget::estimate(&st.msgs)));
             send(Event::TurnDone(r.map_err(|e| e.to_string())));
         }
         Cmd::Clear => match repl::new_session(st) {
@@ -148,7 +149,7 @@ pub fn history(st: &State) -> Vec<super::app::Item> {
                     items.push(Item::Assistant(m.content.clone()));
                 }
                 for c in &m.tool_calls {
-                    items.push(Item::Tool { summary: crate::ui::summary(c), ok: Some(true), preview: Vec::new(), more: 0 });
+                    items.push(Item::Tool { name: c.name.clone(), args: c.arguments.clone(), ok: Some(true), preview: Vec::new(), more: 0 });
                 }
             }
             Role::System | Role::Tool => {}
@@ -197,6 +198,7 @@ mod tests {
         let ev = drain(&rx);
         assert_eq!(ev.first(), Some(&Event::Text("hi there".into())));
         assert_eq!(ev.last(), Some(&Event::TurnDone(Ok(()))));
+        assert!(matches!(ev[ev.len() - 2], Event::Usage(n) if n > 0), "{ev:?}");
         let log = std::fs::read_to_string(&st.session.path).unwrap();
         assert!(log.contains("\"hello\"") && log.contains("hi there"), "{log}");
     }
@@ -278,6 +280,6 @@ mod tests {
         st.msgs.push(Message::tool_result("c", "1\tx"));
         let items = history(&st);
         assert_eq!(items.len(), 3);
-        assert!(matches!(&items[2], super::super::app::Item::Tool { summary, .. } if summary == "read a.py"));
+        assert!(matches!(&items[2], super::super::app::Item::Tool { name, .. } if name == "read"));
     }
 }
