@@ -14,6 +14,15 @@
         "value": "geist mono",
         "createdAt": "2026-11-09T01:21:50.590Z",
         "reason": "user's global CLAUDE.md design system (Blackletter) specifies Geist / Geist Mono"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-09T08:38:29.242Z",
+        "reason": "User's global CLAUDE.md design system (Ledger) specifies paper #F7F5EF as the light background; agterm's Paper theme uses it"
       }
     ]
   }

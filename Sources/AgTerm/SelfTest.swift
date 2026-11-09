@@ -533,18 +533,25 @@ enum SelfTest {
         probe.orderOut(nil)
     }
 
-    /// The website screenshot: real tabs with stand-in agents (AGTERM_FAKE_AGENTS) in small git
-    /// repos under `dir`, and real file edits so agterm measures the diffs itself.
+    /// The website screenshot: real tabs with a stand-in `claude` (AGTERM_FAKE_AGENTS, built by
+    /// `scripts/site-shots.sh`) in small git repos under `dir`. Each stand-in records a Claude Code
+    /// session whose transcript `SiteFixtures` writes, so agterm reads its model, spend and lines
+    /// changed itself; real file edits give the changes panel its diff.
     private static func showcase(_ controller: MainWindowController, dir: String, outDir: String) {
         guard let window = controller.window else { return }
         window.setContentSize(NSSize(width: 1240, height: 740))
         window.contentView?.superview?.wantsLayer = true
+        SiteFixtures.write()
+        atexit { SiteFixtures.remove() }
+        if controller.tabsOnLeft { controller.toggleTabsOnLeft() }
         let agent = (ProcessInfo.processInfo.environment["AGTERM_FAKE_AGENTS"] ?? dir) + "/claude"
+        let ids = SiteFixtures.ids
         let neutral = "PROMPT='%1~ %# '; clear"
+        // The stand-in takes: session id, seconds busy, seconds in all.
         let scripts = [
-            "cd \(dir)/web; \(neutral); printf '\\033]0;◐ Fix login redirect loop\\007'; cat \(dir)/demo.ans; \(agent) 600",
-            "cd \(dir)/api; \(neutral); printf '\\033]0;✳ Rename env vars in workers\\007'; sleep 3; printf '\\a'; \(agent) 600",
-            "cd \(dir)/design; \(neutral); printf '\\033]0;◐ Add dark mode tokens\\007'; \(agent) 7; printf '\\033]0;✳ Add dark mode tokens\\007'; \(agent) 600",
+            "cd \(dir)/web; \(neutral); printf '\\033]0;◐ Fix login redirect loop\\007'; cat \(dir)/demo.ans; \(agent) \(ids["web"]!) 600 600",
+            "cd \(dir)/api; \(neutral); printf '\\033]0;✳ Rename env vars in workers\\007'; (sleep 3; printf '\\a') & \(agent) \(ids["api"]!) 0 600",
+            "cd \(dir)/design; \(neutral); printf '\\033]0;✳ Add dark mode tokens\\007'; \(agent) \(ids["design"]!) 7 600",
             "cd \(dir)/docs; \(neutral)",
         ]
         for _ in 1..<scripts.count { controller.newTab() }
@@ -557,16 +564,32 @@ enum SelfTest {
                 let kept = Array(lines.prefix(keep)) + (0..<add).map { "export const added\($0) = \"\($0)\"" }
                 try? (kept.joined(separator: "\n") + "\n").write(toFile: "\(dir)/\(repo)/src/base.ts", atomically: true, encoding: .utf8)
             }
-            edit("web", keep: 59, add: 4)
-            edit("api", keep: 42, add: 18)
+            // The web fix is the one the hero's terminal and the Chat shot describe.
+            let redirect = "\(dir)/web/src/auth/redirect.ts"
+            if let text = try? String(contentsOfFile: redirect, encoding: .utf8) {
+                let fixed = text.replacingOccurrences(of: "  return next(url.searchParams.get(\"to\"))\n", with: """
+                      // Never send a signed-in user back to the form.
+                      const to = url.searchParams.get("to") ?? "/"
+                      if (to.startsWith("/login")) return next("/")
+                      return next(to)
+
+                    """)
+                try? fixed.write(toFile: redirect, atomically: true, encoding: .utf8)
+            }
+            let env = "\(dir)/api/src/env.ts"
+            if let text = try? String(contentsOfFile: env, encoding: .utf8) {
+                try? text.replacingOccurrences(of: "WORKER_", with: "APP_").write(toFile: env, atomically: true, encoding: .utf8)
+            }
             let tokens = (0..<142).map { "  --token-\($0): #\(String(format: "%06x", $0 * 9973 % 0xffffff));" }
             try? (tokens.joined(separator: "\n") + "\n").write(toFile: "\(dir)/design/src/dark.css", atomically: true, encoding: .utf8)
             edit("design", keep: 51, add: 0)
         }
         after(15) {
             snapshot(window, "\(outDir)/showcase.png")
-            controller.sessions.forEach { $0.terminate() }
-            after(1) { exit(0) }
+            siteShots(controller, outDir: outDir) {
+                controller.sessions.forEach { $0.terminate() }
+                after(1) { exit(0) }
+            }
         }
     }
 

@@ -186,6 +186,16 @@ a.inline:hover { text-decoration-color: currentColor; }
 .footnote { margin-top: 16px; max-width: 86ch; font: 400 12px/1.7 var(--mono); color: var(--fg-3); }
 .footnote code { font-size: 1em; }
 
+/* Feature screenshots inside a section */
+.feature-shot { margin-bottom: 24px; }
+.feature-shot img { width: 100%; border: 1px solid var(--border-strong); background: #0f0f0f; }
+
+/* 05 Usage */
+.usage-pair { margin-top: 24px; }
+.usage-pair figure { padding: 20px; background: #0f0f0f; }
+.usage-pair figure img { width: 100%; max-width: 480px; margin: 0 auto; }
+.cells h3.sub { margin-top: 28px; }
+
 /* 01 States */
 .states img { width: 272px; border: 1px solid var(--border); margin-bottom: 20px; }
 .states h3 { display: flex; align-items: center; gap: 10px; }
@@ -285,7 +295,7 @@ a.inline:hover { text-decoration-color: currentColor; }
   .cells > * { padding: 20px 16px; }
   .stats > div { padding: 18px 16px; }
   .cta .btn { flex: 1 1 auto; }
-  .pane { padding: 14px; }
+  .pane, .usage-pair figure { padding: 14px; }
   .aside { padding: 18px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
