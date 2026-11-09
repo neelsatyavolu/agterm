@@ -1,0 +1,4 @@
+agl follows the design of Pi (https://github.com/earendil-works/pi), MIT License,
+Copyright (c) 2025 Mario Zechner, and of Grok Build (https://github.com/xai-org/grok-build),
+Apache License 2.0. No code from either project is included yet; any file ported later
+keeps its original license notice and is listed here.
