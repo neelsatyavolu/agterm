@@ -39,6 +39,17 @@
       </header>
 
       <div class="cl">
+        <section class="cl-release" id="v1.2.3" aria-labelledby="v1.2.3-title">
+          <header class="cl-head">
+            <h2 id="v1.2.3-title"><a href="#v1.2.3">1.2.3</a></h2>
+            <p class="meta"><time datetime="2026-11-08">November 8, 2026</time></p>
+          </header>
+          <ul class="cl-items">
+            <li><span class="cl-kind cl-changed">Changed</span><span>agl looks cleaner. A new conversation opens with a short welcome showing the model, where it runs and the folder. Tool calls read as Read, Edit (with the lines changed), Write and Run (with the first lines of output). A spinner line shows what&#x27;s running and for how long, and the footer shows how much of the model&#x27;s context is used. Typing <code>/</code> lists every command with what it does.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>Closing an agl tab, or switching models in agl, unloads the model agl made Ollama or LM Studio load, so it stops using memory. Models you loaded yourself, or that another agl tab is using, stay loaded. agl&#x27;s own model server also stops when its tab closes, even if agl is killed.</span></li>
+          </ul>
+        </section>
+
         <section class="cl-release" id="v1.2.2" aria-labelledby="v1.2.2-title">
           <header class="cl-head">
             <h2 id="v1.2.2-title"><a href="#v1.2.2">1.2.2</a></h2>
