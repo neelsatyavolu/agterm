@@ -16,6 +16,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.add("Accounts", symbol: "person.crop.circle", AccountsPane(store: .shared, monitor: .shared, login: .shared, team: .shared, teams: .shared))
         tabs.add("Command", symbol: "command", CommandPane())
         tabs.add("Teams & Phone", symbol: "person.2", ConnectionsPane())
+        tabs.add("Macs", symbol: "desktopcomputer", MacsPane())
         if CloudAccount.isEnabled { tabs.add("Cloud", symbol: "cloud", CloudPane(account: .shared, teams: .shared)) }
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]

@@ -24,6 +24,7 @@ public final class SessionGateway {
     private let queue = DispatchQueue(label: "agterm.gateway")
     private var listener: DispatchSourceRead?
     private var bridges: [ObjectIdentifier: Bridge] = [:]
+    private var stopped = false
     /// The port it listens on, once started.
     public private(set) var port: UInt16 = 0
 
@@ -54,6 +55,7 @@ public final class SessionGateway {
     /// Stops listening and drops every client. Not for use on the gateway's queue.
     public func stop() {
         queue.sync {
+            stopped = true
             listener?.cancel()
             listener = nil
             bridges.values.forEach { $0.close() }
@@ -73,8 +75,14 @@ public final class SessionGateway {
         }
     }
 
+    /// A client's stream that is already plain frames (`MacListener` decrypted it), with or
+    /// without `start()`. Any thread.
+    public func serve(_ stream: Int32) {
+        queue.async { self.adopt(stream) }
+    }
+
     private func adopt(_ stream: Int32) {
-        guard listener != nil else { return _ = close(stream) }
+        guard !stopped else { return _ = close(stream) }
         let bridge = Bridge(remote: WireConnection(fd: stream), gateway: self)
         bridges[ObjectIdentifier(bridge)] = bridge
         bridge.start(queue: queue, authTimeout: authTimeout)

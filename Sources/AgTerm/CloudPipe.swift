@@ -7,7 +7,7 @@ import Foundation
 /// there, and passes stdin, stdout and stderr through the gateway (`WireMessage.exec`). Unlike
 /// ssh it doesn't hand them to a shell: macOS's openrsync doesn't quote paths for one, so a
 /// folder with a space in its name would split.
-/// The machine is `CloudHost.configured`; `<host>` is ignored. Exits with the command's status,
+/// The machine is the paired Mac in `AGTERM_MAC_PAIRING`, else `CloudHost.configured`; `<host>` is ignored. Exits with the command's status,
 /// or 255 if the machine can't be reached, as ssh does.
 /// With `AGTERM_CLOUD_PROGRESS` set to a file, it keeps the number of bytes sent so far there.
 enum CloudPipe {
@@ -18,7 +18,9 @@ enum CloudPipe {
 
     static func run(_ arguments: [String]) -> Never {
         let words = Array(arguments.drop { $0 != flag }.dropFirst(2))
-        guard let cloud = CloudHost.configured, !words.isEmpty else { fail("usage: agterm \(flag) <host> <command…>, with AGTERM_CLOUD set") }
+        // A paired Mac when `agterm-remote` copies to one, else the cloud machine.
+        let host: ExecHost? = MacHost.fromEnvironment ?? CloudHost.configured
+        guard let cloud = host, !words.isEmpty else { fail("usage: agterm \(flag) <host> <command…>, with AGTERM_CLOUD or \(MacHost.pairingVariable) set") }
         signal(SIGPIPE, SIG_IGN)
         let connection: WireConnection
         do {

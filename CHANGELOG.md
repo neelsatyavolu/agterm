@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.0 — 2026-11-08
+- Added: Run agents' heavy commands on another Mac. On the Mac that should do the work, turn on Settings → Macs → "Let my other Macs run tasks on this Mac" and copy its pairing code; paste it in Settings → Macs on your main Mac. Agents in agterm tabs are then told to run builds, test suites and other heavy commands there with `agterm-remote run -- <command>`: it copies the project over (git-ignored files such as node_modules and .env stay put), runs the command there, shows its output in the tab as it runs and exits with its status. Add `--back` to copy the results back. Ctrl-C stops it on the other Mac too. The connection is encrypted with a key from the pairing code, and the other Mac keeps accepting tasks after agterm quits there.
+
 ## 1.1.8 — 2026-11-08
 - Added: Pin tabs. Right-click a tab and choose Pin Tab: it moves to the top of the sidebar (or the start of the tab bar), shows a pin, and stays above the other tabs when you drag or open new ones, including after a relaunch. Unpin Tab puts it back below the pinned ones.
 - Added: Claude Code and Codex agents started in agterm are told that the consult tools let them see every other agent running in agterm on this Mac, ask one about its work and leave it a message, and are encouraged to check before editing, committing or switching branches in a repo another agent is using. A Codex config that sets its own `developer_instructions` is left alone.

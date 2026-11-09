@@ -7,7 +7,7 @@ import Foundation
 /// the user's machine behind the shared address. Each tab opens its own connection. It is the
 /// machine set up in Settings → Cloud (`CloudCredentials`), or in development `AGTERM_CLOUD` (a
 /// wss:// URL, or ws:// / host:port on loopback), `AGTERM_CLOUD_MACHINE` and `AGTERM_CLOUD_TOKEN`.
-final class CloudHost: SessionEndpoint, CustomStringConvertible {
+final class CloudHost: SessionEndpoint, ExecHost, CustomStringConvertible {
     private static let timeout: TimeInterval = 5
     private static let loopback: Set<String> = ["127.0.0.1", "::1", "localhost"]
 
@@ -83,25 +83,6 @@ final class CloudHost: SessionEndpoint, CustomStringConvertible {
         }
     }
 
-    /// Runs `argv` with `input` on its stdin and waits for it; returns its status and output.
-    @discardableResult
-    func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 30) throws -> (status: Int32, stdout: String, stderr: String) {
-        let connection = try exec(argv)
-        defer { connection.close() }
-        if !input.isEmpty { try connection.send(.input(input)) }
-        try connection.send(.input(Data()))
-        var stdout = "", stderr = ""
-        while true {
-            switch try connection.receive(timeout: timeout) {
-            case .output(let bytes): stdout += String(decoding: bytes, as: UTF8.self)
-            case .stderr(let bytes): stderr += String(decoding: bytes, as: UTF8.self)
-            case .exited(_, let status): return (status, stdout, stderr)
-            case .error(let text): throw WireError.remote(text)
-            default: break
-            }
-        }
-    }
-
     func reattach(id: String) throws -> (WireConnection, Int32?) {
         (try open(.attach(id: id)).0, nil)
     }
@@ -141,6 +122,36 @@ final class CloudHost: SessionEndpoint, CustomStringConvertible {
         } catch {
             connection.close()
             throw error
+        }
+    }
+}
+
+/// A machine that runs commands for this Mac through a gateway's `exec`: the cloud machine, or
+/// a paired Mac (`MacHost`). rsync reaches it with `agterm --cloud-pipe` and `environment`.
+protocol ExecHost {
+    /// For `agterm --cloud-pipe` run by rsync, so it finds this machine without the Keychain.
+    var environment: [String: String] { get }
+    /// A connection running `argv` on the machine with plain pipes (see `WireMessage.exec`).
+    func exec(_ argv: [String]) throws -> WireConnection
+}
+
+extension ExecHost {
+    /// Runs `argv` with `input` on its stdin and waits for it; returns its status and output.
+    @discardableResult
+    func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 30) throws -> (status: Int32, stdout: String, stderr: String) {
+        let connection = try exec(argv)
+        defer { connection.close() }
+        if !input.isEmpty { try connection.send(.input(input)) }
+        try connection.send(.input(Data()))
+        var stdout = "", stderr = ""
+        while true {
+            switch try connection.receive(timeout: timeout) {
+            case .output(let bytes): stdout += String(decoding: bytes, as: UTF8.self)
+            case .stderr(let bytes): stderr += String(decoding: bytes, as: UTF8.self)
+            case .exited(_, let status): return (status, stdout, stderr)
+            case .error(let text): throw WireError.remote(text)
+            default: break
+            }
         }
     }
 }

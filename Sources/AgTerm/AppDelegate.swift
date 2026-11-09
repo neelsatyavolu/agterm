@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteClient.shared.startIfEnabled()
         Analytics.start()
         KeepAwake.shared.start()
+        MacWorker.update()
     }
 
     /// Every other installed agent, listed when the menu opens (the PATH is found after launch).

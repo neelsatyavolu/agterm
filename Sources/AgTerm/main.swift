@@ -17,6 +17,10 @@ if arguments.count >= 2, arguments[1] == SessionHelperMain.flag {
 if arguments.count >= 2, arguments[1] == CloudPipe.flag {
     CloudPipe.run(arguments)
 }
+// `agterm-remote`: runs a command on a paired Mac (Settings → Macs).
+if arguments.count >= 2, arguments[1] == MacRemote.flag {
+    MacRemote.run(arguments)
+}
 
 // Opened from inside a tab or an agent: forget that session before any tab inherits it.
 for name in InheritedEnvironment.toDrop(ProcessInfo.processInfo.environment, accountsDir: AccountStore.dir.path) {

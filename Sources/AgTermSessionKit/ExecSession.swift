@@ -72,9 +72,18 @@ final class ExecSession {
         stdin.whenPending(atMost: Self.inputResumeAt, on: queue) { [weak client] in client?.resumeReading() }
     }
 
-    /// The client went away: the command is killed and reaped.
+    /// The client went away: the command and everything it started (its process group) are
+    /// told to stop, killed 3 s later, and reaped.
     func terminate() {
-        if status == nil { kill(pid, SIGKILL) }
+        if !finished {
+            let group = -pid
+            kill(group, SIGTERM)
+            // Only while the session lasts: once it's reaped and drained the group may be gone and its id reused.
+            queue.asyncAfter(deadline: .now() + 3) { [weak self] in
+                guard let self, !self.finished else { return }
+                kill(group, SIGKILL)
+            }
+        }
         // A suspended source must be resumed before it is cancelled or released.
         if suspended {
             suspended = false
@@ -158,13 +167,19 @@ final class ExecSession {
         for (target, fd) in stdio.enumerated() { posix_spawn_file_actions_adddup2(&actions, fd, Int32(target)) }
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
-        // The helper ignores SIGHUP and SIGPIPE; the command gets the defaults back.
+        // The helper ignores SIGHUP and SIGPIPE (and, serving other machines, SIGINT and SIGTERM);
+        // the command gets the defaults back, so it can be stopped.
         var defaults = sigset_t()
         sigemptyset(&defaults)
-        sigaddset(&defaults, SIGHUP)
-        sigaddset(&defaults, SIGPIPE)
+        for number in [SIGHUP, SIGPIPE, SIGINT, SIGTERM] { sigaddset(&defaults, number) }
         posix_spawnattr_setsigdefault(&attributes, &defaults)
-        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGDEF))
+        // Dispatch's threads block signals, and a child starts with its parent thread's mask.
+        var none = sigset_t()
+        sigemptyset(&none)
+        posix_spawnattr_setsigmask(&attributes, &none)
+        // Its own process group, so stopping it stops what it started (a build's compilers).
+        posix_spawnattr_setpgroup(&attributes, 0)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETPGROUP))
         let cArgv = argv.map { strdup($0) } + [nil]
         let cEnv = env.map { strdup($0) } + [nil]
         defer { (cArgv + cEnv).forEach { free($0) } }

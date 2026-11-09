@@ -60,6 +60,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSLocalNetworkUsageDescription</key><string>agterm finds and connects to your other Macs on this network, so agents can run tasks on them (Settings → Macs).</string>
+  <key>NSBonjourServices</key><array><string>_agterm-mac._tcp</string></array>
   <key>NSHumanReadableCopyright</key><string>© 2026 Neel Satyavolu. MIT License.</string>
   <key>SUFeedURL</key><string>${FEED_URL}</string>
   <key>AGTermBetaFeedURL</key><string>${BETA_FEED_URL}</string>

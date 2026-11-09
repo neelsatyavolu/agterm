@@ -63,6 +63,9 @@ enum AgentIntegration {
                 try wrapper(agent: agent.command, helper: helper).write(to: url, atomically: true, encoding: .utf8)
                 try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
             }
+            let remote = binDir.appendingPathComponent(remoteCommand)
+            try remoteWrapper(helper: helper).write(to: remote, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: remote.path)
             for (name, body) in zshFiles() {
                 try body.write(to: zshDir.appendingPathComponent(name), atomically: true, encoding: .utf8)
             }
@@ -82,6 +85,21 @@ enum AgentIntegration {
             if let user = env["ZDOTDIR"] { env["AGTERM_USER_ZDOTDIR"] = user }
             env["ZDOTDIR"] = zshDir.path
         }
+    }
+
+    /// Runs commands on a Mac paired in Settings → Macs (`MacRemote`).
+    static let remoteCommand = "agterm-remote"
+
+    private static func remoteWrapper(helper: String) -> String {
+        """
+        #!/bin/sh
+        # Added by agterm: runs a command on a Mac paired in agterm Settings → Macs. `agterm-remote help` says how.
+        helper='\(helper.replacingOccurrences(of: "'", with: "'\\''"))'
+        if [ -x "$helper" ]; then exec "$helper" \(MacRemote.flag) "$@"; fi
+        echo "agterm-remote: agterm isn't at $helper any more; open agterm once to fix this" >&2
+        exit 255
+
+        """
     }
 
     private static func wrapper(agent: String, helper: String) -> String {

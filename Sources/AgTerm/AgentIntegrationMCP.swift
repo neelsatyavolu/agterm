@@ -38,6 +38,25 @@ extension AgentIntegration {
         instructions come first.
         """
 
+    /// What agents are told about `agterm-remote` while Settings → Macs has Macs paired; nil with none.
+    static func remoteMacInstructions(_ names: [String]) -> String? {
+        guard let first = names.first else { return nil }
+        let macs = names.map { "\"\($0)\"" }.joined(separator: ", ")
+        return """
+            ## Other Macs (agterm-remote)
+            This Mac is paired with \(macs) in agterm (the first is the default). Run CPU-heavy or long commands
+            there instead of here: full builds, test suites, benchmarks, renders, data processing. From the project folder:
+                agterm-remote run -- "<command line>"
+            It copies the git repo there (without git-ignored files, so node_modules, build output and .env files stay
+            here), runs the command in that Mac's login shell, prints its output as it runs and exits with its status.
+            What it installs or builds there stays for the next run, so install dependencies in the command when needed:
+                agterm-remote run -- "npm ci && npm test"
+            Options before --: `--back` copies back files the command made or changed; `--mac <name>` picks another
+            paired Mac (default "\(first)"); `--no-sync` reuses the last copy. Keep quick commands, git, and anything
+            that needs this Mac's apps, simulators or signed-in tools here. `agterm-remote list` shows which Macs answer.
+            """
+    }
+
     /// `userArgs` with agterm's servers added for `agent`, or nil to run them unchanged. OpenCode
     /// and Kilo get theirs through an environment variable instead, set here.
     static func addingMCP(agent: String, userArgs: [String], env: [String: String]) -> [String]? {
@@ -47,7 +66,8 @@ extension AgentIntegration {
         // The user's own consult server has the same session tools as agterm's.
         let hasConsult = wantConsult && (servers.contains { $0.name == "consult" } || configuredServers(for: agent, cwd: cwd).contains("consult"))
         let instructions = [servers.contains { $0.name == memoryServerName } ? memoryInstructions : nil,
-                            hasConsult ? consultInstructions : nil].compactMap { $0 }.joined(separator: "\n\n")
+                            hasConsult ? consultInstructions : nil,
+                            remoteMacInstructions(MacPairings.names)].compactMap { $0 }.joined(separator: "\n\n")
         switch agent {
         case "claude":
             return AgentLaunch.claude(userArgs: userArgs, servers: servers, instructions: instructions)

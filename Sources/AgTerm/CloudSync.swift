@@ -62,7 +62,7 @@ enum CloudSync {
         return process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : ""
     }
 
-    private static let gitIgnoredArguments = ["ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z"]
+    static let gitIgnoredArguments = ["ls-files", "-o", "-i", "--exclude-standard", "--directory", "-z"]
 
     /// Bytes in the files under `path`, leaving out folders named in `excluded` and what `ignored`
     /// (`gitIgnored(in:)`) lists, as the copy does.
@@ -174,11 +174,12 @@ enum CloudSync {
         guard result.status == 0 else { throw Failure(description: "couldn't make \(path) on the cloud machine: \(result.stderr)") }
     }
 
-    /// `sources` and `destination` name the cloud side as `cloud:<path>`. Returns the bytes sent.
+    /// `sources` and `destination` name the other machine as `cloud:<path>` (a paired Mac too).
+    /// Returns the bytes sent.
     @discardableResult
     /// `rules` are rsync exclude patterns, such as `CloudMovePlan.ignoreRules`.
-    private static func copy(_ sources: [String], to destination: String, excluding excluded: [String], rules: [String] = [],
-                             options: [String] = [], via cloud: CloudHost, progress: ((Int64) -> Void)? = nil) throws -> Int64 {
+    static func copy(_ sources: [String], to destination: String, excluding excluded: [String], rules: [String] = [],
+                     options: [String] = [], via cloud: ExecHost, progress: ((Int64) -> Void)? = nil) throws -> Int64 {
         guard let binary = Bundle.main.executableURL?.path, !binary.contains(" ") else {
             throw Failure(description: "agterm's path has a space, which rsync's -e can't take")
         }
