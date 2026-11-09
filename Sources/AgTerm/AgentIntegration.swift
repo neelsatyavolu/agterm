@@ -31,11 +31,19 @@ enum AgentIntegration {
         UserDefaults.standard.string(forKey: launchAgentKey).flatMap(AgentKind.named) ?? .claude
     }
 
-    /// Agents found on your login shell's PATH, in registry order. Nil until the PATH is known.
+    /// Agents found on your login shell's PATH, plus agl when agterm carries it, in registry
+    /// order. Nil until the PATH is known.
     static func installedAgents() -> [AgentKind]? {
         let runner = QuickCommandRunner.shared
         guard runner.isReady else { return nil }
-        return AgentKind.all.filter { $0.commands.contains { runner.executable($0) != nil } }
+        return AgentKind.all.filter { kind in
+            kind.commands.contains { runner.executable($0) != nil } || (kind.id == "agl" && bundledAgl != nil)
+        }
+    }
+
+    /// The agl that ships inside agterm.app (`Contents/MacOS/agl`); nil in debug builds.
+    static var bundledAgl: URL? {
+        Bundle.main.url(forAuxiliaryExecutable: "agl").flatMap { FileManager.default.isExecutableFile(atPath: $0.path) ? $0 : nil }
     }
 
     static var supportDir: URL {
@@ -58,6 +66,10 @@ enum AgentIntegration {
                 let url = binDir.appendingPathComponent(agent.command)
                 guard wanted.contains(agent.command) else {
                     try? FileManager.default.removeItem(at: url)
+                    // agl ships with agterm: tabs find it here, first on PATH.
+                    if agent.id == "agl", let agl = bundledAgl {
+                        try? FileManager.default.createSymbolicLink(at: url, withDestinationURL: agl)
+                    }
                     continue
                 }
                 try wrapper(agent: agent.command, helper: helper).write(to: url, atomically: true, encoding: .utf8)

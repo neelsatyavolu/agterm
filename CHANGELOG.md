@@ -2,6 +2,7 @@
 
 ## 1.2.2 — 2026-11-08
 - Added: The Chat view shows subagents and Claude Code workflows as rows of their own: what each was asked to do, its kind of agent or workflow name, and whether it's still running. Background agents and workflows stay running until they finish, then show how long they took; click the row to read what they came back with. Works for Claude Code's agents and workflows, Codex's spawned agents and Grok's subagents, and agterm Remote shows background ones as running too.
+- Added: agterm now comes with agl, the coding agent for local models. Type `agl` in any tab, or pick it in Shell → New Tab With Agent; it uses models from Ollama, LM Studio or its own library (`agl models`).
 - Fixed: The Usage window opens in seconds instead of a minute or more on a Mac with a lot of Claude Code history. It now reads transcripts on every core and skips the tool output lines, which never hold token counts.
 - Fixed: The buttons at the top right (worktrees, hand off, commit, usage, changes, session timeline) and the tab bar's buttons show their tooltips when you hover over them.
 

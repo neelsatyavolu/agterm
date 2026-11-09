@@ -14,6 +14,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
 | `Tests/AgTermSessionKitTests/` | XCTest for the session helper (runs a server in-process) |
 | `site/` | agterm.dev landing page (Vercel) |
+| `agl/` | agl, the local-model coding agent (Rust). agterm.app ships it as `Contents/MacOS/agl` and links it into its bin folder, first on PATH in tabs; see `agl/README.md` |
 | `teams/` | agterm Teams (teams.agterm.dev, formerly agmux Teams): Worker, D1 and web UI, shared with agmux, which still calls teams.agmux.dev; see `teams/README.md` |
 | `cloud/` | agterm Cloud: the machine image (`Dockerfile`, `entrypoint.sh`) and the control plane Worker (`control/`, TypeScript, D1); see `docs/cloud-sessions-plan.md` |
 
@@ -27,6 +28,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Control plane tests | `cd cloud/control && npm test && npm run typecheck` |
 | Cloud image | `docker build -f cloud/Dockerfile .` |
 | Publish the cloud image | `cloud/publish.sh`: a dated tag on Fly's builder, set as the control plane's `CLOUD_IMAGE`; stopped machines move to it within the hour, running ones keep their tabs |
+| agl tests | `cd agl && cargo test` |
 | Teams tests | `cd teams && npm test && npm run typecheck` |
 | Deploy Teams | `cd teams && npx wrangler deploy` (apply any new `migrations/` to D1 `agmux-teams` first; agmux and older agterm builds use the same API) |
 | Deploy the control plane | `cd cloud/control && npx wrangler deploy` (secrets: `FLY_API_TOKEN`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`) |
