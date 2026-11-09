@@ -2,8 +2,8 @@ import AgTermCore
 import Foundation
 
 /// Reads Claude Code and Codex transcripts from the last 30 days into a `UsageReport`, only when
-/// the Usage window asks. Each file's parser and read position are kept between scans, so a
-/// later scan reads only what was appended since; transcript text itself is never kept.
+/// the Usage window asks, a file per core. Each file's parser and read position are kept between
+/// scans, so a later scan reads only what was appended since; transcript text itself is never kept.
 final class UsageScanner {
     static let shared = UsageScanner()
 
@@ -50,45 +50,69 @@ final class UsageScanner {
 
     // MARK: Reading (on `queue`)
 
+    /// One transcript to bring up to date.
+    private struct Job {
+        let found: Found
+        /// Feed only lines containing `"usage"`: Claude puts tokens on no other line, and the
+        /// rest, mostly multi-megabyte tool output, would take most of the time.
+        let usageLinesOnly: Bool
+        let makeParser: () -> any TranscriptLineParser
+    }
+
+    private static let usageNeedle = Array("\"usage\"".utf8)
+
     private func readAll(now: Date) -> [UsageEvent] {
         let cutoff = now.addingTimeInterval(-Double(UsageReport.dayCount + 1) * 86400)
         let prices = PriceList.current()
-        var seen = Set<String>()
-        var events: [UsageEvent] = []
-        for file in Self.claudeFiles(cutoff: cutoff) {
-            seen.insert(file.url.path)
-            events += read(file.url, modified: file.modified) {
+        let claude = Self.claudeFiles(cutoff: cutoff).map { file in
+            Job(found: file, usageLinesOnly: true) {
                 ClaudeTranscript.Parser(sessionID: ClaudeTranscript.sessionID(fromPath: file.url.path),
                                         fallbackDir: file.projectDir, prices: prices)
             }
         }
-        for file in Self.codexFiles(cutoff: cutoff) {
-            seen.insert(file.url.path)
-            events += read(file.url, modified: file.modified) {
+        let codex = Self.codexFiles(cutoff: cutoff).map { file in
+            Job(found: file, usageLinesOnly: false) {
                 CodexTranscript.Parser(sessionID: file.url.deletingPathExtension().lastPathComponent, prices: prices)
             }
         }
+        let jobs = claude + codex
+        let previous = entries
+        // Files are independent, so they're read on every core; each slot is written by one iteration.
+        var read = [Entry?](repeating: nil, count: jobs.count)
+        read.withUnsafeMutableBufferPointer { slots in
+            DispatchQueue.concurrentPerform(iterations: jobs.count) { i in
+                slots[i] = Self.read(jobs[i], previous: previous[jobs[i].found.url.path])
+            }
+        }
         // Files that aged out or were deleted give their memory back.
-        entries = entries.filter { seen.contains($0.key) }
+        var kept: [String: Entry] = [:]
+        var events: [UsageEvent] = []
+        for (job, entry) in zip(jobs, read) {
+            guard let entry else { continue }
+            kept[job.found.url.path] = entry
+            events += entry.parser.events
+        }
+        entries = kept
         return events
     }
 
-    /// The file's events, reading only the bytes added since the last scan. A file that shrank
-    /// was rewritten, so it's read again from the start.
-    private func read(_ url: URL, modified: Date, makeParser: () -> any TranscriptLineParser) -> [UsageEvent] {
-        var entry = entries[url.path] ?? Entry(parser: makeParser(), offset: 0, modified: .distantPast)
-        guard entry.modified != modified else { return entry.parser.events }
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return entry.parser.events }
+    /// The file brought up to date, reading only the bytes added since the last scan. A file
+    /// that shrank was rewritten, so it's read again from the start.
+    private static func read(_ job: Job, previous: Entry?) -> Entry? {
+        let url = job.found.url
+        var entry = previous ?? Entry(parser: job.makeParser(), offset: 0, modified: .distantPast)
+        guard entry.modified != job.found.modified else { return entry }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return previous }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
-        if size < entry.offset { entry = Entry(parser: makeParser(), offset: 0, modified: .distantPast) }
+        if size < entry.offset { entry = Entry(parser: job.makeParser(), offset: 0, modified: .distantPast) }
         var complete = true
         do {
             try handle.seek(toOffset: entry.offset)
             var pending = Data()
-            while let chunk = try handle.read(upToCount: Self.chunkSize), !chunk.isEmpty {
+            while let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty {
                 pending.append(chunk)
-                let used = entry.parser.feed(chunk: pending)
+                let used = feedLines(pending, to: &entry.parser, onlyWith: job.usageLinesOnly ? usageNeedle : nil)
                 entry.offset += UInt64(used)
                 pending = used == pending.count ? Data() : pending.subdata(in: used..<pending.count)
             }
@@ -97,9 +121,26 @@ final class UsageScanner {
             complete = false
         }
         // A failed read keeps the old date, so the next scan tries the rest of the file again.
-        if complete { entry.modified = modified }
-        entries[url.path] = entry
-        return entry.parser.events
+        if complete { entry.modified = job.found.modified }
+        return entry
+    }
+
+    /// Feeds `parser` each complete line in `data` (only those containing `needle`, when given)
+    /// and returns the bytes used: up to and including the last newline.
+    private static func feedLines(_ data: Data, to parser: inout any TranscriptLineParser, onlyWith needle: [UInt8]?) -> Int {
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int in
+            guard let base = raw.baseAddress else { return 0 }
+            var start = 0
+            while start < raw.count, let newline = memchr(base + start, 0x0A, raw.count - start) {
+                let end = base.distance(to: UnsafeRawPointer(newline))
+                let length = end - start
+                if needle.map({ memmem(base + start, length, $0, $0.count) != nil }) ?? true {
+                    parser.feed(String(decoding: UnsafeRawBufferPointer(start: base + start, count: length), as: UTF8.self))
+                }
+                start = end + 1
+            }
+            return start
+        }
     }
 
     private struct Found {

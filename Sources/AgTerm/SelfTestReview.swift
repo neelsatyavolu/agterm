@@ -7,7 +7,7 @@ extension SelfTest {
     /// `AGTERM_REVIEW_CHECK=1 AGTERM_SELFTEST=<dir>`. Makes a throwaway repo with an edit, a new
     /// file and an ignored `.env`, opens the panel with tabs on top (`review-top-ink.png`) and on
     /// the left in both themes (`review-side-ink.png`, `review-side-paper.png`), shows the commit
-    /// sheet (`review-commit.png`), commits, then makes and removes a worktree.
+    /// sheet (`review-commit.png`) and a toolbar tooltip (`review-tooltip.png`), commits, then makes and removes a worktree.
     static func reviewCheck(_ controller: MainWindowController, outDir: String) {
         guard let window = controller.window, let repo = makeRepo(outDir) else { exit(1) }
         CommitSheet.draftsMessages = false
@@ -37,6 +37,17 @@ extension SelfTest {
             report("commit enabled", controller.reviewToolbar.commit.isEnabled)
             report("hand off needs an agent", !controller.reviewToolbar.handOff.isEnabled)
             report("toolbar clear of the tabs", controller.tabBar.trailingReserve > controller.reviewToolbar.frame.width)
+            let usage = controller.reviewToolbar.usage
+            HoverTip.shared.showNowForTest(usage.toolTip ?? "", for: usage)
+            let tip = HoverTip.shared.panelForTest
+            report("usage button shows its tooltip", tip.isVisible && tip.frame.maxY <= window.convertToScreen(usage.convert(usage.bounds, to: nil)).minY,
+                   "\(tip.frame)")
+            if let box = tip.contentView, let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds) {
+                // The borderless panel has no frame view layer for `snapshot`, so draw the tip itself.
+                box.cacheDisplay(in: box.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(outDir)/review-tooltip.png"))
+            }
+            HoverTip.shared.hide()
             let before = tab.view.frame.width
             controller.toggleChanges()
             after(1.5) {

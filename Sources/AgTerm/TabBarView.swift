@@ -375,6 +375,7 @@ final class IconButton: NSView {
     var onRightClick: ((NSEvent) -> Void)?
     private let icon: Icon
     private var hovering = false { didSet { needsDisplay = true } }
+    private var tip: String?
     /// For `.cloud`: which way it points.
     var cloud: TabBarView.Cloud = .moveUp { didSet { needsDisplay = true } }
 
@@ -390,14 +391,30 @@ final class IconButton: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    /// Shown by `HoverTip`, since AppKit's tooltips don't appear in the title bar.
+    override var toolTip: String? {
+        get { tip }
+        set { tip = newValue }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        HoverTip.shared.show(tip, for: self)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        HoverTip.shared.hide(for: self)
+    }
+
     override func mouseDown(with event: NSEvent) {
+        HoverTip.shared.hide(for: self)
         if event.modifierFlags.contains(.control), let onRightClick { return onRightClick(event) }
         onClick?()
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        HoverTip.shared.hide(for: self)
         guard let onRightClick else { return super.rightMouseDown(with: event) }
         onRightClick(event)
     }

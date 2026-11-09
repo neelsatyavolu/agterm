@@ -103,6 +103,7 @@ final class ToolbarButton: NSView {
     var isEnabled = true { didSet { if isEnabled != oldValue { needsDisplay = true } } }
     private var image: NSImage?
     private var hovering = false { didSet { needsDisplay = true } }
+    private var tip: String?
     private static let size: CGFloat = 28
     private static let font = NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .medium)
 
@@ -133,9 +134,26 @@ final class ToolbarButton: NSView {
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) { if isEnabled { onClick?() } }
+    /// Shown by `HoverTip`, since AppKit's tooltips don't appear in the title bar.
+    override var toolTip: String? {
+        get { tip }
+        set { tip = newValue }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        HoverTip.shared.show(tip, for: self)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        HoverTip.shared.hide(for: self)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        HoverTip.shared.hide(for: self)
+        if isEnabled { onClick?() }
+    }
 
     override func accessibilityPerformPress() -> Bool {
         guard isEnabled else { return false }
