@@ -50,14 +50,29 @@ fn free_port() -> Result<u16, String> {
     std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).map_err(|e| e.to_string())
 }
 
-/// Spawns `bin args` in its own process group, logging to a temp file; kept until `stop`.
+/// Runs the server and stops it when its stdin closes, which happens when agl exits for any
+/// reason, SIGKILL included. Exits with the server's status.
+const WATCHDOG: &str = r#"exec 3<&0
+"$@" </dev/null &
+server=$!
+( read -r _ <&3; kill -TERM "$server" 2>/dev/null; sleep 3; kill -KILL "$server" 2>/dev/null ) &
+watch=$!
+wait "$server"
+status=$?
+kill "$watch" 2>/dev/null
+exit "$status""#;
+
+/// Spawns `bin args` under the watchdog in its own process group, logging to a temp file; kept
+/// until `stop`. The child's stdin is the pipe whose closing stops it.
 fn spawn(bin: &Path, args: &[String], log: &Path) -> Result<u32, String> {
     use std::os::unix::process::CommandExt;
     let out = std::fs::File::create(log).map_err(|e| format!("cannot create {}: {e}", log.display()))?;
     let err = out.try_clone().map_err(|e| e.to_string())?;
-    let child = Command::new(bin)
+    let child = Command::new("/bin/sh")
+        .args(["-c", WATCHDOG, "sh"])
+        .arg(bin)
         .args(args)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(out)
         .stderr(err)
         .process_group(0)
@@ -202,6 +217,21 @@ http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
         stop();
         std::thread::sleep(Duration::from_millis(300));
         assert!(!up(&format!("{url}/models")), "stopped");
+    }
+
+    #[test]
+    fn a_server_dies_when_agl_dies_without_cleaning_up() {
+        let _turn = serial();
+        let d = tempfile::tempdir().unwrap();
+        let bin = fake_server(d.path(), 0);
+        let url = start_llama(&bin, Path::new("/m/x.gguf"), 4096).unwrap();
+        // What a SIGKILL of agl does: its end of the watchdog's pipe closes, nothing else runs.
+        let mut children = CHILDREN.lock().unwrap();
+        drop(children.last_mut().unwrap().stdin.take());
+        drop(children);
+        std::thread::sleep(Duration::from_millis(1_500));
+        assert!(!up(&format!("{url}/models")), "server outlived agl");
+        stop();
     }
 
     #[test]

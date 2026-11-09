@@ -104,14 +104,33 @@ pub fn new_session(st: &mut State) -> std::io::Result<()> {
     let root = st.session.path.parent().and_then(|p| p.parent()).map_or_else(session::default_root, |p| p.to_path_buf());
     st.msgs = vec![Message::new(Role::System, st.system.clone())];
     st.session = Session::create(&root, &st.ctx.cwd, &st.cfg.model, &st.cfg.base_url)?;
-    session::write_pointer(&root, std::process::id(), &st.session.path);
+    session::write_pointer(&root, std::process::id(), &st.session.path, &st.cfg.model);
     Ok(())
 }
 
-/// Switches model and records it in the session.
+/// Records this process's session and model in its run pointer.
+pub fn point(st: &State) {
+    let root = st.session.path.parent().and_then(|p| p.parent()).map_or_else(session::default_root, |p| p.to_path_buf());
+    session::write_pointer(&root, std::process::id(), &st.session.path, &st.cfg.model);
+}
+
+/// Switches model and records it in the session. The old model is unloaded if agl loaded it.
 pub fn set_model(st: &mut State, name: &str) {
+    if st.cfg.model != name {
+        release(Some(&st.cfg.model));
+    }
     st.cfg.model = name.to_string();
+    crate::models::release::note(&st.cfg.base_url, name);
     st.session.log("model", json!({"name": name}));
+    point(st);
+}
+
+/// Unloads models agl made Ollama or LM Studio load (all, or only `model`), unless another
+/// running agl uses them.
+fn release(model: Option<&str>) {
+    let run = session::home().join("run");
+    let lms = crate::models::serve::Runtimes::default().lms;
+    crate::models::release::release(model, &lms, &|m| crate::models::release::used_elsewhere(&run, std::process::id(), m));
 }
 
 /// Cancels the running turn and waits up to two seconds for it to stop, so the command it
@@ -127,5 +146,6 @@ pub fn stop_turn() {
 /// Removes this process's run pointer and stops servers agl started; call before exiting.
 pub fn finish() {
     session::remove_pointer(&session::default_root(), std::process::id());
+    release(None);
     crate::models::serve::stop();
 }
