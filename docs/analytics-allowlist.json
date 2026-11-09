@@ -1,0 +1,6 @@
+{
+  "agents": ["claude", "codex", "grok", "agl", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
+             "amp", "qwen", "crush", "copilot", "droid", "kilo", "cline", "goose", "auggie", "qodo",
+             "kiro", "continue", "pi"],
+  "features": ["split", "command_bar", "cloud_tab", "phone_paired", "update_installed"]
+}

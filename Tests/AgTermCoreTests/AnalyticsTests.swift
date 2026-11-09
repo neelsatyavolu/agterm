@@ -47,19 +47,18 @@ final class AnalyticsTests: XCTestCase {
         }
     }
 
-    /// The analytics service drops agents it doesn't list (AGTERM_AGENTS in
-    /// docs/analytics-service-agterm.patch). A new AgentKind fails this until it's added there too.
-    func testAgentIDsMatchTheServiceAllowList() {
-        XCTAssertEqual(AgentKind.all.map(\.id), [
-            "claude", "codex", "grok", "agl", "gemini", "agy", "cursor-agent", "opencode", "kimi", "aider",
-            "amp", "qwen", "crush", "copilot", "droid", "kilo", "cline", "goose", "auggie", "qodo",
-            "kiro", "continue", "pi",
-        ])
+    /// The analytics service drops agents and features it doesn't list. docs/analytics-allowlist.json
+    /// is what `scripts/analytics-sync.sh` (run by every release) writes into the service, so a
+    /// new AgentKind or AnalyticsFeature fails here until it's added to that file.
+    func testAllowListFileMatchesAgentsAndFeatures() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("docs/analytics-allowlist.json")
+        let list = try JSONDecoder().decode([String: [String]].self, from: Data(contentsOf: url))
+        XCTAssertEqual(list["agents"], AgentKind.all.map(\.id))
+        XCTAssertEqual(list["features"], AnalyticsFeature.allCases.map(\.rawValue))
     }
 
-    func testFeatureNames() {
-        XCTAssertEqual(AnalyticsFeature.allCases.map(\.rawValue),
-                       ["split", "command_bar", "cloud_tab", "phone_paired", "update_installed"])
+    func testFeatureEvent() {
         XCTAssertEqual(AnalyticsEvent.featureUsed(.split), AnalyticsEvent(name: "feature_used", props: ["feature": "split"]))
     }
 

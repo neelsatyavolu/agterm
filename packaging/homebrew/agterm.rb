@@ -5,7 +5,7 @@ cask "agterm" do
   url "https://github.com/neelsatyavolu/agterm/releases/download/v#{version}/agterm-#{version}.zip"
   name "agterm"
   desc "Terminal for coding agents"
-  homepage "https://agterm.xanom.co"
+  homepage "https://agterm.dev"
 
   livecheck do
     url :url
@@ -13,7 +13,7 @@ cask "agterm" do
   end
 
   auto_updates true
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "agterm.app"
 

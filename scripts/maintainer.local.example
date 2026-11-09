@@ -9,5 +9,8 @@ export AGTERM_SIGNING_IDENTITY=""
 # 1Password reference to the Sparkle EdDSA private key, e.g. "op://Vault/Item/password"
 export AGTERM_SPARKLE_KEY_REF=""
 # Optional: a local checkout of the Homebrew tap, e.g. ~/Documents/GitHub/homebrew-agmux. A stable
-# release commits Casks/agterm.rb there (push it yourself); without it, release.sh prints the cask.
+# release commits and pushes Casks/agterm.rb there; without it, release.sh prints the cask.
 export AGTERM_HOMEBREW_TAP=""
+# Optional: agmux's analytics-service folder, e.g. ~/Documents/GitHub/agmux/analytics-service. Each
+# release runs scripts/analytics-sync.sh on it (wrangler must be signed in to the Cloudflare account).
+export AGTERM_ANALYTICS_SERVICE=""

@@ -9,8 +9,12 @@
 #
 # The cask (packaging/homebrew/agterm.rb, rendered by scripts/render-cask.sh) points at
 # agterm-<version>.zip. With AGTERM_HOMEBREW_TAP set to a local checkout of the tap (in
-# scripts/maintainer.local), a stable release commits Casks/agterm.rb there; push it yourself.
+# scripts/maintainer.local), a stable release commits Casks/agterm.rb there and pushes it.
 # Without it, the cask is printed. Betas leave the cask alone.
+#
+# With AGTERM_ANALYTICS_SERVICE set to agmux's analytics-service folder, the release first runs
+# scripts/analytics-sync.sh, which deploys the service if it doesn't yet accept every agent and
+# feature in docs/analytics-allowlist.json. A failure there only warns.
 #
 # A beta VERSION (1.1.0-beta.1) becomes a GitHub prerelease with only its zip: the stable feed
 # (releases/latest/download/appcast.xml) skips prereleases, so stable users don't see it.
@@ -84,6 +88,12 @@ fi
 
 echo "Building ${VERSION}…"
 [ "$DRY_RUN" = 1 ] || swift test >/dev/null
+
+if [ -n "${AGTERM_ANALYTICS_SERVICE:-}" ]; then
+    SYNC=(scripts/analytics-sync.sh)
+    [ "$DRY_RUN" = 1 ] && SYNC+=(--dry-run)
+    "${SYNC[@]}" "$AGTERM_ANALYTICS_SERVICE" || echo "warning: the analytics service wasn't updated; run scripts/analytics-sync.sh yourself" >&2
+fi
 scripts/bundle.sh >/dev/null
 rm -rf "$OUT" && mkdir -p "$OUT"
 
@@ -167,11 +177,17 @@ gh release upload "$BETA_TAG" --repo "$REPO" --clobber "${BETA_ASSETS[@]}"
 if [ "$IS_BETA" = 0 ]; then
     TAP="${AGTERM_HOMEBREW_TAP:-}"
     if [ -n "$TAP" ] && [ -e "$TAP/.git" ]; then
+        git -C "$TAP" pull --rebase --quiet
         mkdir -p "$TAP/Casks"
         cp "$OUT/agterm.rb" "$TAP/Casks/agterm.rb"
         git -C "$TAP" add Casks/agterm.rb
-        git -C "$TAP" commit -m "agterm $VERSION"
-        echo "Committed the Homebrew cask in $TAP; push it with: git -C \"$TAP\" push"
+        if git -C "$TAP" diff --cached --quiet -- Casks/agterm.rb; then
+            echo "The Homebrew cask in $TAP is already at $VERSION."
+        else
+            git -C "$TAP" commit --quiet -m "agterm $VERSION" -- Casks/agterm.rb
+            git -C "$TAP" push --quiet
+            echo "Published the Homebrew cask for $VERSION in $TAP."
+        fi
     else
         [ -z "$TAP" ] || echo "warning: AGTERM_HOMEBREW_TAP=$TAP isn't a git checkout" >&2
         echo "Homebrew cask (set AGTERM_HOMEBREW_TAP in scripts/maintainer.local to commit it to your tap):"

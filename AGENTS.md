@@ -35,6 +35,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | Install locally | `./install.sh --adhoc` |
 | Release build | `scripts/bundle.sh` |
 | Publish a release | `scripts/release.sh` (maintainer only; `--dry-run` writes the appcasts in `dist/release` and publishes nothing) |
+| Analytics allow-lists | `scripts/analytics-sync.sh <agmux/analytics-service>`: deploys the service when it doesn't accept every id in `docs/analytics-allowlist.json` (release.sh runs it; a new agent or feature goes in that file, `AnalyticsTests` checks) |
 | Cut a beta | Set `VERSION` to `1.1.0-beta.1` (next: `-beta.2`), add its CHANGELOG section, commit, `scripts/release.sh`: a GitHub prerelease plus the `beta-feed` appcast |
 | Make a beta key | `scripts/beta-key.sh [--days N] "<tester name>"` (key pair in 1Password "agterm Beta Key Signing Key"; `--init` made it, once) |
 
