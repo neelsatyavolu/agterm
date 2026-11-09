@@ -5,7 +5,7 @@ import XCTest
 /// plus `ChatRows.build` and the row diff, which is what each poll of a growing file costs.
 final class ChatPerfScenarioTests: XCTestCase {
     static let ts = "2026-11-08T12:00:00.000Z"
-    static let agents: [TimelineFeed.Agent] = [.claude, .codex, .grok]
+    static let agents: [TimelineFeed.Agent] = [.claude, .codex, .grok, .agl]
 
     // MARK: Line builders, one turn shape per agent
 
@@ -29,6 +29,8 @@ final class ChatPerfScenarioTests: XCTestCase {
                     codex("response_item", ["type": "message", "role": "assistant", "content": [["type": "output_text", "text": reply]]])]
         case .grok:
             return [GrokTimelineTests.user("<user_query>\n\(user)\n</user_query>"), GrokTimelineTests.assistant(reply)]
+        case .agl:
+            return [jsonLine(["type": "user", "text": user, "ts": 1]), jsonLine(["type": "assistant", "text": reply, "reasoning": "", "ts": 2])]
         }
     }
 
@@ -46,6 +48,9 @@ final class ChatPerfScenarioTests: XCTestCase {
         case .grok:
             return [GrokTimelineTests.assistant("", [GrokTimelineTests.call("g\(i)", "run_terminal_command", ["command": cmd])]),
                     GrokTimelineTests.result("g\(i)", "exit: \(exit)\n" + output)]
+        case .agl:
+            return [jsonLine(["type": "tool_call", "id": "b\(i)", "name": "bash", "arguments": ["command": cmd], "ts": 3]),
+                    jsonLine(["type": "tool_result", "id": "b\(i)", "ok": exit == 0, "output": output + "\n[exit code \(exit)]", "ts": 4])]
         }
     }
 
@@ -268,6 +273,8 @@ final class ChatPerfScenarioTests: XCTestCase {
                      "[1,2,3]", "{not json"],
             .grok: [jsonLine(["type": "brand_new", "content": "x"]), jsonLine(["type": "assistant", "content": 42]),
                     jsonLine(["type": "tool_result", "tool_call_id": "nope", "content": ["weird": true]]), "[1,2,3]", "{not json"],
+            .agl: [jsonLine(["type": "brand_new", "x": 1]), jsonLine(["type": "assistant", "text": 42]),
+                   jsonLine(["type": "tool_result", "id": "nope", "ok": true, "output": "x"]), "[1,2,3]", "{not json"],
         ]
         for agent in Self.agents {
             let lines = Self.prelude(agent) + Self.turn(agent, 0, user: "before", reply: "one") + unknown[agent]!

@@ -274,7 +274,7 @@ public enum AgentResume {
     /// Flags come from each CLI's --help. Claude Code and Codex resume the exact conversation
     /// instead (`commandLine`, `codexCommandLine`).
     static let continueLatest: [String: [String]] = [
-        "grok": ["--continue"], "gemini": ["--resume", "latest"], "agy": ["--continue"],
+        "grok": ["--continue"], "agl": ["--resume"], "gemini": ["--resume", "latest"], "agy": ["--continue"],
         "cursor-agent": ["--continue"], "opencode": ["--continue"], "kimi": ["--continue"],
         "aider": ["--restore-chat-history"], "droid": ["--resume"], "kilo": ["--continue"],
         "auggie": ["--continue"], "pi": ["--continue"], "copilot": ["--continue"], "goose": ["session", "--resume"],

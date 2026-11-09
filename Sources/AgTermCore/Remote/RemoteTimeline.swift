@@ -30,6 +30,16 @@ public enum RemoteTimeline {
         capped(GrokTimeline.entries(chatHistory: chatHistory).filter { isRenderableKind($0.kind) })
     }
 
+    /// Timeline for an agl session file, newest 250 rows.
+    public static func agl(session: String) -> [MobileTimelineEntry] {
+        capped(AglTimeline.entries(session: session))
+    }
+
+    /// The model an agl session is using (`qwen3-coder-30b`).
+    public static func modelLabel(agl session: String) -> String? {
+        AglTimeline.modelLabel(session: session)
+    }
+
     /// The model of a Grok session's latest reply (`grok-4.7-build-fast`).
     public static func modelLabel(grok chatHistory: String) -> String? {
         GrokTimeline.modelLabel(chatHistory: chatHistory)

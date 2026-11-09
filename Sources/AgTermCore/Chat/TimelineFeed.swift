@@ -5,7 +5,7 @@ import Foundation
 /// poll; a file that got shorter or was replaced needs a new feed.
 public struct TimelineFeed {
     public enum Agent: String, Sendable {
-        case claude, codex, grok
+        case claude, codex, grok, agl
     }
 
     public let agent: Agent
@@ -26,6 +26,7 @@ public struct TimelineFeed {
     private var codexConverter = CodexTimeline.Converter()
     private var codexTail: [JSONValue] = []
     private var grok = GrokTimeline()
+    private var agl = AglTimeline()
 
     /// Strings longer than this in kept Codex records are cut; rows show far less.
     static let codexStringLimit = 256 * 1024
@@ -78,6 +79,9 @@ public struct TimelineFeed {
         case .grok:
             grok.feed(line)
             model = grok.model
+        case .agl:
+            agl.feed(line)
+            model = agl.model
         }
     }
 
@@ -107,6 +111,8 @@ public struct TimelineFeed {
             }
         case .grok:
             entries = grok.entries
+        case .agl:
+            entries = agl.entries
         }
     }
 }

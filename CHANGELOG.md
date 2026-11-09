@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.9 — 2026-11-08
+- Added: agl, the local-model coding agent, is a known agent. Start it from Shell → New Tab With Agent, read its conversation in the Chat view and on agterm Remote, and a tab running agl comes back with its conversation after a restart.
+
 ## 1.1.8 — 2026-11-08
 - Added: Chat view for Claude Code, Codex and Grok tabs. Press ⌃` (View → Chat), or click Chat in the strip above the tab, to read the conversation as a transcript: replies with formatting, folded file reads, edits as diffs, commands with their results and errors. Type in the box at the bottom to message the agent; Esc interrupts it. Approval prompts show as buttons; menus Chat can't read show the bottom of the screen, and ⌃` takes you back to the terminal. The agent keeps running in its terminal either way, and each pane of a split keeps its own view.
 - Changed: agterm Remote reads Claude Code and Codex transcripts only as far as they grew since the last read.

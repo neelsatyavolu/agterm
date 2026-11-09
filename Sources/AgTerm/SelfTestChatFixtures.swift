@@ -12,7 +12,28 @@ enum ChatFixtures {
         .claude: ["user", "assistant", "thinking", "tools", "edit", "command", "tool", "interrupted"],
         .codex: ["user", "assistant", "thinking", "command", "edit", "interrupted"],
         .grok: ["user", "assistant", "thinking", "tools", "command"],
+        .agl: ["user", "assistant", "thinking", "edit", "command"],
     ]
+
+    /// agl's session lines (`~/.agl/sessions/<cwd>/<stamp>-<id>.jsonl`).
+    static var agl: [String] {
+        func line(_ o: [String: Any]) -> String {
+            String(decoding: (try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys])) ?? Data(), as: UTF8.self)
+        }
+        return [
+            line(["type": "session", "id": "6cafcca4", "cwd": "/w/proj", "model": "qwen3-coder-30b", "base_url": "http://127.0.0.1:1234/v1", "ts": 1]),
+            line(["type": "user", "text": "Why is the tab dot grey while the agent waits?", "ts": 2]),
+            line(["type": "assistant", "text": "", "reasoning": "The dot color is set in TabCardDrawing.", "ts": 3]),
+            line(["type": "tool_call", "id": "a1", "name": "read", "arguments": ["path": "Sources/AgTerm/TabCardDrawing.swift"], "ts": 4]),
+            line(["type": "tool_result", "id": "a1", "ok": true, "output": "     1\timport AppKit\n     2\tlet dot = Theme.idle", "ts": 5]),
+            line(["type": "tool_call", "id": "a2", "name": "edit", "arguments": ["path": "Sources/AgTerm/TabCardDrawing.swift",
+                  "old": "let dot = Theme.idle", "new": "let dot = waiting ? Theme.warn : Theme.idle"], "ts": 6]),
+            line(["type": "tool_result", "id": "a2", "ok": true, "output": "edited Sources/AgTerm/TabCardDrawing.swift at line 2", "ts": 7]),
+            line(["type": "tool_call", "id": "a3", "name": "bash", "arguments": ["command": "swift build"], "ts": 8]),
+            line(["type": "tool_result", "id": "a3", "ok": false, "output": "error: cannot find 'waiting' in scope\n[exit code 1]", "ts": 9]),
+            line(["type": "assistant", "text": markdown, "reasoning": "", "ts": 10]),
+        ]
+    }
 
     static let markdown = """
         ## What changed
@@ -41,10 +62,12 @@ enum ChatFixtures {
         let base = URL(fileURLWithPath: dir)
         let files: [TimelineFeed.Agent: URL] = [.claude: base.appendingPathComponent("claude.jsonl"),
                                                 .codex: base.appendingPathComponent("codex.jsonl"),
-                                                .grok: base.appendingPathComponent("chat_history.jsonl")]
+                                                .grok: base.appendingPathComponent("chat_history.jsonl"),
+                                                .agl: base.appendingPathComponent("agl.jsonl")]
         try? (claude.joined(separator: "\n") + "\n").write(to: files[.claude]!, atomically: true, encoding: .utf8)
         try? (codex.joined(separator: "\n") + "\n").write(to: files[.codex]!, atomically: true, encoding: .utf8)
         try? (grok.joined(separator: "\n") + "\n").write(to: files[.grok]!, atomically: true, encoding: .utf8)
+        try? (agl.joined(separator: "\n") + "\n").write(to: files[.agl]!, atomically: true, encoding: .utf8)
         return files
     }
 
