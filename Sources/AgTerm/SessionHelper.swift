@@ -36,9 +36,15 @@ enum SessionHelper {
         client.map { $0.helperBuild != $0.build } ?? false
     }
 
-    /// The app's own executable: `Contents/MacOS/agterm` in the bundle, `.build/debug/AgTerm` in development.
+    /// The app's own executable: `Contents/MacOS/agterm` in a copy of the bundle in the state
+    /// folder (`HelperBundle`: an update replacing the app would cost the helper its privacy
+    /// permissions), or in the bundle itself if the copy fails; `.build/debug/AgTerm` in development.
     private static var binary: String? {
-        Bundle.main.executableURL?.path
+        guard let executable = Bundle.main.executableURL else { return nil }
+        let app = Bundle.main.bundleURL
+        guard app.pathExtension == "app" else { return executable.path }
+        let folder = WorkspaceStore.fileURL.deletingLastPathComponent().appendingPathComponent("helpers")
+        return (HelperBundle.executable(app: app, executable: executable, build: buildID, folder: folder) ?? executable).path
     }
 
     /// Derived from the state folder, so `AGTERM_STATE_DIR` and debug builds get their own helper.
