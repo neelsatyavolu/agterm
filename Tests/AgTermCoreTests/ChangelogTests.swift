@@ -21,6 +21,15 @@ final class ChangelogTests: XCTestCase {
     - Added: Remote.
     """
 
+    func testCrossedMilestoneOnlyOnTheUpdateIntoIt() {
+        XCTAssertTrue(Changelog.crossed("1.2.0", lastSeen: "1.1.7", current: "1.2.0"))
+        XCTAssertTrue(Changelog.crossed("1.2.0", lastSeen: "1.1.8", current: "1.2.3"))
+        XCTAssertTrue(Changelog.crossed("1.2.0", lastSeen: "1.2.0-beta.2", current: "1.2.0"))
+        XCTAssertFalse(Changelog.crossed("1.2.0", lastSeen: "1.2.0", current: "1.2.1"))
+        XCTAssertFalse(Changelog.crossed("1.2.0", lastSeen: "1.1.7", current: "1.1.8"))
+        XCTAssertFalse(Changelog.crossed("1.2.0", lastSeen: nil, current: "1.2.0"))
+    }
+
     func testParsesVersionsDatesAndKinds() {
         let releases = Changelog.parse(sample)
         XCTAssertEqual(releases.map(\.version), ["1.0.2", "1.0.1", "1.0.0"])

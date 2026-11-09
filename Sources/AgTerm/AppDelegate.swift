@@ -69,6 +69,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated { TeamsWindowController.shared.show() }
     }
 
+    @objc func showWelcome() {
+        WelcomeWindowController.shared.show(over: controller)
+    }
+
     @objc func showWhatsNew() {
         guard let controller else { return }
         controller.window?.makeKeyAndOrderFront(nil)
@@ -168,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(submenu("agterm", [
             item("About agterm", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             item("What's New…", #selector(AppDelegate.showWhatsNew)),
+            item("Welcome to agterm 1.2…", #selector(AppDelegate.showWelcome)),
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings), ","),
             updatesItem(),

@@ -20,7 +20,7 @@ enum WhatsNew {
                                                    releases: all, current: current)
         let unseen = Changelog.unseen(all, lastSeen: lastSeen, current: current)
         defaults.set(current, forKey: lastSeenKey)
-        guard !unseen.isEmpty else { return }
+        guard !unseen.isEmpty, !Welcome.showIfCrossed(lastSeen: lastSeen, current: current, in: controller) else { return }
         controller.showWhatsNew { ChangelogRender.lines(unseen, columns: $0, note: updateNote) }
     }
 

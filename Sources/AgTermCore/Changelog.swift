@@ -61,6 +61,13 @@ public enum Changelog {
         }
     }
 
+    /// Whether this launch is the first since an update past `milestone` (from a version below it
+    /// to one at or above it). False on first install, where `lastSeen` is nil.
+    public static func crossed(_ milestone: String, lastSeen: String?, current: String) -> Bool {
+        guard let lastSeen else { return false }
+        return compare(lastSeen, milestone) == .orderedAscending && compare(current, milestone) != .orderedAscending
+    }
+
     /// The version to compare against. Without a stored one, an earlier install (saved tabs exist)
     /// came from before What's New, so it counts as the newest release older than `current`.
     public static func effectiveLastSeen(stored: String?, previousInstall: Bool, releases: [Release], current: String) -> String? {

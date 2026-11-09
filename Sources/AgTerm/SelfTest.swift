@@ -74,6 +74,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_SEARCH_CHECK"] == "1" { return searchCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_USAGE_CHECK"] == "1" { return usageCheck(outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_MACS_CHECK"] == "1" { return macsCheck(outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_WELCOME_CHECK"] == "1" { return welcomeCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_REVIEW_CHECK"] == "1" { return reviewCheck(controller, outDir: outDir) }
         if let dir = ProcessInfo.processInfo.environment["AGTERM_SHOWCASE"] { return showcase(controller, dir: dir, outDir: outDir) }
         window.setContentSize(NSSize(width: 1100, height: 680))

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.2.0 — 2026-11-08
+- Added: The first launch after updating to 1.2 opens a welcome window: what's new since 1.1.7 by group, with switches for keeping the Mac awake while agents run, letting agents coordinate, and anonymous usage counts, a Set Up… button for your other Macs, and each feature's shortcut. Reopen it any time from agterm → Welcome to agterm 1.2….
 - Added: Run agents' heavy commands on another Mac. On the Mac that should do the work, turn on Settings → Macs → "Let my other Macs run tasks on this Mac" and copy its pairing code; paste it in Settings → Macs on your main Mac. Agents in agterm tabs are then told to run builds, test suites and other heavy commands there with `agterm-remote run -- <command>`: it copies the project over (git-ignored files such as node_modules and .env stay put), runs the command there, shows its output in the tab as it runs and exits with its status. Add `--back` to copy the results back. Ctrl-C stops it on the other Mac too. The connection is encrypted with a key from the pairing code, and the other Mac keeps accepting tasks after agterm quits there.
 - Added: agl, the local-model coding agent, is a known agent. Start it from Shell → New Tab With Agent, read its conversation in the Chat view and on agterm Remote, and a tab running agl comes back with its conversation after a restart.
 
