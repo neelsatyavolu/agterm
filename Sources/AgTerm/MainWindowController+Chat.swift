@@ -87,7 +87,7 @@ extension MainWindowController {
         titleStrip.chatInfo = TitleStripView.ChatInfo(
             agent: AgentKind.named(focused.agentName ?? chat.agentName)?.title ?? focused.agentName ?? chat.agentName,
             model: (focused.agentUsage?.model ?? chat.model).flatMap(ModelName.short), folder: focused.folder.isEmpty ? "~" : focused.folder,
-            branch: focused.git?.branch, usage: usage?.isEmpty == false ? usage : nil,
+            branch: focused.git?.branch, usage: usage?.isEmpty == false ? usage : nil, context: chat.context?.text,
             added: focused.agentDiff?.added ?? 0, removed: focused.agentDiff?.removed ?? 0)
     }
 }

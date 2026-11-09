@@ -25,7 +25,9 @@ final class ChatPaneView: NSView {
     private var screenReadAt: Date?
     /// The model the transcript names, for the title strip when the tab's usage has none (Grok).
     private(set) var model: String?
-    /// The transcript named a different model.
+    /// How full the agent's context window is, for the title strip.
+    private(set) var context: ContextUse?
+    /// The transcript named a different model, or the context window filled further.
     var onModel: () -> Void = {}
     /// When the `/` menu's commands were last read; skills added since show up after this long.
     private var commandsReadAt: Date?
@@ -181,13 +183,15 @@ final class ChatPaneView: NSView {
             follower.refresh(target)
             let version = follower.version
             let model = follower.model
+            let context = follower.context
             let rows = built.map { $0.version == version && $0.working == working } == true
                 ? nil : ChatRows.build(follower.entries, working: working)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.reading = false
-                if model != nil, model != self.model {
-                    self.model = model
+                if (model != nil && model != self.model) || context != self.context {
+                    self.model = model ?? self.model
+                    self.context = context
                     self.onModel()
                 }
                 guard let rows else { return }

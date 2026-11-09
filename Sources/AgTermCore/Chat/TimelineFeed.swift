@@ -13,6 +13,10 @@ public struct TimelineFeed {
     public private(set) var entries: [MobileTimelineEntry] = []
     /// The raw model id of the latest reply, when the transcript names one.
     public private(set) var model: String?
+    /// The tokens the latest request put in the context window, when the transcript counts them.
+    public private(set) var contextUsed: Int?
+    /// The window's size, when the transcript states it (Codex).
+    public private(set) var contextWindow: Int?
     /// Bytes used so far: through the last complete line.
     public private(set) var offset = 0
 
@@ -69,11 +73,17 @@ public struct TimelineFeed {
             guard ClaudeTimeline.mayHaveRows(trimmed), let record = JSONValue.parse(trimmed) else { return }
             ClaudeTimeline.parseRecord(record).forEach { claude.add($0) }
             if let model = ClaudeTimeline.assistantModel(record) { self.model = model }
+            if let used = ClaudeTimeline.contextUsed(record) { contextUsed = used }
         case .codex:
             let trimmed = line.rustTrimmed
             guard !trimmed.isEmpty, let record = JSONValue.parse(trimmed) else { return }
             if record["type"]?.string == "turn_context", let model = record.pointer("/payload/model")?.string, !model.isEmpty {
                 self.model = model
+            }
+            if record["type"]?.string == "event_msg", record.pointer("/payload/type")?.string == "token_count",
+               let used = record.pointer("/payload/info/last_token_usage/input_tokens")?.int, used > 0 {
+                contextUsed = used
+                contextWindow = record.pointer("/payload/info/model_context_window")?.int ?? contextWindow
             }
             codexSubagents.consume(record)
             // No string in it can be longer than the line itself.

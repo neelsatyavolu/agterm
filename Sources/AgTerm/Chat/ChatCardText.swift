@@ -51,7 +51,7 @@ enum ChatCardText {
     }
 
     /// `✓ $ cmd  first line  1.2s`, or `✕ $ cmd` over its error output.
-    static func command(_ command: ChatCommand, expanded: Bool, gap: CGFloat) -> NSAttributedString {
+    static func command(_ command: ChatCommand, expanded: Bool, gap: CGFloat, indent: CGFloat = ChatStyle.indent) -> NSAttributedString {
         let (glyph, color): (String, NSColor) = switch command.status {
         case .running: ("◐", Theme.accent)
         case .error: ("✕", Theme.danger)
@@ -63,7 +63,7 @@ enum ChatCardText {
         if let time = ChatStyle.duration(command.durationMs) { parts.append(("  " + time, Theme.fg3)) }
         let canExpand = command.status == .ok && hasOutput
         if canExpand { parts.append((expanded ? "  ▾" : "  ▸", Theme.fg3)) }
-        let out = NSMutableAttributedString(attributedString: ChatRowText.line(parts, gap: gap, toggle: canExpand ? command.id : nil))
+        let out = NSMutableAttributedString(attributedString: ChatRowText.line(parts, gap: gap, toggle: canExpand ? command.id : nil, indent: indent))
         if command.status == .error, hasOutput {
             var lines = expanded ? Array((command.output ?? "").components(separatedBy: "\n").prefix(ChatRowText.bodyLines)) : command.errorLines
             if !expanded, command.hiddenErrorLines > 0 { lines.append("… \(command.hiddenErrorLines) more lines") }

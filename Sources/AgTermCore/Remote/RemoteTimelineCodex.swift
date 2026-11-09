@@ -93,10 +93,12 @@ enum CodexTimeline {
                 // "$ <cmd>\n<output>\n[exit: N]" splits back into subject and body.
                 let (cmd, output, exitCode) = splitCommand(item.content)
                 let errored = item.toolError == true || (exitCode ?? 0) != 0
-                out.append(MobileTimelineEntry(id: id, kind: "tool", lead: "Ran", subject: timelineTruncate(cmd, 120),
-                                               status: errored ? "error" : item.running ? "running" : "ok",
-                                               body: output.isBlank ? nil : timelineTruncate(output, TimelineTools.resultBodyLimit),
-                                               toolName: "Shell", ts: ts))
+                var entry = MobileTimelineEntry(id: id, kind: "tool", lead: "Ran", subject: timelineTruncate(cmd, 120),
+                                                status: errored ? "error" : item.running ? "running" : "ok",
+                                                body: output.isBlank ? nil : timelineTruncate(output, TimelineTools.resultBodyLimit),
+                                                toolName: "Shell", ts: ts)
+                entry.shellEdits = TimelineTools.shellEdits(cmd)
+                out.append(entry)
             case "file":
                 let path = item.filePath ?? item.content
                 let body = item.content.isBlank ? nil : timelineTruncate(item.content, TimelineTools.resultBodyLimit)

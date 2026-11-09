@@ -73,6 +73,14 @@ public struct ChatCommand: Equatable, Sendable {
     /// Until its result arrived (else until the next row started); nil while running or when the transcript has no times.
     public let durationMs: Int?
 
+    public init(id: String, command: String, status: ChatToolStatus, output: String?, durationMs: Int?) {
+        self.id = id
+        self.command = command
+        self.status = status
+        self.output = output
+        self.durationMs = durationMs
+    }
+
     /// The first non-empty output line, cut short, for a finished command's row.
     public var summary: String? {
         guard let line = outputLines.first(where: { !$0.isBlank }) else { return nil }
@@ -115,19 +123,28 @@ public enum ChatRow: Equatable, Sendable {
     case tools(id: String, tools: [ChatTool], durationMs: Int?)
     case edit(ChatEdit)
     case command(ChatCommand)
+    /// Consecutive finished commands, folded into one line ("Ran 3 shell commands").
+    case commands(id: String, commands: [ChatCommand], durationMs: Int?)
     case tool(ChatTool)
     case agent(ChatAgent)
     case interrupted(id: String)
 
     public var id: String {
         switch self {
-        case .user(let id, _, _), .assistant(let id, _, _), .thinking(let id, _), .tools(let id, _, _), .interrupted(let id):
+        case .user(let id, _, _), .assistant(let id, _, _), .thinking(let id, _), .tools(let id, _, _), .commands(let id, _, _),
+             .interrupted(let id):
             return id
         case .edit(let edit): return edit.id
         case .command(let command): return command.id
         case .tool(let tool): return tool.id
         case .agent(let agent): return agent.id
         }
+    }
+
+    /// Whether `id` is this row, or a command folded into it.
+    public func holds(_ id: String) -> Bool {
+        if case .commands(_, let commands, _) = self, commands.contains(where: { $0.id == id }) { return true }
+        return self.id == id
     }
 
     /// The case name, for logs and tests.
@@ -139,6 +156,7 @@ public enum ChatRow: Equatable, Sendable {
         case .tools: return "tools"
         case .edit: return "edit"
         case .command: return "command"
+        case .commands: return "commands"
         case .tool: return "tool"
         case .agent: return "agent"
         case .interrupted: return "interrupted"
@@ -155,28 +173,52 @@ public enum ChatRows {
     /// `working`: the agent is busy, so a reply at the very end is still streaming.
     public static func build(_ entries: [MobileTimelineEntry], working: Bool) -> [ChatRow] {
         var rows: [ChatRow] = []
-        var group: (start: Int, tools: [ChatTool])?
+        /// The fold being gathered: the entries in it, and the empty thinking seen since its last one.
+        var group: (commands: Bool, members: [Int], held: [Int])?
 
-        func closeGroup(next: Int) {
-            guard let open = group else { return }
-            let ends = entries[open.start..<next].compactMap(\.endTs)
-            let ms = ends.count == next - open.start
-                ? ends.max().flatMap { span(entries[open.start].ts, $0) }
-                : duration(from: entries[open.start].ts, toEntryAt: next, in: entries)
-            rows.append(.tools(id: "group:" + open.tools[0].id, tools: open.tools, durationMs: ms))
+        func closeGroup() {
+            guard let open = group, let start = open.members.first, let last = open.members.last else { return }
+            let ends = open.members.compactMap { entries[$0].endTs }
+            let ms = ends.count == open.members.count
+                ? ends.max().flatMap { span(entries[start].ts, $0) }
+                : duration(from: entries[start].ts, toEntryAt: last + 1, in: entries)
+            let id = "group:" + entries[start].id
+            rows.append(open.commands
+                ? .commands(id: id, commands: open.members.map { command(entries[$0], at: $0, in: entries) }, durationMs: ms)
+                : .tools(id: id, tools: open.members.map { ChatTool(entries[$0]) }, durationMs: ms))
+            rows += open.held.map { .thinking(id: entries[$0].id, text: entries[$0].text ?? "") }
             group = nil
         }
 
         for (index, e) in entries.enumerated() {
-            if e.kind == "tool", isFoldable(e) {
-                if group == nil { group = (index, []) }
-                group?.tools.append(ChatTool(e))
+            // Thinking the agent kept to itself doesn't split a run of reads or commands.
+            if group != nil, e.kind == "thinking", (e.text ?? "").isBlank {
+                group?.held.append(index)
                 continue
             }
-            closeGroup(next: index)
-            if let row = row(e, at: index, in: entries) { rows.append(row) }
+            let edits = e.kind == "tool" && e.lead == "Ran" && e.status == "ok" ? e.shellEdits ?? [] : []
+            let foldsAsCommand = isFoldableCommand(e) && (edits.isEmpty || !(e.body ?? "").isBlank)
+            if foldsAsCommand || (e.kind == "tool" && isFoldable(e)) {
+                if group?.commands != foldsAsCommand {
+                    closeGroup()
+                    group = (foldsAsCommand, [], [])
+                }
+                group?.members.append(index)
+                group?.held = []
+            } else if edits.isEmpty {
+                closeGroup()
+                if let row = row(e, at: index, in: entries) { rows.append(row) }
+            }
+            // A command that wrote files shows what it wrote; the command itself only when it printed something.
+            if !edits.isEmpty {
+                closeGroup()
+                rows += edits.enumerated().map { offset, edit in
+                    .edit(ChatEdit(id: "\(e.id)#edit\(offset)", verb: edit.verb, path: edit.path, additions: edit.additions,
+                                   deletions: edit.deletions, status: .ok, lines: edit.lines))
+                }
+            }
         }
-        closeGroup(next: entries.count)
+        closeGroup()
 
         if working, case let .assistant(id, text, _)? = rows.last {
             rows[rows.count - 1] = .assistant(id: id, text: text, streaming: true)
@@ -217,11 +259,7 @@ public enum ChatRows {
 
     private static func toolRow(_ e: MobileTimelineEntry, at index: Int, in entries: [MobileTimelineEntry]) -> ChatRow {
         let status = ChatToolStatus(e.status)
-        if e.lead == "Ran" {
-            return .command(ChatCommand(id: e.id, command: e.subject ?? "", status: status, output: e.body,
-                                        durationMs: status == .running ? nil
-                                            : e.endTs.flatMap { span(e.ts, $0) } ?? duration(from: e.ts, toEntryAt: index + 1, in: entries)))
-        }
+        if e.lead == "Ran" { return .command(command(e, at: index, in: entries)) }
         if Subagents.isSpawn(e.toolName ?? "") {
             return .agent(ChatAgent(id: e.id, kind: Subagents.isWorkflow(e.toolName ?? "") ? .workflow : .agent, title: e.subject,
                                     type: e.detail, status: status, result: e.body,
@@ -232,6 +270,13 @@ public enum ChatRows {
                                   deletions: e.deletions ?? 0, status: status, lines: diffLines(body)))
         }
         return .tool(ChatTool(e))
+    }
+
+    private static func command(_ e: MobileTimelineEntry, at index: Int, in entries: [MobileTimelineEntry]) -> ChatCommand {
+        let status = ChatToolStatus(e.status)
+        return ChatCommand(id: e.id, command: e.subject ?? "", status: status, output: e.body,
+                           durationMs: status == .running ? nil
+                               : e.endTs.flatMap { span(e.ts, $0) } ?? duration(from: e.ts, toEntryAt: index + 1, in: entries))
     }
 
     private static let editVerbs = ["Edited": "Edit", "Wrote": "Write", "Deleted": "Delete"]
@@ -258,6 +303,11 @@ public enum ChatRows {
         guard e.status == "ok" else { return false }
         if e.lead == "Read" || e.lead == "Searched" { return true }
         return readLikeNames.contains(asciiLowercased(TimelineTools.baseName(e.toolName ?? "")))
+    }
+
+    /// A command that finished without an error.
+    static func isFoldableCommand(_ e: MobileTimelineEntry) -> Bool {
+        e.kind == "tool" && e.lead == "Ran" && e.status == "ok"
     }
 
     static func verb(_ e: MobileTimelineEntry) -> String {

@@ -71,6 +71,16 @@ final class TranscriptFollower: @unchecked Sendable {
     var entries: [MobileTimelineEntry] { feed?.entries ?? [] }
     var model: String? { feed?.model }
 
+    /// How full the agent's context window is; nil until its transcript counts tokens.
+    var context: ContextUse? {
+        if target?.agent == .grok, let file = path?.deletingLastPathComponent().appendingPathComponent("signals.json"),
+           let signals = try? String(contentsOf: file, encoding: .utf8) {
+            return ContextUse(grokSignals: signals, model: model)
+        }
+        guard let used = feed?.contextUsed else { return nil }
+        return ContextUse(used: used, window: feed?.contextWindow ?? ContextWindow.size(model: model))
+    }
+
     /// Reads whatever is new; true when the entries may have changed.
     @discardableResult
     func refresh(_ target: Target, now: Date = Date()) -> Bool {

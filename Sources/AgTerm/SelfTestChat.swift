@@ -55,6 +55,8 @@ extension SelfTest {
                 report("terminal hidden under chat", claude.view.isHidden && controller.chats[claude.tabID]?.isHidden == false)
                 report("composer has focus", window.firstResponder === controller.chats[claude.tabID]?.responder)
                 report("title strip shows Chat control", controller.titleStrip.chatMode == true && controller.titleStrip.chatInfo != nil)
+                report("title strip shows the context window", controller.titleStrip.chatInfo?.context == "184k / 1M",
+                       controller.titleStrip.chatInfo?.context ?? "none")
                 report("title strip shows the model", controller.titleStrip.chatInfo?.model == "Opus 5.5"
                        && controller.titleStrip.logo != nil, controller.titleStrip.chatInfo?.model ?? "none")
                 if let transcript = controller.chats[claude.tabID]?.transcript {
@@ -133,8 +135,9 @@ extension SelfTest {
                     otherPrompts(controller, window, outDir, report: report) {
                     slashCheck(controller, window, outDir, report: report) {
                     splitCheck(controller, window, outDir, report: report) {
+                        foldCheck(controller, window, outDir, report: report)
                         largeCheck(controller, outDir, report: report)
-                        done()
+                        scrollCheck(report: report, done: done)
                     }
                     }
                     }
@@ -191,6 +194,73 @@ extension SelfTest {
                 snapshot(window, "\(outDir)/chat-split-ink.png")
                 done()
             }
+        }
+    }
+
+    /// A run of finished commands is one line that opens to the commands, each of which opens to its
+    /// output; file writes made through the shell are edit cards.
+    private static func foldCheck(_ controller: MainWindowController, _ window: NSWindow, _ outDir: String,
+                                  report: (String, Bool, String) -> Void) {
+        guard let transcript = controller.chats[controller.sessions[0].tabID]?.transcript else { return report("folded commands", false, "") }
+        let runs = transcript.rows.compactMap { row -> (String, [ChatCommand])? in
+            if case let .commands(id, commands, _) = row { return (id, commands) }
+            return nil
+        }
+        let edits = transcript.rows.compactMap { row -> ChatEdit? in
+            if case let .edit(edit) = row, edit.id.contains("#edit") { return edit }
+            return nil
+        }
+        report("finished commands fold into one row", runs.first?.1.map(\.command) == ["swift build", "git status --short"],
+               "\(runs.map { $0.1.map(\.command) })")
+        report("shell writes show as edits", edits.map { "\($0.verb) \($0.path) +\($0.additions) −\($0.deletions)" }
+               == ["Write notes/dot.md +3 −0", "Edit Sources/AgTerm/Theme.swift +1 −0"], "\(edits.map { "\($0.verb) \($0.path)" })")
+        guard let run = runs.first else { return }
+        let folded = transcript.textLength
+        transcript.toggle(run.0)
+        let opened = transcript.textLength
+        transcript.toggle(run.1[0].id)
+        report("a folded run opens, then its command", opened > folded && transcript.textLength > opened,
+               "\(folded) → \(opened) → \(transcript.textLength)")
+        transcript.contentView.scroll(to: .zero)
+        transcript.reflectScrolledClipView(transcript.contentView)
+        window.displayIfNeeded()
+        snapshot(window, "\(outDir)/chat-folded-ink.png")
+        report("scrolling up stops following", !transcript.following, "")
+        transcript.scrollToBottom()
+    }
+
+    /// New rows scroll into view only while the end is in view, however you scrolled away from it.
+    private static func scrollCheck(report: @escaping (String, Bool, String) -> Void, done: @escaping () -> Void) {
+        func reply(_ index: Int) -> ChatRow { .assistant(id: "a\(index)", text: "Reply \(index)\n\nwith a second paragraph.", streaming: false) }
+        let output = (1...50).map { "line \($0)" }.joined(separator: "\n")
+        let last = ChatRow.command(ChatCommand(id: "c", command: "seq 50", status: .ok, output: output, durationMs: 10))
+        var rows = (0..<80).map(reply)
+        let view = ChatTranscriptView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
+        let clip = view.contentView
+        func scroll(to y: CGFloat) {
+            clip.scroll(to: NSPoint(x: 0, y: y))
+            view.reflectScrolledClipView(clip)
+        }
+        view.update(rows)
+        report("opens at the end", view.following && abs(view.spaceBelowText) <= 12, "\(view.spaceBelowText)pt")
+        scroll(to: 200)
+        rows.append(reply(80))
+        view.update(rows)
+        report("scrolled up: new rows don't move the view", !view.following && clip.bounds.minY == 200, "y \(clip.bounds.minY)")
+        scroll(to: (view.documentView?.frame.height ?? 0) - clip.bounds.height)
+        rows.append(last)
+        view.update(rows)
+        report("back at the end: follows again", view.following && abs(view.spaceBelowText) <= 12, "\(view.spaceBelowText)pt")
+        let before = clip.bounds.minY
+        view.toggle("c")
+        report("opening the last row keeps it in place", clip.bounds.minY == before && !view.following,
+               "y \(before) → \(clip.bounds.minY), following \(view.following)")
+        view.toggle("c")
+        report("closing it follows again", view.following, "")
+        view.setFrameSize(NSSize(width: 900, height: 400))
+        after(0.3) {
+            report("a shorter view stays at the end", view.following && abs(view.spaceBelowText) <= 12, "\(view.spaceBelowText)pt")
+            done()
         }
     }
 

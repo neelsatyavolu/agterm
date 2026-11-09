@@ -220,6 +220,7 @@ enum TimelineTools {
             if edit.deletions > 0 { e.deletions = edit.deletions }
             return e
         }
+        if e.lead == "Ran", let command = input.firstPresent(["command", "cmd"])?.string { e.shellEdits = shellEdits(command) }
         // Generic / Codex tools may already carry a unified diff as the body.
         if e.additions == nil, e.deletions == nil, let body = e.body, looksLikeDiff(body) {
             let counts = countDiffPlusMinus(body)
@@ -227,6 +228,12 @@ enum TimelineTools {
             if counts.deletions > 0 { e.deletions = counts.deletions }
         }
         return e
+    }
+
+    /// The file changes a shell command's text spells out; nil when it has none.
+    static func shellEdits(_ command: String) -> [ShellEdit]? {
+        let edits = ShellEdits.parse(command)
+        return edits.isEmpty ? nil : edits
     }
 
     /// `apply_tool_result`: attach a result without clobbering a synthesized diff.

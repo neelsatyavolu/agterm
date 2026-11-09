@@ -23,6 +23,8 @@ final class TitleStripView: NSView {
         var folder: String
         var branch: String?
         var usage: String?
+        /// `412k / 1M`: the context window, used and size.
+        var context: String?
         var added = 0
         var removed = 0
     }
@@ -93,9 +95,10 @@ final class TitleStripView: NSView {
         return out
     }
 
-    /// `48.2k · $0.41   +86 −12`, right-aligned at `maxX`; returns where it starts.
+    /// `412k / 1M   48.2k · $0.41   +86 −12`, right-aligned at `maxX`; returns where it starts.
     private func drawStats(_ info: ChatInfo, maxX: CGFloat) -> CGFloat {
         let text = NSMutableAttributedString()
+        if let context = info.context { text.append(TabCardDrawing.text(context + "   ", Theme.metaFont, Theme.fg2)) }
         if let usage = info.usage { text.append(TabCardDrawing.text(usage + "   ", Theme.metaFont, Theme.fg3)) }
         if info.added > 0 || info.removed > 0 {
             text.append(TabCardDrawing.text("+\(info.added)", Theme.metaFont, Theme.ok))

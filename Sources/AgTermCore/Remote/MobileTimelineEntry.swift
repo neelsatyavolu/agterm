@@ -29,6 +29,8 @@ public struct MobileTimelineEntry: Codable, Equatable, Sendable {
     public var ts: Int
     /// When a tool's result arrived (ms), for the chat's durations. Not on the wire.
     public var endTs: Int?
+    /// File changes a shell command made (heredoc writes, scripted replaces), for the chat's diffs. Not on the wire.
+    public var shellEdits: [ShellEdit]?
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, text, streaming, lead, subject, detail, status, additions, deletions, body, requestId, toolName,

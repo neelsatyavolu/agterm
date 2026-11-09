@@ -9,8 +9,10 @@ enum ChatRowText {
     static let bodyLines = 60
     static let bodyChars = 8_000
 
-    static func render(_ row: ChatRow, expanded: Bool) -> NSAttributedString {
+    /// `open`: the ids of the expanded rows, and of the expanded commands inside a folded run.
+    static func render(_ row: ChatRow, open: Set<String>) -> NSAttributedString {
         let gap = ChatStyle.rowGap
+        let expanded = open.contains(row.id)
         switch row {
         case .user(_, let text, let queued):
             return user(text, queued: queued, gap: gap)
@@ -31,6 +33,8 @@ enum ChatRowText {
             return ChatCardText.edit(edit, expanded: expanded, gap: gap)
         case .command(let command):
             return ChatCardText.command(command, expanded: expanded, gap: gap)
+        case .commands(let id, let commands, let durationMs):
+            return commandGroup(id: id, commands: commands, durationMs: durationMs, expanded: expanded, open: open, gap: gap)
         case .tool(let tool):
             return single(tool, expanded: expanded, gap: gap)
         case .agent(let agent):
@@ -71,6 +75,21 @@ enum ChatRowText {
         out.append(line(parts, gap: gap, toggle: id))
         if expanded {
             for tool in tools { out.append(line([("  " + tool.label, Theme.fg3)], gap: 2)) }
+        }
+        return out
+    }
+
+    /// `▸ Ran 3 shell commands  14s`; opened, each command on its own row, which opens to its output.
+    private static func commandGroup(id: String, commands: [ChatCommand], durationMs: Int?, expanded: Bool, open: Set<String>,
+                                     gap: CGFloat) -> NSAttributedString {
+        var parts: [(String, NSColor)] = [("\(expanded ? "▾" : "▸") Ran \(commands.count) shell command\(commands.count == 1 ? "" : "s")", Theme.fg2)]
+        if let time = ChatStyle.duration(durationMs) { parts.append(("  " + time, Theme.fg3)) }
+        let out = NSMutableAttributedString(attributedString: line(parts, gap: gap, toggle: id))
+        if expanded {
+            for command in commands {
+                out.append(ChatCardText.command(command, expanded: open.contains(command.id), gap: 4,
+                                                indent: ChatStyle.indent + 2 * ChatStyle.charWidth))
+            }
         }
         return out
     }

@@ -23,7 +23,7 @@ final class ChatClaudeScenarioTests: XCTestCase {
     func rows(_ lines: [String], working: Bool = false) -> [ChatRow] {
         var feed = TimelineFeed(agent: .claude)
         feed.feed(chunk: Data((lines.joined(separator: "\n") + "\n").utf8))
-        return ChatRows.build(feed.entries, working: working)
+        return ChatRows.build(feed.entries, working: working).unfolded
     }
 
     // MARK: Replies
@@ -555,6 +555,7 @@ final class ChatClaudeScenarioTests: XCTestCase {
         case .tools(_, let tools, let ms): return "tools[\(tools.count)] \(ChatRows.summary(tools)) \(ms ?? -1)ms"
         case .edit(let e): return "edit \(e.verb) \(e.path) +\(e.additions) -\(e.deletions) lines=\(e.lines.count)"
         case .command(let c): return "command \(c.status) $ \(cut(c.command)) → \(c.summary ?? "-") \(c.durationMs ?? -1)ms"
+        case .commands(_, let commands, let ms): return "commands[\(commands.count)] \(ms ?? -1)ms"
         case .tool(let t): return "tool \(t.status) \(t.lead) [\(t.verb)] \(cut(t.subject ?? "")) body=\(cut(t.body ?? ""))"
         case .agent(let a): return "agent \(a.status) \(a.label) \(cut(a.title ?? "")) result=\(cut(a.result ?? ""))"
         case .interrupted: return "■ interrupted"

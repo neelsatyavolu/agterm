@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.7 — 2026-11-09
+- Added: In the Chat view, the title strip shows how full the agent's context window is (`184k / 1M`), for Claude Code, Codex and Grok.
+- Added: The Chat view shows files an agent wrote or edited through its shell as diffs, like its other edits: `cat > file <<'EOF'` writes, and Python scripts that replace text in a file.
+- Changed: The Chat view folds finished commands that ran one after another into one line (`Ran 3 shell commands`). Click it to see the commands, and a command to see its output. Running and failed commands still show in full.
+- Fixed: The Chat view stops following new messages when you scroll away with the scroller or the keyboard, not only the wheel, and stays at the end when the text finishes laying out or the view gets shorter. Opening a row at the end keeps that row in place.
+
 ## 1.2.6 — 2026-11-08
 - Fixed: agterm Remote's Chat view no longer leaves blank gaps between tool rows and before replies.
 - Fixed: The Chat view no longer leaves a band of empty space between the last message and the status line above the message box.

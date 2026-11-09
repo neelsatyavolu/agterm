@@ -177,7 +177,7 @@ final class ChatPerfScenarioTests: XCTestCase {
             let before = Self.footprintMB()
             let t0 = Date()
             let feed = Self.feedInPieces(agent, data, size: 256 * 1024)
-            let rows = ChatRows.build(feed.entries, working: false)
+            let rows = ChatRows.build(feed.entries, working: false).unfolded
             let elapsed = Date().timeIntervalSince(t0)
             let retained = feed.entries.reduce(0) { $0 + ($1.body?.utf8.count ?? 0) + ($1.text?.utf8.count ?? 0) }
             log(String(format: "%@ 5MB output: %.0f ms, entries %d, retained body+text %d bytes, footprint +%.1f MB",
@@ -236,7 +236,7 @@ final class ChatPerfScenarioTests: XCTestCase {
         for agent in Self.agents {
             let lines = Self.prelude(agent) + Self.turn(agent, 0, user: long, reply: long) + Self.command(agent, 1, cmd: "echo " + long, output: long)
             let feed = Self.feedInPieces(agent, Data(Self.text(lines).utf8), size: 4096)
-            let rows = ChatRows.build(feed.entries, working: false)
+            let rows = ChatRows.build(feed.entries, working: false).unfolded
             XCTAssertEqual(rows.map(\.kindName), ["user", "assistant", "command"], "\(agent)")
             if case .command(let c)? = rows.last {
                 XCTAssertLessThanOrEqual(c.summary?.count ?? 0, 81, "\(agent): summary is cut")

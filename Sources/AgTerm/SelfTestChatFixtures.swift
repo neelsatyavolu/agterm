@@ -9,7 +9,7 @@ enum ChatFixtures {
     static let ts = "2026-11-08T12:00:00.000Z"
 
     static let expectedKinds: [TimelineFeed.Agent: Set<String>] = [
-        .claude: ["user", "assistant", "thinking", "tools", "edit", "command", "tool", "agent", "interrupted"],
+        .claude: ["user", "assistant", "thinking", "tools", "edit", "command", "commands", "tool", "agent", "interrupted"],
         .codex: ["user", "assistant", "thinking", "command", "edit", "agent", "interrupted"],
         .grok: ["user", "assistant", "thinking", "tools", "command", "agent"],
         .agl: ["user", "assistant", "thinking", "edit", "command"],
@@ -98,7 +98,9 @@ enum ChatFixtures {
     static func claudeLine(_ type: String, _ uuid: String, _ content: Any, minute: Int = 0) -> String {
         let time = String(format: "2026-11-08T%02d:%02d:%02d.000Z", 10 + minute / 3600 % 10, minute / 60 % 60, minute % 60)
         return json(["type": type, "uuid": uuid, "timestamp": time,
-                     "message": ["content": content, "model": "claude-opus-5-5"]])
+                     "message": ["content": content, "model": "claude-opus-5-5",
+                                 "usage": ["input_tokens": 4_000, "cache_creation_input_tokens": 30_000,
+                                           "cache_read_input_tokens": 150_000, "output_tokens": 900]]])
     }
 
     static func claudeReply(_ uuid: String, _ text: String) -> String {
@@ -129,6 +131,15 @@ enum ChatFixtures {
             claudeLine("user", "r2", [result("t4", "ok")], minute: 3),
             claudeLine("assistant", "a3", [use("t5", "Bash", ["command": "swift build"])], minute: 4),
             claudeLine("user", "r3", [result("t5", "Build complete! (3.2s)")], minute: 5),
+            claudeLine("assistant", "a3b", [["type": "thinking", "thinking": "", "signature": "sig"],
+                                            use("t5b", "Bash", ["command": "git status --short"])], minute: 5),
+            claudeLine("user", "r3b", [result("t5b", " M Sources/AgTerm/TabCardDrawing.swift")], minute: 5),
+            claudeLine("assistant", "a3c", [use("t5c", "Bash", ["command": "cat > notes/dot.md <<'EOF'\n# Dot colors\n\namber: an agent waits\nEOF"]),
+                                            use("t5d", "Bash", ["command": "python3 - <<'EOF'\nfrom pathlib import Path\n"
+                                                + "p = Path(\"Sources/AgTerm/Theme.swift\")\nt = p.read_text()\n"
+                                                + "t = t.replace('''    static let mute = gray\n''', '''    static let mute = gray\n    static let waiting = amber\n''')\n"
+                                                + "p.write_text(t)\nEOF"])], minute: 5),
+            claudeLine("user", "r3c", [result("t5c", ""), result("t5d", "")], minute: 5),
             claudeLine("assistant", "a4", [use("t6", "Bash", ["command": "swift test --filter TabCard"])], minute: 6),
             claudeLine("user", "r4", [result("t6", longOutput, error: true)], minute: 6),
             claudeLine("assistant", "a5", [use("t7", "Task", ["description": "Check the other themes", "prompt": "look"]),

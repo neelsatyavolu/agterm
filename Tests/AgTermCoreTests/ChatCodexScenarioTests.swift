@@ -16,7 +16,7 @@ final class ChatCodexScenarioTests: XCTestCase {
     func rows(_ rollout: String, working: Bool = false) -> [ChatRow] {
         var feed = TimelineFeed(agent: .codex)
         feed.feed(chunk: Data(rollout.utf8))
-        return ChatRows.build(feed.entries, working: working)
+        return ChatRows.build(feed.entries, working: working).unfolded
     }
 
     func dump(_ rows: [ChatRow]) -> String {
@@ -28,6 +28,7 @@ final class ChatCodexScenarioTests: XCTestCase {
             case let .tools(_, tools, _): return "tools: \(ChatRows.summary(tools))"
             case let .edit(e): return "edit: \(e.verb) \(e.path) +\(e.additions) -\(e.deletions) lines=\(e.lines.count)"
             case let .command(c): return "command[\(c.status)]: \(c.command) | \(c.summary ?? "-")"
+            case let .commands(_, commands, _): return "commands: \(commands.map(\.command).joined(separator: " · "))"
             case let .tool(t): return "tool[\(t.status)]: \(t.lead) \(t.subject ?? "") | \(t.body?.prefix(60) ?? "-")"
             case let .agent(a): return "agent[\(a.status)]: \(a.title ?? "") | \(a.result?.prefix(60) ?? "-")"
             case .interrupted: return "interrupted"
@@ -124,7 +125,7 @@ final class ChatCodexScenarioTests: XCTestCase {
                 pending = pending.dropFirst(feed.feed(chunk: pending))
                 start += 997
             }
-            XCTAssertEqual(ChatRows.build(feed.entries, working: false), whole, name)
+            XCTAssertEqual(ChatRows.build(feed.entries, working: false).unfolded, whole, name)
             XCTAssertEqual(feed.model, "gpt-6-astra", name)
         }
     }

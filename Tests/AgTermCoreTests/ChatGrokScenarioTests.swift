@@ -21,7 +21,7 @@ final class ChatGrokScenarioTests: XCTestCase {
         } else {
             feed.feed(chunk: data)
         }
-        return ChatRows.build(feed.entries, working: working)
+        return ChatRows.build(feed.entries, working: working).unfolded
     }
 
     private static let preamble = [

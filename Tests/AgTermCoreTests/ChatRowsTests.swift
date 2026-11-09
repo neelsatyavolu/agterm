@@ -1,6 +1,16 @@
 import XCTest
 @testable import AgTermCore
 
+extension Array where Element == ChatRow {
+    /// Folded command runs as one `.command` row each, for tests about what a command row holds.
+    var unfolded: [ChatRow] {
+        flatMap { row -> [ChatRow] in
+            if case let .commands(_, commands, _) = row { return commands.map { .command($0) } }
+            return [row]
+        }
+    }
+}
+
 /// Timeline entries grouped into the rows the chat view paints.
 final class ChatRowsTests: XCTestCase {
     func user(_ id: String, _ text: String, state: String? = nil, ts: Int = 0) -> MobileTimelineEntry {
@@ -106,7 +116,8 @@ final class ChatRowsTests: XCTestCase {
             tool("bad", lead: "Ran", name: "Bash", subject: "swift test", status: "error", body: long, ts: 2_200),
             tool("run", lead: "Ran", name: "Shell", subject: "sleep 9", status: "running", ts: 3_000),
         ], working: true)
-        guard case let .command(ok) = rows[0], case let .command(bad) = rows[1], case let .command(run) = rows[2] else {
+        guard case let .commands(_, folded, _) = rows[0], let ok = folded.first, case let .command(bad) = rows[1],
+              case let .command(run) = rows[2] else {
             return XCTFail("\(rows)")
         }
         XCTAssertEqual(ok.command, "swift build")
@@ -119,6 +130,44 @@ final class ChatRowsTests: XCTestCase {
         XCTAssertEqual(bad.hiddenErrorLines, 30 - ChatRows.errorPreviewLines)
         XCTAssertEqual(run.status, .running)
         XCTAssertNil(run.durationMs)
+    }
+
+    func testConsecutiveFinishedCommandsFoldIntoOneRow() throws {
+        let rows = ChatRows.build([
+            tool("c1", lead: "Ran", name: "Bash", subject: "git status", body: "clean", ts: 1_000),
+            text("t1", "thinking", "", ts: 1_100),
+            tool("c2", lead: "Ran", name: "Bash", subject: "git log", body: "abc", ts: 1_200),
+            tool("r1", lead: "Read", name: "Read", subject: "a.swift", ts: 1_300),
+            tool("c3", lead: "Ran", name: "Bash", subject: "swift build", ts: 1_400),
+            text("t2", "thinking", " ", ts: 1_500),
+            text("t3", "thinking", "Now the tests.", ts: 1_600),
+            tool("c4", lead: "Ran", name: "Bash", subject: "swift test", status: "running", ts: 1_700),
+        ], working: true)
+        XCTAssertEqual(rows.map(\.kindName), ["commands", "tools", "commands", "thinking", "thinking", "command"])
+        XCTAssertEqual(rows.map(\.id), ["group:c1", "group:r1", "group:c3", "t2", "t3", "c4"])
+        guard case let .commands(_, commands, duration) = rows[0] else { return XCTFail("\(rows[0])") }
+        XCTAssertEqual(commands.map(\.command), ["git status", "git log"], "empty thinking between them is dropped")
+        XCTAssertEqual(commands.map(\.durationMs), [100, 100])
+        XCTAssertEqual(duration, 300)
+        XCTAssertTrue(rows[0].holds("c2"))
+        XCTAssertTrue(rows[0].holds("group:c1"))
+        XCTAssertFalse(rows[0].holds("c3"))
+    }
+
+    func testShellEditsShowAsEditCards() throws {
+        var write = tool("w", lead: "Ran", name: "Bash", subject: "cat > a.txt <<'EOF'", ts: 1_000)
+        write.shellEdits = ShellEdits.parse("cat > a.txt <<'EOF'\none\ntwo\nEOF")
+        var noisy = tool("n", lead: "Ran", name: "Bash", subject: "cat > b.txt <<'EOF'", body: "Build complete!", ts: 2_000)
+        noisy.shellEdits = ShellEdits.parse("cat > b.txt <<'EOF'\nthree\nEOF\nswift build")
+        var failed = tool("f", lead: "Ran", name: "Bash", subject: "cat > /nope/c.txt <<'EOF'", status: "error", body: "No such file", ts: 3_000)
+        failed.shellEdits = ShellEdits.parse("cat > /nope/c.txt <<'EOF'\nfour\nEOF")
+        let rows = ChatRows.build([write, noisy, failed], working: false)
+        XCTAssertEqual(rows.map(\.kindName), ["edit", "commands", "edit", "command"])
+        XCTAssertEqual(rows.map(\.id), ["w#edit0", "group:n", "n#edit0", "f"])
+        guard case let .edit(edit) = rows[0] else { return XCTFail("\(rows[0])") }
+        XCTAssertEqual([edit.verb, edit.path], ["Write", "a.txt"])
+        XCTAssertEqual(edit.additions, 2)
+        XCTAssertEqual(edit.lines.map(\.text), ["one", "two"])
     }
 
     func testOtherToolsStandAlone() {

@@ -363,6 +363,13 @@ enum ClaudeTimeline {
         return assistantModel(v)
     }
 
+    /// What a main-conversation reply's request held: input plus cache writes and reads (Anthropic counts them apart).
+    static func contextUsed(_ v: JSONValue) -> Int? {
+        guard v["type"]?.string == "assistant", v["isSidechain"]?.bool != true, let usage = v.pointer("/message/usage") else { return nil }
+        let used = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"].reduce(0) { $0 + (usage[$1]?.int ?? 0) }
+        return used > 0 ? used : nil
+    }
+
     static func assistantModel(_ v: JSONValue) -> String? {
         guard v["type"]?.string == "assistant",
               let model = v.pointer("/message/model")?.string, !model.isEmpty, !model.startsWith("<") else { return nil }
