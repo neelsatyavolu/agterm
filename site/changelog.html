@@ -39,6 +39,19 @@
       </header>
 
       <div class="cl">
+        <section class="cl-release" id="v1.2.7" aria-labelledby="v1.2.7-title">
+          <header class="cl-head">
+            <h2 id="v1.2.7-title"><a href="#v1.2.7">1.2.7</a></h2>
+            <p class="meta"><time datetime="2026-11-09">November 9, 2026</time></p>
+          </header>
+          <ul class="cl-items">
+            <li><span class="cl-kind cl-added">Added</span><span>In the Chat view, the title strip shows how full the agent&#x27;s context window is (<code>184k / 1M</code>), for Claude Code, Codex and Grok.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>The Chat view shows files an agent wrote or edited through its shell as diffs, like its other edits: <code>cat &gt; file &lt;&lt;&#x27;EOF&#x27;</code> writes, and Python scripts that replace text in a file.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>The Chat view folds finished commands that ran one after another into one line (<code>Ran 3 shell commands</code>). Click it to see the commands, and a command to see its output. Running and failed commands still show in full.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>The Chat view stops following new messages when you scroll away with the scroller or the keyboard, not only the wheel, and stays at the end when the text finishes laying out or the view gets shorter. Opening a row at the end keeps that row in place.</span></li>
+          </ul>
+        </section>
+
         <section class="cl-release" id="v1.2.6" aria-labelledby="v1.2.6-title">
           <header class="cl-head">
             <h2 id="v1.2.6-title"><a href="#v1.2.6">1.2.6</a></h2>
