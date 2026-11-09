@@ -23,6 +23,11 @@ SPARKLE_PUBLIC_KEY="9PP4QvxMnBnPLbBlDqNSB3pBnCVE93Nv1d9lPayHwzM="
 
 # Universal: Apple silicon and Intel.
 ARCHS="--arch arm64 --arch x86_64"
+command -v cargo >/dev/null || { echo "error: building agl (agl/) needs Rust: https://rustup.rs" >&2; exit 1; }
+# agl, the local-model agent (agl/), for both architectures.
+for TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
+  cargo build --release --locked --quiet --manifest-path agl/Cargo.toml --target "$TARGET"
+done
 # shellcheck disable=SC2086
 swift build -c release $ARCHS
 # shellcheck disable=SC2086
@@ -34,6 +39,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 # Also the sessions helper (`agterm --sessions-helper`), which keeps tabs' shells running while
 # agterm is quit; one executable, so the helper has the app's code identity and privacy permissions.
 cp "$BIN/AgTerm" "$APP/Contents/MacOS/agterm"
+# agl next to it: agterm links it into its bin folder, first on PATH in every tab.
+lipo -create agl/target/aarch64-apple-darwin/release/agl agl/target/x86_64-apple-darwin/release/agl \
+  -output "$APP/Contents/MacOS/agl"
 cp -R "$BIN"/*.bundle "$APP/Contents/Resources/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -X Resources/agterm-notify.wav "$APP/Contents/Resources/"
@@ -88,6 +96,7 @@ sign --preserve-metadata=entitlements "$SP/XPCServices/Downloader.xpc"
 sign "$SP/Autoupdate"
 sign "$SP/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
+sign "$APP/Contents/MacOS/agl"
 sign "$APP"
 codesign --verify --deep --strict "$APP"
 # The sessions helper runs this executable, so it must carry the app's identifier.

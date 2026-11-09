@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.2 — 2026-11-08
+- Added: agterm now comes with agl, the coding agent for local models. Type `agl` in any tab, or pick it in Shell → New Tab With Agent; it uses models from Ollama, LM Studio or its own library (`agl models`).
+
 ## 1.2.1 — 2026-11-08
 - Fixed: Tabs kept running across an update or reinstall no longer lose Full Disk Access and agterm's other privacy permissions. The sessions helper now runs from its own copy of agterm, which updates don't replace. Tabs started before this version still need agterm → Quit and End Sessions once.
 
