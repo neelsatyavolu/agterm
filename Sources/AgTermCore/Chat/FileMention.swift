@@ -83,6 +83,9 @@ public enum FileMention {
     }
 
     private static func gitFiles(in folder: String) -> [String]? {
+        #if os(iOS)
+        return nil // No subprocesses on iOS; the phone app links AgTermCore but never lists files.
+        #else
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git", "-C", folder, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
@@ -97,6 +100,7 @@ public enum FileMention {
         // ls-files lists a file once per merge stage while a conflict is open.
         var seen = Set<String>()
         return Array(lines.filter { seen.insert($0).inserted }.prefix(maxFiles))
+        #endif
     }
 
     private static func walk(_ folder: String) -> [String] {

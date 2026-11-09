@@ -111,10 +111,13 @@ private struct EntryView: View {
     }
 
     /// Inline markdown (bold, code, links). `ChatMarkdown` splits tables out first; other block
-    /// syntax stays as typed.
+    /// syntax stays as typed. Each paragraph or list item parses alone, so an unpaired backtick
+    /// or `**` can't run into the next one.
     static func markdown(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(text)
+        ChatMarkdown.inlineRuns(text).reduce(into: AttributedString()) { result, run in
+            result += (try? AttributedString(markdown: run, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                ?? AttributedString(run)
+        }
     }
 }
 

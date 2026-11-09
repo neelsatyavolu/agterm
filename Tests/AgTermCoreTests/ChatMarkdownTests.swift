@@ -67,4 +67,25 @@ final class ChatMarkdownTests: XCTestCase {
         let text = "```\n| a | b |\n|---|---|\n| 1 | 2 |\n```"
         XCTAssertEqual(ChatMarkdown.blocks(text), [.text(text)])
     }
+
+    /// From a phone report: a stray backtick (`⌃\``) paired with one two paragraphs later, so the
+    /// paragraphs between became one code span with their line breaks and `**` shown flat.
+    func testInlineRunsSplitAtParagraphsAndListItems() {
+        let text = "- **Pickers:** switch to the terminal (⌃`) to answer.\n\nThe code is in `a.swift`.\n\n**Not tested:** yet.\n- **Lists:** by hand"
+        XCTAssertEqual(ChatMarkdown.inlineRuns(text), [
+            "- **Pickers:** switch to the terminal (⌃`) to answer.\n\n",
+            "The code is in `a.swift`.\n\n",
+            "**Not tested:** yet.\n",
+            "- **Lists:** by hand",
+        ])
+    }
+
+    func testInlineRunsKeepWrappedLinesAndFencesTogether() {
+        XCTAssertEqual(ChatMarkdown.inlineRuns("one **bold\nwrapped** line"), ["one **bold\nwrapped** line"])
+        let fence = "```\nlet a = 1\n\n- b\n```\nafter"
+        XCTAssertEqual(ChatMarkdown.inlineRuns(fence), ["```\nlet a = 1\n\n- b\n```\n", "after"])
+        XCTAssertEqual(ChatMarkdown.inlineRuns("1. one\n2. two\n# Head\n> quote"),
+                       ["1. one\n", "2. two\n", "# Head\n", "> quote"])
+        XCTAssertEqual(ChatMarkdown.inlineRuns(""), [])
+    }
 }

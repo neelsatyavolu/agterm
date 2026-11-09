@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.5 — 2026-11-08
+- Fixed: agterm Remote's Chat view no longer runs paragraphs together, or shows `**` around bold text, when a reply has a stray backtick (such as the ⌃\` shortcut). Each paragraph and list item now keeps its own formatting.
+
 ## 1.2.4 — 2026-11-08
 - Added: When the tabs kept from before an update still run in a session helper the update replaced, agterm says at launch that they've lost Full Disk Access (agents there get "Operation not permitted" in Documents) and offers Quit and End Sessions. Helpers started by 1.2.1 or later aren't affected.
 - Added: Typing `/` in the Chat view's message box lists the agent's commands with what each does, and narrows the list as you type, as Claude Code, Codex, Grok and agl do in the terminal. The list includes your skills, custom commands, Codex prompts and Claude Code plugin commands for the tab's folder. ↑↓ move, ⇥ fills the name in, ⏎ runs it and Esc closes the list.

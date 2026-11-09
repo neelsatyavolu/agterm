@@ -59,6 +59,43 @@ public enum ChatMarkdown {
         return blocks
     }
 
+    /// Splits a text block into the runs inline markdown may span: paragraphs, list items,
+    /// headings, quotes and code fences. Parsing each run alone keeps a stray backtick or `**`
+    /// from pairing with one paragraphs later, as CommonMark does. The runs join back to `text`.
+    public static func inlineRuns(_ text: String) -> [String] {
+        var runs: [String] = []
+        var run = ""
+        var inFence = false
+        var breakNext = false
+        let lines = text.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let isFence = trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~")
+            let starts = !inFence && !trimmed.isEmpty && (breakNext || isFence || isBlockStart(trimmed))
+            if starts, !run.isEmpty {
+                runs.append(run)
+                run = ""
+            }
+            run += index < lines.count - 1 ? line + "\n" : line
+            if isFence { inFence.toggle() }
+            breakNext = !inFence && (trimmed.isEmpty || isFence)
+        }
+        if !run.isEmpty { runs.append(run) }
+        return runs
+    }
+
+    /// A list item, heading or quote: `- `, `* `, `+ `, `1. `, `1) `, `# `, `>`.
+    private static func isBlockStart(_ line: String) -> Bool {
+        if line.hasPrefix(">") { return true }
+        if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("+ ") { return true }
+        let hashes = line.prefix { $0 == "#" }.count
+        if (1...6).contains(hashes), line.dropFirst(hashes).first == " " { return true }
+        let digits = line.prefix { $0.isASCII && $0.isNumber }.count
+        guard digits > 0 else { return false }
+        let rest = line.dropFirst(digits)
+        return (rest.first == "." || rest.first == ")") && rest.dropFirst().first == " "
+    }
+
     /// A header row followed by a delimiter row (`|---|:--:|`) with the same number of cells.
     private static func tableStart(header: String, delimiter: String) -> Table? {
         guard header.contains("|"), delimiter.contains("|") else { return nil }
