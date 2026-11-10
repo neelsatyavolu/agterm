@@ -3,6 +3,7 @@
 ## 1.2.10 — 2026-11-09
 - Fixed: Claude Fable 5.2 turns now have a cost in the sidebar, the Chat view, Usage and Teams. Before, they showed tokens only.
 - Added: agterm downloads model prices daily, so a new model's cost shows without waiting for an agterm update.
+- Fixed: When a Claude Code or Codex login runs out of usage, the tab moves to your next login within a few seconds, instead of sitting at the limit message for about 20 seconds first.
 
 ## 1.2.9 — 2026-11-09
 - Fixed: A Claude Code tab's tokens, cost and changed lines in the sidebar and the Chat view's title strip now include its subagents and workflows.

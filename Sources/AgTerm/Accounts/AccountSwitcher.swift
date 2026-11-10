@@ -215,8 +215,9 @@ final class AccountSwitcher {
         let stillThere = { session.foregroundGroup == target.group }
         let cancel: () -> Void = { [weak self] in _ = self?.busy.remove(session.tabID) }
 
-        // The limit ends the turn; give the agent a moment to settle at its prompt first.
-        wait(upTo: 20, until: { !stillThere() || (session.signals.agentBusy != true && session.status != .working) }) { [weak self] _ in
+        // The limit record is written once the turn has ended; give the agent a moment to settle at
+        // its prompt first. Claude Code can stay flagged busy after a limit, so don't wait long for it.
+        wait(upTo: 5, until: { !stillThere() || (session.signals.agentBusy != true && session.status != .working) }) { [weak self] _ in
             // You closed it or started something else meanwhile: leave the tab alone.
             guard stillThere() else { return cancel() }
             session.signalForeground(SIGTERM)
