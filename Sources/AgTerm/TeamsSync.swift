@@ -247,26 +247,50 @@ final class TeamsSync {
     private struct UploadReceipt: Decodable {}
 }
 
-/// OpenRouter's public model price list, cached for a day, which agmux also prices from.
+/// Model prices: agterm's own list (`prices.json` in the repo, so a new model is priced without an
+/// app update) over the built-in table, then OpenRouter's public list. Both lists are cached for a day.
 enum PriceList {
-    private static let url = URL(string: "https://openrouter.ai/api/v1/models")!
-    private static let cacheURL = AgentIntegration.supportDir.appendingPathComponent("openrouter-models.json")
+    private static let sources: [(url: URL, cache: URL, valid: @Sendable (Data) -> Bool)] = [
+        (URL(string: "https://openrouter.ai/api/v1/models")!, AgentIntegration.supportDir.appendingPathComponent("openrouter-models.json"),
+         { (try? PriceCatalog(openRouterJSON: $0)) != nil }),
+        (RemotePrices.url, AgentIntegration.supportDir.appendingPathComponent("prices.json"),
+         { (try? PriceCatalog.builtIn.adding(priceList: $0)) != nil }),
+    ]
 
-    /// The cached catalog (refreshed in the background when older than a day), or built-in prices.
+    private static let lock = NSLock()
+    /// The last catalog built, the files' dates it was built from, and when.
+    nonisolated(unsafe) private static var built: (catalog: PriceCatalog, dates: [Date?], at: Date)?
+    /// When each list was last asked for, so being offline doesn't ask on every call.
+    nonisolated(unsafe) private static var asked: [URL: Date] = [:]
+
+    /// The cached lists (each refreshed in the background when older than a day) over the
+    /// built-in prices. Built again only when a list changes, or hourly.
     static func current() -> PriceCatalog {
         // Not URL.resourceValues: the static URL would keep its first date off the main thread,
         // and the list would be fetched on every sync once a day old.
-        let modified = (try? FileManager.default.attributesOfItem(atPath: cacheURL.path))?[.modificationDate] as? Date
-        if modified.map({ Date().timeIntervalSince($0) > 86400 }) ?? true { refresh() }
-        if let data = try? Data(contentsOf: cacheURL), let catalog = try? PriceCatalog(openRouterJSON: data) { return catalog }
-        return PriceCatalog.builtIn
+        let dates = sources.map { (try? FileManager.default.attributesOfItem(atPath: $0.cache.path))?[.modificationDate] as? Date }
+        for (source, date) in zip(sources, dates) where date.map({ Date().timeIntervalSince($0) > 86400 }) ?? true {
+            refresh(source.url, to: source.cache, valid: source.valid)
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        if let built, built.dates == dates, Date().timeIntervalSince(built.at) < 3600 { return built.catalog }
+        var catalog = (try? Data(contentsOf: sources[0].cache)).flatMap { try? PriceCatalog(openRouterJSON: $0) } ?? .builtIn
+        if let data = try? Data(contentsOf: sources[1].cache), let withList = try? catalog.adding(priceList: data) { catalog = withList }
+        built = (catalog, dates, Date())
+        return catalog
     }
 
-    private static func refresh() {
+    private static func refresh(_ url: URL, to cache: URL, valid: @escaping @Sendable (Data) -> Bool) {
+        lock.lock()
+        let recent = asked[url].map { Date().timeIntervalSince($0) < 600 } ?? false
+        if !recent { asked[url] = Date() }
+        lock.unlock()
+        guard !recent else { return }
         URLSession.shared.dataTask(with: url) { data, response, _ in
-            guard let data, (response as? HTTPURLResponse)?.statusCode == 200, (try? PriceCatalog(openRouterJSON: data)) != nil else { return }
-            try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? data.write(to: cacheURL, options: .atomic)
+            guard let data, (response as? HTTPURLResponse)?.statusCode == 200, valid(data) else { return }
+            try? FileManager.default.createDirectory(at: cache.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: cache, options: .atomic)
         }.resume()
     }
 }

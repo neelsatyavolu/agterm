@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.10 — 2026-11-09
+- Fixed: Claude Fable 5.2 turns now have a cost in the sidebar, the Chat view, Usage and Teams. Before, they showed tokens only.
+- Added: agterm downloads model prices daily, so a new model's cost shows without waiting for an agterm update.
+
 ## 1.2.9 — 2026-11-09
 - Fixed: A Claude Code tab's tokens, cost and changed lines in the sidebar and the Chat view's title strip now include its subagents and workflows.
 - Fixed: Usage counts the agents a Claude Code workflow runs, and Teams counts Claude Code subagents and workflows. Neither counts them as extra sessions.

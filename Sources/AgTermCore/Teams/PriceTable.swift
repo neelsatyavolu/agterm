@@ -10,8 +10,9 @@ struct Rates: Equatable {
 }
 
 /// agmux's built-in list prices (standard direct-API rates, verified through
-/// 2026-09-29; agmux docs/teams-pricing-verification-2026-09-08.md). These win
-/// over the OpenRouter catalog. Estimates, not invoices.
+/// 2026-11-09; agmux docs/teams-pricing-verification-2026-09-08.md). These win
+/// over the OpenRouter catalog; the downloaded `prices.json` wins over these.
+/// Estimates, not invoices.
 enum PriceTable {
     private static let rows: [([String], Rates)] = [
         (["grok-4.7", "grok-4.6"], Rates(input: 2.0, output: 6.0, cacheRead: 0.50, cacheWrite: 2.0)),
@@ -20,6 +21,7 @@ enum PriceTable {
         (["grok-build-0.1"], Rates(input: 1.0, output: 2.0, cacheRead: 0.20, cacheWrite: 1.0)),
         (["grok-4.3", "grok-4.20-multi-agent-0309", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning"],
          Rates(input: 1.25, output: 2.50, cacheRead: 0.20, cacheWrite: 1.25)),
+        (["claude-fable-5-2", "claude-mythos-5-2"], Rates(input: 8.0, output: 40.0, cacheRead: 0.20, cacheWrite: 10.0)),
         (["claude-fable-5-1", "claude-mythos-5-1"], Rates(input: 10.0, output: 50.0, cacheRead: 0.25, cacheWrite: 12.50)),
         (["claude-fable-5", "claude-mythos-5"], Rates(input: 10.0, output: 50.0, cacheRead: 1.0, cacheWrite: 12.50)),
         (["claude-opus-5-5"], Rates(input: 4.0, output: 20.0, cacheRead: 0.20, cacheWrite: 5.0)),

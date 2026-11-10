@@ -36,7 +36,7 @@ public struct CatalogPrice: Equatable, Sendable {
     }
 }
 
-/// Model prices: agmux's built-in table first, then the OpenRouter catalog
+/// Model prices: the downloaded price list, then agmux's built-in table, then the OpenRouter catalog
 /// (`GET https://openrouter.ai/api/v1/models`) for models the table lacks.
 ///
 /// Catalog matches are exact: a full `vendor/id`, or a bare slug only when one
@@ -51,6 +51,8 @@ public struct PriceCatalog: Sendable {
     public let fetchedAt: Date
     private let byID: [String: CatalogPrice?]
     private let bySlug: [String: CatalogPrice?]
+    /// Rows from the downloaded price list (`RemotePrices`), which win over the built-in table.
+    private var listed: [String: Rates] = [:]
 
     /// Malformed or unexpected shapes in the OpenRouter response.
     public enum ParseError: Error, Equatable {
@@ -77,6 +79,13 @@ public struct PriceCatalog: Sendable {
             byID[id] = byID[id] == nil ? .some(e.price) : .some(nil)
         }
         (self.byID, self.bySlug, self.fetchedAt) = (byID, bySlug, fetchedAt)
+    }
+
+    /// This catalog with the downloaded price list's rows on top. Throws when the list is malformed.
+    public func adding(priceList data: Data) throws -> PriceCatalog {
+        var out = self
+        out.listed.merge(try RemotePrices.parse(data)) { _, new in new }
+        return out
     }
 
     /// The catalog rate for an exact ID or unambiguous bare slug, while fresh.
@@ -145,7 +154,7 @@ public struct PriceCatalog: Sendable {
     }
 
     private func pricing(model: String) -> (rates: Rates, catalog: CatalogPrice?)? {
-        if let rates = PriceTable.rates(model: model) { return (rates, nil) }
+        if let rates = listed[PriceTable.key(model)] ?? PriceTable.rates(model: model) { return (rates, nil) }
         guard let c = catalogPrice(for: model) else { return nil }
         return (Rates(input: c.input, output: c.output, cacheRead: c.cacheRead ?? 0, cacheWrite: c.cacheWrite ?? 0), c)
     }

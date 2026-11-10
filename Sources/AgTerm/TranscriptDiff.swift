@@ -49,9 +49,9 @@ final class TranscriptDiff {
     func claude(sessionID: String, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "claude:" + sessionID, completion: completion) {
             guard let file = self.claudeFile(sessionID),
-                  let own = self.events(file, parser: { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "") }) else { return nil }
+                  let own = self.events(file, parser: { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "", prices: PriceList.current()) }) else { return nil }
             let helpers = ClaudeTranscript.subagentFiles(of: file).flatMap { child in
-                self.events(child) { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "subagents") } ?? []
+                self.events(child) { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "subagents", prices: PriceList.current()) } ?? []
             }
             var usage = AgentUsage(helpers.isEmpty ? own : ClaudeTranscript.reconcile(own + helpers))
             // The session's model, not whichever one a subagent ran last.
@@ -85,7 +85,7 @@ final class TranscriptDiff {
     func codex(cwd: String, since start: Date, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "codex:" + cwd, completion: completion) {
             guard let file = Self.codexRollout(cwd: cwd, since: start) else { return nil }
-            return self.events(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent) }.map(AgentUsage.init)
+            return self.events(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent, prices: PriceList.current()) }.map(AgentUsage.init)
         }
     }
 
