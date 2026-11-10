@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.11 — 2026-11-09
+- Fixed: A Codex tab's tokens, cost and changed lines in the sidebar and the Chat view's title strip now include its subagents and auto-review threads.
+- Fixed: When Codex starts a subagent, the tab's Chat view and totals stay on the tab's own session instead of switching to the subagent's.
+- Fixed: Teams counts a Codex subagent's usage as part of the session that started it, on that session's login, not as another session.
+
 ## 1.2.10 — 2026-11-09
 - Fixed: Claude Fable 5.2 turns now have a cost in the sidebar, the Chat view, Usage and Teams. Before, they showed tokens only.
 - Added: agterm downloads model prices daily, so a new model's cost shows without waiting for an agterm update.

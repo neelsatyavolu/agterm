@@ -26,6 +26,28 @@ final class TeamsCodexTests: XCTestCase {
         XCTAssertNil(CodexTranscript.originator(header: "not json"))
     }
 
+    func testOwningSessionNamesTheRootOfSubagentAndReviewThreads() {
+        // Shapes copied from Codex 0.166/0.167 rollouts.
+        let spawned = jsonLine(["type": "session_meta", "payload": [
+            "id": "child", "session_id": "root", "parent_thread_id": "mid", "originator": "agterm",
+            "source": ["subagent": ["thread_spawn": ["parent_thread_id": "mid", "depth": 2]]]]])
+        XCTAssertEqual(CodexTranscript.owningSession(header: spawned), "root")
+        let review = jsonLine(["type": "session_meta", "payload": [
+            "id": "review", "session_id": "root", "parent_thread_id": "root", "originator": "agterm",
+            "source": ["subagent": ["other": "guardian"]]]])
+        XCTAssertEqual(CodexTranscript.owningSession(header: review), "root")
+        // Older headers without session_id fall back to the parent thread.
+        let older = jsonLine(["type": "session_meta", "payload": [
+            "id": "child", "source": ["subagent": ["thread_spawn": ["parent_thread_id": "parent"]]]]])
+        XCTAssertEqual(CodexTranscript.owningSession(header: older), "parent")
+        // A session a person started, and a user fork, belong to nobody else.
+        let own = jsonLine(["type": "session_meta", "payload": ["id": "root", "session_id": "root", "source": "vscode"]])
+        XCTAssertNil(CodexTranscript.owningSession(header: own))
+        let fork = jsonLine(["type": "session_meta", "payload": ["id": "fork", "forked_from_id": "root", "source": "cli"]])
+        XCTAssertNil(CodexTranscript.owningSession(header: fork))
+        XCTAssertNil(CodexTranscript.owningSession(header: "not json"))
+    }
+
     func testCountsToolCallsByKind() {
         let lines = [
             line("2026-07-29T14:00:00Z", #""type":"function_call","name":"exec_command""#),

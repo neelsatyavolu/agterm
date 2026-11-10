@@ -37,6 +37,17 @@ public enum CodexTranscript {
         return v.pointer("/payload/originator")?.string
     }
 
+    /// For a spawned subagent's or auto-review thread's `session_meta` header: the session it
+    /// works for, whose usage it is (`payload.session_id`, the root thread, else its parent
+    /// thread). Nil for a session a person started, a user fork, or any other line.
+    public static func owningSession(header: String) -> String? {
+        guard let v = JSONValue.parse(header), v["type"]?.string == "session_meta",
+              let payload = v["payload"], let child = payload.pointer("/source/subagent") else { return nil }
+        let candidates = [payload["session_id"], payload["parent_thread_id"], child.pointer("/thread_spawn/parent_thread_id")]
+        let own = payload["id"]?.string
+        return candidates.lazy.compactMap { $0?.string }.first { !$0.isEmpty && $0 != own }
+    }
+
     /// Rollout filenames end in the session UUID: `rollout-<ts>-<uuid>.jsonl`.
     public static func sessionID(fromPath path: String) -> String {
         let stem = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent

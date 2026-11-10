@@ -81,11 +81,18 @@ final class TranscriptDiff {
         }
     }
 
-    /// Codex: the newest rollout started in agterm, in this folder, since the agent started.
+    /// Codex: the newest rollout started in agterm, in this folder, since the agent started, plus
+    /// the rollouts of the subagents and auto-review threads it ran, whose tokens and edits are its own.
     func codex(cwd: String, since start: Date, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "codex:" + cwd, completion: completion) {
             guard let file = Self.codexRollout(cwd: cwd, since: start) else { return nil }
-            return self.events(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent, prices: PriceList.current()) }.map(AgentUsage.init)
+            let parser = { (url: URL) in { CodexTranscript.Parser(sessionID: url.deletingPathExtension().lastPathComponent, prices: PriceList.current()) } }
+            guard let own = self.events(file, parser: parser(file)) else { return nil }
+            let helpers = Self.codexHelpers(of: file, since: start).flatMap { self.events($0, parser: parser($0)) ?? [] }
+            var usage = AgentUsage(own + helpers)
+            // The session's model, not whichever one a subagent ran last.
+            usage.model = AgentUsage(own).model
+            return usage
         }
     }
 
@@ -139,44 +146,73 @@ final class TranscriptDiff {
             .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    /// The tab's own rollout: started by agterm in `cwd`, and not one of its subagents' threads,
+    /// which carry the same originator and folder.
     static func codexRollout(cwd: String, since start: Date) -> URL? {
-        let home = ProcessInfo.processInfo.environment["CODEX_HOME"].map(URL.init(fileURLWithPath:))
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex")
-        // Rollouts live in sessions/YYYY/MM/DD; only today's and yesterday's folders can be this run's.
-        var candidates: [(URL, Date)] = []
-        let calendar = Calendar.current
-        for day in [start, calendar.date(byAdding: .day, value: 1, to: start) ?? start] {
-            let parts = calendar.dateComponents([.year, .month, .day], from: day)
-            let dir = home.appendingPathComponent(String(format: "sessions/%04d/%02d/%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0))
-            for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey])) ?? []
-            where file.pathExtension == "jsonl" {
-                guard let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
-                      created >= start.addingTimeInterval(-10), isAgtermRollout(file, cwd: cwd)
-                else { continue }
-                candidates.append((file, created))
-            }
+        // Only today's and yesterday's folders can be this run's.
+        let candidates = codexRollouts(since: start, days: 2).filter { file, created in
+            created >= start.addingTimeInterval(-10) && header(file, cwd: cwd).map { $0.inCwd && $0.owner == nil } == true
         }
         return candidates.max { $0.1 < $1.1 }?.0
     }
 
-    /// What each rollout's header said, so a folder listed every few seconds is read once.
-    nonisolated(unsafe) private static var headerVerdicts: [String: Bool] = [:]
+    /// Rollouts of the subagents and auto-review threads that `root` ran, in any folder,
+    /// from the day the agent started through today.
+    static func codexHelpers(of root: URL, since start: Date) -> [URL] {
+        let id = CodexTranscript.sessionID(fromPath: root.path)
+        let days = (Calendar.current.dateComponents([.day], from: start, to: Date()).day ?? 0) + 1
+        return codexRollouts(since: start, days: min(max(days, 1), 31))
+            .filter { file, _ in file != root && header(file, cwd: "").map { $0.agterm && $0.owner == id } == true }
+            .map(\.0).sorted { $0.path < $1.path }
+    }
+
+    /// `jsonl` rollouts in `sessions/YYYY/MM/DD` for `days` days from `start`, with when each was made.
+    private static func codexRollouts(since start: Date, days: Int) -> [(URL, Date)] {
+        let home = ProcessInfo.processInfo.environment["CODEX_HOME"].map(URL.init(fileURLWithPath:))
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex")
+        let calendar = Calendar.current
+        var found: [(URL, Date)] = []
+        for offset in 0..<days {
+            let day = calendar.date(byAdding: .day, value: offset, to: start) ?? start
+            let parts = calendar.dateComponents([.year, .month, .day], from: day)
+            let dir = home.appendingPathComponent(String(format: "sessions/%04d/%02d/%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0))
+            for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey])) ?? []
+            where file.pathExtension == "jsonl" {
+                guard let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate else { continue }
+                found.append((file, created))
+            }
+        }
+        return found
+    }
+
+    /// What a rollout's header says: started by agterm, in the tab's folder, and the session it
+    /// works for when it is a subagent's or auto-review thread.
+    private struct RolloutHeader {
+        let agterm: Bool
+        let inCwd: Bool
+        let owner: String?
+    }
+
+    /// Each rollout's header, so a folder listed every few seconds is read once.
+    nonisolated(unsafe) private static var headers: [String: RolloutHeader] = [:]
     private static let headerLock = NSLock()
 
-    /// True when the rollout was started by agterm in `cwd` (its header, which never changes).
-    private static func isAgtermRollout(_ file: URL, cwd: String) -> Bool {
+    /// The rollout's header (which never changes), judged against `cwd`; nil until it is written.
+    private static func header(_ file: URL, cwd: String) -> RolloutHeader? {
         let key = file.path + "\0" + cwd
         headerLock.lock()
-        let cached = headerVerdicts[key]
+        let cached = headers[key]
         headerLock.unlock()
         if let cached { return cached }
         // A file Codex just made may not have its header yet: look again next time.
-        guard let header = firstLine(file) else { return false }
-        let verdict = CodexTranscript.originator(header: header) == "agterm"
-            && (header.contains("\"cwd\":\"\(cwd.replacingOccurrences(of: "/", with: "\\/"))\"") || header.contains("\"cwd\":\"\(cwd)\""))
-        guard verdict || header.hasSuffix("}") || header.utf8.count >= 128 * 1024 else { return false }
+        guard let line = firstLine(file) else { return nil }
+        let agterm = CodexTranscript.originator(header: line) == "agterm"
+        let inCwd = agterm
+            && (line.contains("\"cwd\":\"\(cwd.replacingOccurrences(of: "/", with: "\\/"))\"") || line.contains("\"cwd\":\"\(cwd)\""))
+        guard agterm || line.hasSuffix("}") || line.utf8.count >= 128 * 1024 else { return nil }
+        let verdict = RolloutHeader(agterm: agterm, inCwd: inCwd, owner: agterm ? CodexTranscript.owningSession(header: line) : nil)
         headerLock.lock()
-        headerVerdicts[key] = verdict
+        headers[key] = verdict
         headerLock.unlock()
         return verdict
     }

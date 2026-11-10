@@ -56,7 +56,8 @@ final class TeamsSync {
     // MARK: Collecting
 
     /// What a sync keeps for the next one: each transcript's read position, parser state and
-    /// events; where each Claude session's transcript is; which Codex rollouts agterm started.
+    /// events; where each Claude session's transcript is; which Codex rollouts agterm started, and
+    /// for a subagent's or auto-review thread's rollout, the session it works for.
     struct Memory {
         struct Tail {
             var offset: UInt64
@@ -66,6 +67,7 @@ final class TeamsSync {
         var tails: [String: Tail] = [:]
         var claudeFiles: [String: [URL]] = [:]
         var codexStarted: [String: Bool] = [:]
+        var codexOwners: [String: String] = [:]
     }
 
     private nonisolated static func collectBuckets(claudeSessions: Set<String>, spans: [LoginSpan], memory: Memory)
@@ -73,7 +75,7 @@ final class TeamsSync {
         let cutoff = Date().addingTimeInterval(-windowDays * 86400)
         // Costs are set per event when a line is first read, as agmux does.
         let prices = PriceList.current()
-        var next = Memory(claudeFiles: memory.claudeFiles, codexStarted: memory.codexStarted)
+        var next = Memory(claudeFiles: memory.claudeFiles, codexStarted: memory.codexStarted, codexOwners: memory.codexOwners)
         var events: [UsageEvent] = []
 
         // Agents only append, so only the lines added since the last sync are read.
@@ -127,12 +129,21 @@ final class TeamsSync {
         if let walker = FileManager.default.enumerator(at: sessions, includingPropertiesForKeys: nil) {
             for case let file as URL in walker where file.pathExtension == "jsonl" {
                 let started = next.codexStarted[file.path] ?? autoreleasepool {
-                    firstLine(of: file).map { CodexTranscript.originator(header: $0) == "agterm" }
+                    firstLine(of: file).map { header in
+                        let started = CodexTranscript.originator(header: header) == "agterm"
+                        if started, let owner = CodexTranscript.owningSession(header: header) { next.codexOwners[file.path] = owner }
+                        return started
+                    }
                 }
                 // A header still being written (or unreadable) is asked again next time.
                 if let started { next.codexStarted[file.path] = started }
                 guard started == true else { continue }
+                let first = events.count
                 use(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent, prices: prices) }
+                // A subagent's usage is its session's: not another session, and on that session's login.
+                if let owner = next.codexOwners[file.path] {
+                    for i in first..<events.count { events[i].sessionID = owner }
+                }
             }
         }
         // A request copied into both a session's transcript and a subagent's counts once.
