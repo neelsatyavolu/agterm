@@ -35,20 +35,28 @@ struct AgentUsage: Equatable {
 final class TranscriptDiff {
     private let queue = DispatchQueue(label: "agterm.transcript-diff", qos: .utility)
     private var inFlight = Set<String>()
-    /// Per transcript: how far it has been read, the parser's state there, and its totals.
+    /// Per transcript: how far it has been read, the parser's state there, and its events.
     /// Agents only append, so each poll reads just the new lines.
-    private var tails: [String: (offset: UInt64, parser: any TranscriptLineParser, usage: AgentUsage)] = [:]
+    private var tails: [String: (offset: UInt64, parser: any TranscriptLineParser, events: [UsageEvent])] = [:]
     /// Where each Claude session's transcript was found, so polls don't list ~/.claude/projects.
     private var claudePaths: [String: URL] = [:]
     /// Per transcript: how far it has been scanned for a title, and the scan so far.
     private var titles: [String: (offset: UInt64, scanner: ClaudeSessionTitle.Scanner)] = [:]
     private let lock = NSLock()
 
-    /// Claude Code: the session's transcript under ~/.claude/projects.
+    /// Claude Code: the session's transcript under ~/.claude/projects, plus its subagents' and
+    /// workflow agents' transcripts, whose tokens and edits are the session's too.
     func claude(sessionID: String, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "claude:" + sessionID, completion: completion) {
-            guard let file = self.claudeFile(sessionID) else { return nil }
-            return self.total(file) { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "") }
+            guard let file = self.claudeFile(sessionID),
+                  let own = self.events(file, parser: { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "") }) else { return nil }
+            let helpers = ClaudeTranscript.subagentFiles(of: file).flatMap { child in
+                self.events(child) { ClaudeTranscript.Parser(sessionID: sessionID, fallbackDir: "subagents") } ?? []
+            }
+            var usage = AgentUsage(helpers.isEmpty ? own : ClaudeTranscript.reconcile(own + helpers))
+            // The session's model, not whichever one a subagent ran last.
+            usage.model = AgentUsage(own).model
+            return usage
         }
     }
 
@@ -77,7 +85,7 @@ final class TranscriptDiff {
     func codex(cwd: String, since start: Date, completion: @escaping (AgentUsage?) -> Void) {
         run(key: "codex:" + cwd, completion: completion) {
             guard let file = Self.codexRollout(cwd: cwd, since: start) else { return nil }
-            return self.total(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent) }
+            return self.events(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent) }.map(AgentUsage.init)
         }
     }
 
@@ -93,23 +101,23 @@ final class TranscriptDiff {
         }
     }
 
-    private func total(_ file: URL, parser makeParser: () -> any TranscriptLineParser) -> AgentUsage? {
+    private func events(_ file: URL, parser makeParser: () -> any TranscriptLineParser) -> [UsageEvent]? {
         // Not URL.resourceValues: it caches on the URL, and cached URLs are reused.
         guard let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? UInt64 else { return nil }
         lock.lock()
         var tail = tails[file.path]
         lock.unlock()
-        if let hit = tail, hit.offset == size { return hit.usage }
+        if let hit = tail, hit.offset == size { return hit.events }
         // A shorter file was replaced or rewritten: start over.
-        if tail == nil || size < tail!.offset { tail = (0, makeParser(), AgentUsage()) }
+        if tail == nil || size < tail!.offset { tail = (0, makeParser(), []) }
         guard var (offset, parser, _) = tail,
               let end = TranscriptFile.read(file.path, from: offset, line: { parser.feed($0) }) else { return nil }
         offset = end
-        let usage = AgentUsage(parser.events)
+        let events = parser.events
         lock.lock()
-        tails[file.path] = (offset, parser, usage)
+        tails[file.path] = (offset, parser, events)
         lock.unlock()
-        return usage
+        return events
     }
 
     private func claudeFile(_ sessionID: String) -> URL? {

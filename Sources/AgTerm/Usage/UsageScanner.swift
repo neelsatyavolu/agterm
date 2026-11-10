@@ -154,7 +154,8 @@ final class UsageScanner {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
-    /// `~/.claude/projects/<project>/<session>.jsonl` and `<project>/<session>/subagents/*.jsonl`.
+    /// `~/.claude/projects/<project>/<session>.jsonl` and every `.jsonl` under `<project>/<session>/subagents`
+    /// (workflow agents sit in `subagents/workflows/<run>/`).
     private static func claudeFiles(cutoff: Date) -> [Found] {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey]
@@ -167,11 +168,12 @@ final class UsageScanner {
                     found.append(Found(url: item, modified: date, projectDir: project.lastPathComponent))
                     continue
                 }
-                // A new subagent transcript touches subagents/, not the session folder above it.
+                // A new subagent transcript touches subagents/, not the session folder above it; a
+                // workflow's agents touch subagents/workflows/<run>/, and finishing writes the session's file.
                 let subagents = item.appendingPathComponent("subagents")
-                guard let listed = modified(subagents), listed >= cutoff else { continue }
-                for file in (try? fm.contentsOfDirectory(at: subagents, includingPropertiesForKeys: keys)) ?? []
-                where file.pathExtension == "jsonl" {
+                let touched = [modified(subagents), modified(item.appendingPathExtension("jsonl"))].compactMap { $0 }.max()
+                guard let touched, touched >= cutoff else { continue }
+                for file in ClaudeTranscript.subagentFiles(of: item.appendingPathExtension("jsonl")) {
                     guard let date = modified(file), date >= cutoff else { continue }
                     let dir = project.lastPathComponent + "/" + item.lastPathComponent + "/subagents"
                     found.append(Found(url: file, modified: date, projectDir: dir))

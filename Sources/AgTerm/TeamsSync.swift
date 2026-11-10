@@ -114,6 +114,10 @@ final class TeamsSync {
             for file in next.claudeFiles[id] ?? [] {
                 let dir = file.deletingLastPathComponent().lastPathComponent
                 use(file) { ClaudeTranscript.Parser(sessionID: id, fallbackDir: dir, prices: prices) }
+                // Its subagents and workflow agents: their usage is the session's, not new sessions.
+                for child in ClaudeTranscript.subagentFiles(of: file) {
+                    use(child) { ClaudeTranscript.Parser(sessionID: id, fallbackDir: dir + "/" + id + "/subagents", prices: prices) }
+                }
             }
         }
         // Codex: rollouts whose header says they were started in agterm. A header never changes.
@@ -131,6 +135,8 @@ final class TeamsSync {
                 use(file) { CodexTranscript.Parser(sessionID: file.deletingPathExtension().lastPathComponent, prices: prices) }
             }
         }
+        // A request copied into both a session's transcript and a subagent's counts once.
+        events = ClaudeTranscript.reconcile(events)
         let now = Date()
         let buckets = TeamsAggregator.buckets(events: events, now: now, timeZone: .current)
         let accounts = TeamsAggregator.accountBuckets(events: events, spans: LoginSpanIndex(spans), now: now)

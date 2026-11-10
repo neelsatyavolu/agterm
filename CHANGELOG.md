@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.9 — 2026-11-09
+- Fixed: A Claude Code tab's tokens, cost and changed lines in the sidebar and the Chat view's title strip now include its subagents and workflows.
+- Fixed: Usage counts the agents a Claude Code workflow runs, and Teams counts Claude Code subagents and workflows. Neither counts them as extra sessions.
+
 ## 1.2.8 — 2026-11-09
 - Fixed: In the Chat view, the title strip's context window, tokens, cost and changed lines no longer all disappear when they don't fit. The tokens and cost go first, then the changed lines; the context window stays.
 - Added: The Chat view's title strip shows the tab's name after the agent's.
