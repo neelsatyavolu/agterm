@@ -89,7 +89,12 @@ if [ "$DRY_RUN" = 0 ]; then
 fi
 
 echo "Building ${VERSION}…"
-[ "$DRY_RUN" = 1 ] || swift test >/dev/null
+if [ "$DRY_RUN" = 0 ] && ! swift test >"$SECRETS/tests.log" 2>&1; then
+    # Say which tests failed instead of stopping silently.
+    grep -E "error:|failed|Executed [0-9]+ tests" "$SECRETS/tests.log" | tail -20 >&2
+    echo "error: tests failed; fix them before releasing" >&2
+    exit 1
+fi
 
 if [ -n "${AGTERM_ANALYTICS_SERVICE:-}" ]; then
     SYNC=(scripts/analytics-sync.sh)
