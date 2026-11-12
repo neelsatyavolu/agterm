@@ -9,6 +9,9 @@ final class TabCardView: NSView {
     var onClose: (() -> Void)?
     /// Right-click or control-click: the tab's menu.
     var onMenu: ((NSEvent) -> Void)?
+    /// The globe: the agent's Perch tabs.
+    var onBrowser: (() -> Void)?
+    private var browserRect: NSRect?
     /// Dragging sideways reorders tabs; the bar moves the card while the mouse is down.
     var onDragBegan: (() -> Void)?
     var onDragMoved: ((CGFloat) -> Void)?
@@ -63,6 +66,9 @@ final class TabCardView: NSView {
         if hovering, closeRect.insetBy(dx: -4, dy: -4).contains(point) {
             mouseDownX = nil
             onClose?()
+        } else if let browserRect, browserRect.insetBy(dx: -3, dy: -3).contains(point) {
+            mouseDownX = nil
+            onBrowser?()
         } else {
             mouseDownX = event.locationInWindow.x
             onSelect?()
@@ -114,6 +120,8 @@ final class TabCardView: NSView {
             label.draw(at: NSPoint(x: x, y: Self.line2Y + 1.5))
             x += ceil(label.size().width) + 8
         }
+        browserRect = model.moving == nil ? TabCardDrawing.browser(model.browserTabs, x: x, y: Self.line2Y) : nil
+        if let browserRect { x = browserRect.maxX + 8 }
         if model.inCloud || model.moving != nil, let cloud = TabCardDrawing.cloud() {
             // A cloud before the folder: this tab's shell runs on the cloud machine.
             cloud.draw(in: NSRect(x: x, y: Self.line2Y + 1, width: cloud.size.width, height: cloud.size.height))

@@ -10,7 +10,7 @@ public enum InheritedEnvironment {
     private static let sessionPrefixes = ["CLAUDE_CODE_"]
     private static let sessionNames: Set<String> = [
         "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "CLAUDE_PLUGIN_DATA", "CODEX_COMPANION_SESSION_ID",
-        "AGTERM_TAB_ID", "AGTERM_ACCOUNT", "AGTERM_BIN",
+        "AGTERM_TAB_ID", "AGTERM_ACCOUNT", "AGTERM_BIN", "PERCH_CLIENT", "PERCH_SESSION",
     ]
     /// Login folders: dropped only when they point into agterm's own account folders.
     private static let loginFolders = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME"]

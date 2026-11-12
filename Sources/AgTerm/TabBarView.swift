@@ -34,6 +34,8 @@ struct TabModel: Equatable {
     var logo: NSImage?
     /// Pinned to the top of the list; the sidebar shows a pin.
     var pinned = false
+    /// Perch tabs the tab's agent has open; a click on the globe brings them forward.
+    var browserTabs = 0
 }
 
 /// What the tab bar and the tab sidebar ask of the window.
@@ -48,6 +50,8 @@ protocol TabBarDelegate: AnyObject {
     func tabBar(_ bar: NSView, menuFor index: Int) -> NSMenu
     /// The cloud button beside +: move every tab to the cloud, or bring them back.
     func tabBarDidRequestCloud(_ bar: NSView)
+    /// The globe on a tab: bring that agent's Perch tabs forward.
+    func tabBar(_ bar: NSView, didClickBrowser index: Int)
 }
 
 /// The window isn't movable by the system (so dragging a tab can never move it); empty parts of
@@ -178,6 +182,10 @@ final class TabBarView: NSView {
             card.onSelect = { [weak self, weak card] in self?.cardAction(card, close: false) }
             card.onClose = { [weak self, weak card] in self?.cardAction(card, close: true) }
             card.onMenu = { [weak self, weak card] event in self?.showMenu(for: card, event: event) }
+            card.onBrowser = { [weak self, weak card] in
+                guard let self, let card, let index = self.cards.firstIndex(where: { $0 === card }) else { return }
+                self.delegate?.tabBar(self, didClickBrowser: index)
+            }
             card.onDragBegan = { [weak self, weak card] in self?.beginDrag(card) }
             card.onDragMoved = { [weak self] dx in self?.moveDrag(dx) }
             card.onDragEnded = { [weak self] in self?.endDrag() }

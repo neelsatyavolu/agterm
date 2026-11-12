@@ -94,6 +94,12 @@ final class AgentTerminalView: TerminalView, TerminalViewDelegate {
 
     func scrolled(source: TerminalView, position: Double) {}
 
+    /// Web links open in Perch when it is installed (Settings → Agents), else as usual.
+    func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        if PerchLink.open(link: link) { return }
+        TerminalView.openDefaultLink(link)
+    }
+
     func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
 
     func clipboardCopy(source: TerminalView, content: Data) {

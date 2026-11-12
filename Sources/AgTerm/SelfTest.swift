@@ -54,6 +54,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_WHATSNEW_CHECK"] == "1" { return whatsNewCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_THEME_CHECK"] == "1" { return themeCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_TABMENU_CHECK"] == "1" { return tabMenuCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_PERCH_CHECK"] == "1" { return perchCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PANES_CHECK"] == "1" { return panesCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_CHAT_CHECK"] == "1" { return chatCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }

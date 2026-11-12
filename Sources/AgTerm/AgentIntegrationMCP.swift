@@ -67,6 +67,7 @@ extension AgentIntegration {
         let hasConsult = wantConsult && (servers.contains { $0.name == "consult" } || configuredServers(for: agent, cwd: cwd).contains("consult"))
         let instructions = [servers.contains { $0.name == memoryServerName } ? memoryInstructions : nil,
                             hasConsult ? consultInstructions : nil,
+                            servers.contains { $0.name == "perch" } ? Perch.instructions : nil,
                             remoteMacInstructions(MacPairings.names)].compactMap { $0 }.joined(separator: "\n\n")
         switch agent {
         case "claude":
@@ -95,8 +96,15 @@ extension AgentIntegration {
 
     /// The servers to add for `agent` started in `cwd`, skipping any the user already configured.
     static func mcpServers(for agent: String, cwd: String, env: [String: String]) -> [MCPServer] {
-        guard wantMemory || wantConsult, let bundles = mcpBundles(), let node = findOnPath("node", excluding: nil) else { return [] }
         let existing = configuredServers(for: agent, cwd: cwd)
+        // Perch's browser tools, with this tab as the agent's session (PerchLink).
+        let perch = PerchLink.mcpServer(agent: agent, tabID: env["AGTERM_TAB_ID"], cwd: cwd, configured: existing).map { [$0] } ?? []
+        return agtermServers(for: agent, cwd: cwd, env: env, existing: existing) + perch
+    }
+
+    /// agterm's own project-memory and consult servers, skipping any the user already configured.
+    private static func agtermServers(for agent: String, cwd: String, env: [String: String], existing: Set<String>) -> [MCPServer] {
+        guard wantMemory || wantConsult, let bundles = mcpBundles(), let node = findOnPath("node", excluding: nil) else { return [] }
         let memory = projectMemory(cwd)
         var servers: [MCPServer] = []
         if wantMemory, let memory, !existing.contains(memoryServerName) {

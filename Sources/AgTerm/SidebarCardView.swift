@@ -21,6 +21,9 @@ final class SidebarCardView: NSView {
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
     var onMenu: ((NSEvent) -> Void)?
+    /// The globe: the agent's Perch tabs.
+    var onBrowser: (() -> Void)?
+    private var browserRect: NSRect?
     /// Dragging up or down reorders tabs; the sidebar moves the card while the mouse is down.
     var onDragBegan: (() -> Void)?
     var onDragMoved: ((CGFloat) -> Void)?
@@ -86,6 +89,9 @@ final class SidebarCardView: NSView {
         if hovering, closeRect.insetBy(dx: -4, dy: -4).contains(point) {
             mouseDownY = nil
             onClose?()
+        } else if let browserRect, browserRect.insetBy(dx: -3, dy: -3).contains(point) {
+            mouseDownY = nil
+            onBrowser?()
         } else {
             mouseDownY = event.locationInWindow.y
             onSelect?()
@@ -121,6 +127,7 @@ final class SidebarCardView: NSView {
     private var closeRect: NSRect { NSRect(x: rightEdge - 14, y: Self.topY + 2, width: 14, height: 14) }
 
     override func draw(_ dirtyRect: NSRect) {
+        browserRect = nil
         guard let model else { return }
         drawBackground(model)
         TabCardDrawing.dot(model.status, center: NSPoint(x: Self.padX + 4, y: Self.topY + 9), blinkOn: blinkOn)
@@ -199,11 +206,14 @@ final class SidebarCardView: NSView {
     /// Home shows no folder name; the line is left out when it would be empty.
     private static func folderLine(_ model: TabModel) -> Bool {
         !model.folder.isEmpty || model.git?.branch != nil || TabCardDrawing.diffText(model) != nil || model.inCloud || model.moving != nil
+            || model.browserTabs > 0
     }
 
     /// Folder and branch on the left, the diff right-aligned; the branch gives way first, then the folder.
     private func drawFolder(_ model: TabModel, y: CGFloat) {
         var x = Self.textX
+        browserRect = model.moving == nil ? TabCardDrawing.browser(model.browserTabs, x: x, y: y) : nil
+        if let browserRect { x = browserRect.maxX + 8 }
         if model.inCloud || model.moving != nil, let cloud = TabCardDrawing.cloud() {
             cloud.draw(in: NSRect(x: x, y: y + 1, width: cloud.size.width, height: cloud.size.height))
             x += ceil(cloud.size.width) + 5

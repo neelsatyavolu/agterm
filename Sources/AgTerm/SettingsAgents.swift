@@ -7,6 +7,8 @@ struct AgentsPane: View {
     @AppStorage(AgentIntegration.launchAgentKey) private var launchAgent = AgentKind.claude.id
     @AppStorage(AgentIntegration.memoryKey) private var memory = true
     @AppStorage(AgentIntegration.consultKey) private var consult = true
+    @AppStorage(PerchLink.mcpKey) private var perch = true
+    @AppStorage(PerchLink.openLinksKey) private var perchLinks = true
     @AppStorage(ConnectionResume.enabledKey) private var resumeAfterDrop = true
     @State private var shortcut = AgentIntegration.newAgentTabShortcut
     /// Found off the main thread, since it may wait on your shell's startup files.
@@ -29,6 +31,17 @@ struct AgentsPane: View {
     }()
 
     private static let supported = AgentKind.all.map(\.title).joined(separator: ", ")
+
+    /// Checked once when Settings opens.
+    private static let perchStatus: String = {
+        guard PerchLink.cli() != nil else {
+            return "Perch isn't installed. When it is, agents get its browser tools, `perch` works in every tab, and links can open in it."
+        }
+        return "Each agent works in its own Perch tab group, named after the agent and folder, and its tabs close when it quits. "
+            + "Perch asks you before an agent sends, posts, buys or deletes anything. A tab whose agent has Perch tabs open "
+            + "shows a globe with the count: click it, or right-click the tab, to bring them forward or close them. "
+            + "The `perch` command works in every tab, in that tab's group."
+    }()
 
     var body: some View {
         Form {
@@ -71,6 +84,16 @@ struct AgentsPane: View {
                 Text("MCP servers")
             } footer: {
                 Footnote(Self.mcpStatus)
+            }
+
+            Section {
+                Toggle("Give agents the Perch browser", isOn: $perch)
+                    .onChange(of: perch) { _, _ in AgentIntegration.installShellIntegration() }
+                Toggle("Open web links in Perch", isOn: $perchLinks)
+            } header: {
+                Text("Perch")
+            } footer: {
+                Footnote(Self.perchStatus)
             }
         }
         .task { installed = await AgentsPane.findInstalled() }

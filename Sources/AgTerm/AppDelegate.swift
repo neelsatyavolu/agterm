@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RemoteClient.shared.startIfEnabled()
         Analytics.start()
         KeepAwake.shared.start()
+        PerchLink.shared.start()
         MacWorker.update()
     }
 

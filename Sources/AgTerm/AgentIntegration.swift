@@ -75,6 +75,8 @@ enum AgentIntegration {
                 try wrapper(agent: agent.command, helper: helper).write(to: url, atomically: true, encoding: .utf8)
                 try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
             }
+            // Perch's `perch` command, for tabs and the agents in them.
+            PerchLink.linkCommand(into: binDir)
             let remote = binDir.appendingPathComponent(remoteCommand)
             try remoteWrapper(helper: helper).write(to: remote, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: remote.path)
@@ -91,6 +93,8 @@ enum AgentIntegration {
         let bin = binDir.path
         env["AGTERM_BIN"] = bin
         env["AGTERM_TAB_ID"] = tabID
+        // Every `perch` run in this tab, an agent's MCP server included, works in the tab's session.
+        if PerchLink.enabled(PerchLink.mcpKey) { env.merge(Perch.environment(tabID: tabID)) { _, tab in tab } }
         env["PATH"] = bin + ":" + (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin")
         // zsh: load the user's startup files through ours, which put the wrappers back first at the end.
         if ProcInfo.loginShell().hasSuffix("/zsh") {

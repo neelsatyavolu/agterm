@@ -63,6 +63,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         startTimers()
         startCloudReturn()
         configureCommandBar()
+        NotificationCenter.default.addObserver(forName: .perchTabsChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.render()
+        }
         NotificationCenter.default.addObserver(forName: .agtermOpenTab, object: nil, queue: .main) { [weak self] note in
             guard let self, let command = note.userInfo?["command"] as? String else { return }
             self.addTab(cwd: NSHomeDirectory(), restoring: nil, command: command)
@@ -642,8 +645,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             ("Copy Folder Path", #selector(copyFolderPathFromMenu(_:))),
             ("Show in Finder", #selector(showInFinderFromMenu(_:))),
             nil,
+        ] + perchEntries(session)
         // With agterm Cloud hidden (stable builds), a tab already in the cloud can still come back.
-        ] + ((!CloudAccount.isEnabled && !session.isCloud) || session.signals.exited ? [] : [
+          + ((!CloudAccount.isEnabled && !session.isCloud) || session.signals.exited ? [] : [
             session.isCloud ? ("Bring Back from Cloud", #selector(bringBackTabFromMenu(_:))) : ("Move to Cloud", #selector(moveTabToCloudFromMenu(_:))),
             nil,
         ]) + [
@@ -660,6 +664,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             menu.addItem(item)
         }
         return menu
+    }
+
+    /// "Show Perch Tabs" and "Close Perch Tabs" while the tab's agent has Perch tabs open.
+    private func perchEntries(_ session: TerminalSession) -> [(String, Selector)?] {
+        let count = PerchLink.shared.tabs[session.tabID] ?? 0
+        guard count > 0 else { return [] }
+        return [
+            (count == 1 ? "Show Perch Tab" : "Show \(count) Perch Tabs", #selector(showPerchTabsFromMenu(_:))),
+            (count == 1 ? "Close Perch Tab" : "Close \(count) Perch Tabs", #selector(closePerchTabsFromMenu(_:))),
+            nil,
+        ]
+    }
+
+    @objc private func showPerchTabsFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        PerchLink.shared.focus(tabID: session.tabID)
+    }
+
+    @objc private func closePerchTabsFromMenu(_ sender: NSMenuItem) {
+        guard let session = sender.representedObject as? TerminalSession else { return }
+        PerchLink.shared.closeTabs(tabID: session.tabID)
     }
 
     @objc func renameTab() { focusedSession.map(rename) }
@@ -1062,6 +1087,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         moveTab(from: source, to: target)
     }
     func tabBar(_ bar: NSView, menuFor index: Int) -> NSMenu { menu(for: sessions[index]) }
+    func tabBar(_ bar: NSView, didClickBrowser index: Int) {
+        guard sessions.indices.contains(index) else { return }
+        PerchLink.shared.focus(tabID: sessions[index].tabID)
+    }
 
     // MARK: NSWindowDelegate
 

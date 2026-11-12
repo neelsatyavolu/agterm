@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.13 — 2026-11-12
+- Added: With Perch installed, every agent agterm starts can use the Perch browser, where you're signed in to your sites. Each agent works in its own Perch tab group, named after the agent and the folder, and its tabs close when it quits. Perch still asks you before anything is sent, posted, bought or deleted.
+- Added: A tab whose agent has Perch tabs open shows a globe with the number of tabs, in the tab bar and the sidebar. Click it to bring those tabs forward in Perch.
+- Added: Right-click a tab to show or close its agent's Perch tabs.
+- Added: The `perch` command works in every tab, in that tab's own Perch tab group.
+- Added: Web links you click in a terminal open in Perch when it is installed.
+- Added: Settings → Agents → Perch turns the browser for agents and opening links in Perch on or off.
+
 ## 1.2.12 — 2026-11-11
 - Fixed: A Codex tab is named after its conversation (Codex's thread name, or your first prompt) instead of its folder.
 - Fixed: GPT model names read "GPT-5.1 Codex Max" instead of "gpt-5.1-codex-max".

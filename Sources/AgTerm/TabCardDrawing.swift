@@ -75,6 +75,24 @@ enum TabCardDrawing {
         }
     }
 
+    /// The globe and count of a tab whose agent has Perch tabs open, in the accent color, drawn
+    /// at `x` on a line whose text starts at `y`. Returns where it drew, for clicks.
+    static func browser(_ count: Int, x: CGFloat, y: CGFloat) -> NSRect? {
+        guard count > 0, let symbol = NSImage(systemSymbolName: "globe", accessibilityDescription: "Perch tabs")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)) else { return nil }
+        let globe = NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            Theme.accent.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        let icon = NSRect(x: x, y: y + 1, width: globe.size.width, height: globe.size.height)
+        globe.draw(in: icon)
+        let label = text("\(count)", Theme.metaFont, Theme.accent)
+        label.draw(at: NSPoint(x: icon.maxX + 3, y: y))
+        return NSRect(x: x, y: y, width: icon.width + 3 + ceil(label.size().width), height: 16)
+    }
+
     /// The pin on a pinned tab's card.
     static func pin() -> NSImage? {
         guard let symbol = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned")?

@@ -86,6 +86,10 @@ final class TabSidebarView: NSView {
             card.onSelect = { [weak self, weak card] in self?.cardAction(card, close: false) }
             card.onClose = { [weak self, weak card] in self?.cardAction(card, close: true) }
             card.onMenu = { [weak self, weak card] event in self?.showMenu(for: card, event: event) }
+            card.onBrowser = { [weak self, weak card] in
+                guard let self, let card, let index = self.cards.firstIndex(where: { $0 === card }) else { return }
+                self.delegate?.tabBar(self, didClickBrowser: index)
+            }
             card.onDragBegan = { [weak self, weak card] in self?.beginDrag(card) }
             card.onDragMoved = { [weak self] dy in self?.moveDrag(dy) }
             card.onDragEnded = { [weak self] in self?.endDrag() }

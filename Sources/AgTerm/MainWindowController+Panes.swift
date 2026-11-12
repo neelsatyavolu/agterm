@@ -191,6 +191,7 @@ extension MainWindowController {
         model.program = s.agentName == nil && s.foregroundName != s.shellName ? s.foregroundName : nil
         model.logo = s.agentName.flatMap(AgentLogo.image(for:))
         model.pinned = s.pinned
+        model.browserTabs = PerchLink.shared.tabs[s.tabID] ?? 0
         return model
     }
 }
