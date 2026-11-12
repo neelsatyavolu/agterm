@@ -1,400 +1,443 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-type="software" data-radius="sharp" data-buttons="tonal" data-motion>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>agterm: a native Mac terminal for coding agents</title>
-  <meta name="description" content="A native Mac terminal for Claude Code, Codex and 21 other agent CLIs. Each tab shows its agent's task, status, folder, branch, lines changed and spend, with a Chat view, a changes panel and one-step commits.">
-  <meta name="theme-color" content="#0E0E0D">
-  <link rel="canonical" href="https://agterm.dev/">
-  <meta property="og:site_name" content="agterm">
-  <meta property="og:title" content="agterm: know which agent needs you">
-  <meta property="og:description" content="A native Mac terminal for coding agents. Each tab shows its agent's task, status and diff. macOS 14 or later.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://agterm.dev/">
-  <meta property="og:image" content="https://agterm.dev/og.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="agterm: know which agent needs you. Three tab cards marked working, needs you and done, each with its folder, diff and branch.">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=1.2.6">
-  <script defer src="https://analytics.n3el.dev/p.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>agterm: a Mac terminal for Claude Code, Codex and other coding agents</title>
+<meta name="description" content="A native Mac terminal for Claude Code, Codex and 21 other agent CLIs. Each tab shows its agent's task, status, folder, branch, lines changed and spend, with a Chat view, a changes panel and one-step commits.">
+<meta name="theme-color" content="#0E0E0D">
+<link rel="canonical" href="https://agterm.dev/">
+<meta property="og:site_name" content="agterm">
+<meta property="og:title" content="agterm: know which agent needs you">
+<meta property="og:description" content="A native Mac terminal for coding agents. Each tab shows its agent's task, status and diff. macOS 14 or later.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://agterm.dev/">
+<meta property="og:image" content="https://agterm.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="agterm: know which agent needs you. Three tab cards marked working, needs you and done, each with its folder, diff and branch.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="site-kind" content="software">
+<meta name="page-type" content="software">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..600&family=Geist+Mono:wght@400..500&family=Newsreader:opsz,wght@6..72,400&display=swap">
+<link rel="stylesheet" href="assets/system.css">
+<link rel="stylesheet" href="assets/ui/cards.css">
+<link rel="stylesheet" href="assets/motion/motion.css">
+<link rel="stylesheet" href="assets/layout/layout.css">
+<link rel="stylesheet" href="assets/icons/icon.css">
+<link rel="stylesheet" href="assets/ui/base.css">
+<link rel="stylesheet" href="assets/ui/window/fragment.css">
+<link rel="stylesheet" href="assets/ui/terminal-run/fragment.css">
+<link rel="stylesheet" href="assets/site.css">
+<script src="assets/enter.js"></script>
+<link rel="modulepreload" href="assets/moments/moments.js">
+<link rel="modulepreload" href="assets/moments/lib.js">
+<link rel="modulepreload" href="assets/moments/word-highlight/moment.js">
+<script defer src="https://analytics.n3el.dev/p.js"></script>
 </head>
 <body>
-  <a class="skip" href="#main">Skip to content</a>
+<!-- type: software
+     deal: hero triptych, nav nav-cards, close close-word, footer footer-dark, rhythm space, buttons tonal,
+     mark: the client's own prompt mark (no dealt mark), grounds none, effect none
+     moments: word-highlight in #how (the second dealt moment, liquid-type, needs a second statement and was left out)
+     brand kept: the site's own palette (#0E0E0D ink, #F2F0EA paper, #4C8DFF blue), Geist, Geist Mono and Newsreader -->
 
-  <header class="top">
-    <div class="wrap top-row">
-      <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
-      <nav aria-label="Sections">
-        <ul class="nav-links">
-          <li><a href="#tabs">Tabs</a></li>
-          <li><a href="#chat">Chat</a></li>
-          <li><a href="#review">Review</a></li>
-          <li><a href="#agents">Agents</a></li>
-          <li><a href="#accounts">Accounts</a></li>
-          <li><a href="#install">Install</a></li>
-          <li><a href="/changelog">Changelog</a></li>
-        </ul>
-        <a class="nav-gh" href="https://github.com/neelsatyavolu/agterm">GitHub</a>
-        <a class="btn btn-ghost btn-sm" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download</a>
-      </nav>
-    </div>
-  </header>
-
-  <main id="main">
-    <section class="hero wrap" aria-labelledby="hero-title">
-      <p class="eyebrow"><span class="dot dot-working" aria-hidden="true"></span>Terminal for coding agents · macOS</p>
-      <h1 id="hero-title">Know which agent needs you.<span class="caret" aria-hidden="true"></span></h1>
-      <p class="lede">agterm is a native Mac terminal for running Claude Code, Codex and twenty-one other agent CLIs in tabs. Each tab card shows the agent's task and whether it's waiting on you, with the folder, the lines it changed and the git branch underneath. Read any agent as a chat, review its diff beside the terminal and commit in one step.</p>
-      <div class="cta">
-        <a class="btn btn-primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
-        <a class="btn btn-ghost" href="https://github.com/neelsatyavolu/agterm">Source on GitHub</a>
-      </div>
-      <p class="meta hero-meta">v1.2.6 · 13.7 MB · macOS 14+ · Apple silicon and Intel · signed and notarized · updates itself</p>
-    </section>
-
-    <figure class="shot wrap">
-      <a class="shot-link" href="/agterm-window.png?v=1.2.6" aria-label="Open the full-size screenshot"><img src="/agterm-window.png?v=1.2.6" width="1240" height="560"
-           alt="The agterm window with four tabs. Fix login redirect loop is working in web, +4 −1 on main. Rename env vars in workers needs you in api, +18 −18. Add dark mode tokens is done in design, +142 −9. The fourth tab is a zsh shell in docs. The selected tab shows a Claude Code session fixing a redirect and running its tests."></a>
-      <figcaption>The real app, rendered off screen by its debug self-test with stand-in agents (<code>scripts/site-shots.sh</code>). agterm counted each diff itself, from that agent's transcript.</figcaption>
-    </figure>
-
-    <section class="block" id="tabs" aria-labelledby="tabs-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">01</span>Tab cards</p>
-          <div>
-            <h2 id="tabs-title">Every tab answers before you click it</h2>
-            <p class="sec-lede">Claude Code writes its task into the terminal title, and agterm puts that title on the tab. The line under it carries a status, then the folder, the lines changed since the agent started and the branch. Put the tabs in a sidebar (<kbd>⌃⌘S</kbd>) and Claude Code and Codex tabs also show the model, what the run has cost and how long it has been going.</p>
-          </div>
-        </header>
-
-        <ul class="cells cells-3 states">
-          <li>
-            <img src="/tab-working.png?v=1.0.1" width="272" height="50" alt="Tab card: Fix login redirect loop, WORKING, web, +4 −1, main.">
-            <h3><span class="dot dot-working" aria-hidden="true"></span><span class="s-working">Working</span></h3>
-            <p>The agent is running a turn. agterm reads that from Claude Code's own session record, the title spinner, or output that isn't an echo of your typing.</p>
-          </li>
-          <li>
-            <img src="/tab-needs.png?v=1.0.1" width="272" height="50" alt="Tab card: Rename env vars in workers, NEEDS YOU, api, +18 −18, env-rename.">
-            <h3><span class="dot dot-needs" aria-hidden="true"></span><span class="s-needs">Needs you</span></h3>
-            <p>A permission prompt is on screen, in any tab (the one you're looking at too), or the bell rang in a tab you aren't watching.</p>
-          </li>
-          <li>
-            <img src="/tab-done.png?v=1.0.1" width="272" height="50" alt="Tab card: Add dark mode tokens, DONE, design, +142 −9, tokens.">
-            <h3><span class="dot dot-done" aria-hidden="true"></span><span class="s-done">Done</span></h3>
-            <p>It finished while you were in another tab. agterm can post a notification and play a sound; clicking the notification opens that tab.</p>
-          </li>
-        </ul>
-
-        <ul class="cells cells-3 native-points">
-          <li>
-            <h3>Split panes</h3>
-            <p><kbd>⌘D</kbd> and <kbd>⇧⌘D</kbd> split a tab and let you pick which other tab shows beside it. Each tab keeps its own card; Unsplit puts them back and closes nothing.</p>
-          </li>
-          <li>
-            <h3>Pinned tabs</h3>
-            <p>Right-click a tab and pin it. It stays above the others when you drag or open tabs, and after a relaunch.</p>
-          </li>
-          <li>
-            <h3>Session timeline</h3>
-            <p><kbd>⇧⌘L</kbd> lists every prompt you sent in the tab, newest first, with whether it ran, finished or failed. Click one to scroll the terminal to it.</p>
-          </li>
-        </ul>
-        <p class="footnote">Claude Code and Codex lines changed and spend come from their own transcripts; other agents are measured against a <code>git stash create</code> snapshot taken when they start. There are no hooks or plugins to install.</p>
-      </div>
-    </section>
-
-    <section class="block" id="chat" aria-labelledby="chat-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">02</span>Chat view</p>
-          <div>
-            <h2 id="chat-title">Read the agent, not the scrollback</h2>
-            <p class="sec-lede">Press <kbd>⌃`</kbd> on a Claude Code, Codex, Grok or agl tab to read the conversation as a transcript: replies with formatting, folded file reads, edits as diffs, commands with their results, and subagents with what they came back with. The agent keeps running in its terminal; <kbd>⌃`</kbd> again takes you back.</p>
-          </div>
-        </header>
-
-        <figure class="feature-shot">
-          <a class="shot-link" href="/chat.png?v=1.2.6" aria-label="Open the full-size Chat view screenshot"><img src="/chat.png?v=1.2.6" width="1240" height="740" loading="lazy"
-               alt="The Chat view of the Fix login redirect loop tab. The prompt, a folded thinking row, two folded tool calls, an Edit of auth/redirect.ts shown as a diff with +4 −1, a passing npm test, a finished Explore subagent and the agent's formatted reply. The sidebar shows each tab's model, spend and lines changed. A message box sits at the bottom."></a>
-        </figure>
-
-        <ul class="cells cells-3">
-          <li>
-            <h3>Reply from the box</h3>
-            <p>Type at the bottom to message the agent and Esc to interrupt it. Approval prompts show as buttons, and pickers like <code>/model</code> take the arrow keys from the empty box.</p>
-          </li>
-          <li>
-            <h3><kbd>/</kbd> and <kbd>@</kbd></h3>
-            <p><kbd>/</kbd> lists the agent's commands, including your skills and custom commands, with what each does. <kbd>@</kbd> lists files in the tab's folder.</p>
-          </li>
-          <li>
-            <h3>Images and history</h3>
-            <p>Paste or drop an image to send it. <kbd>↑</kbd> in the empty box brings back what you sent earlier.</p>
-          </li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="block" id="review" aria-labelledby="review-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">03</span>Review and ship</p>
-          <div>
-            <h2 id="review-title">See the diff, commit, open the PR</h2>
-            <p class="sec-lede">The buttons at the top right of the window work on the tab's repo. <kbd>⇧⌘E</kbd> opens every changed file and its diff beside the terminal: what the agent changed since it started, what's uncommitted, or everything on the branch. It updates as the agent edits.</p>
-          </div>
-        </header>
-
-        <figure class="feature-shot">
-          <a class="shot-link" href="/changes.png?v=1.2.6" aria-label="Open the full-size changes panel screenshot"><img src="/changes.png?v=1.2.6" width="1480" height="550" loading="lazy"
-               alt="The changes panel open beside a Claude Code terminal. Agent is selected: 1 file, +4 −1 since the agent started. redirect.ts in src/auth shows the removed return line and four added lines that guard against redirecting back to /login."></a>
-        </figure>
-
-        <ul class="cells cells-4">
-          <li>
-            <h3>Commit <kbd>⌥⌘C</kbd></h3>
-            <p>Drafts the message with the same fast model as <kbd>⌘K</kbd>, then commits, pushes, or opens a pull request with a written title and description. On main it moves your work to a new branch first.</p>
-          </li>
-          <li>
-            <h3>Worktrees <kbd>⇧⌘N</kbd></h3>
-            <p>Starts an agent on a new branch in a folder of its own, with your <code>.env</code> files copied in. Removing one says what would be lost before it deletes anything.</p>
-          </li>
-          <li>
-            <h3>Hand off</h3>
-            <p>Continues an agent's conversation in Claude Code, Codex, Grok or Gemini CLI, in a new tab beside it.</p>
-          </li>
-          <li>
-            <h3>Find it again</h3>
-            <p><kbd>⇧⌘F</kbd> searches past Claude Code, Codex and Grok conversations by what was said in them and reopens one in its folder. <kbd>⇧⌘P</kbd> runs any menu command by name.</p>
-          </li>
-        </ul>
-        <p class="footnote">Pull requests need the GitHub CLI (<code>gh</code>). A repo can add <code>.agterm/worktree-setup.sh</code> to install dependencies in each new worktree.</p>
-      </div>
-    </section>
-
-    <section class="block" id="agents" aria-labelledby="agents-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">04</span>Agents</p>
-          <div>
-            <h2 id="agents-title">Works with 23 agent CLIs</h2>
-            <p class="sec-lede">Each of these gets tab status, the needs-you flag and lines changed. <kbd>⌥⌘T</kbd> opens a tab in the current folder and starts your usual agent; <kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘3</kbd> start Claude Code, Codex and Grok.</p>
-          </div>
-        </header>
-
-        <ul class="agents" aria-label="Supported agent CLIs">
-          <li class="lead">Claude Code</li><li class="lead">Codex</li><li class="lead">Grok</li><li class="lead">agl</li><li>Gemini CLI</li><li>Antigravity</li><li>Cursor Agent</li><li>OpenCode</li><li>Kimi Code</li><li>Aider</li><li>Amp</li><li>Qwen Code</li><li>Crush</li><li>GitHub Copilot CLI</li><li>Factory Droid</li><li>Kilo Code</li><li>Cline</li><li>Goose</li><li>Auggie</li><li>Qodo</li><li>Kiro CLI</li><li>Continue</li><li>Pi</li>
-        </ul>
-
-        <ul class="cells cells-3">
-          <li>
-            <h3>agl, for local models</h3>
-            <p>agterm comes with agl, a coding agent for models running on your Mac through Ollama, LM Studio or its own library (<code>agl models</code>). Type <code>agl</code> in any tab. Closing the tab unloads the model it loaded.</p>
-          </li>
-          <li>
-            <h3>Typed at a real prompt</h3>
-            <p>A new agent tab types the agent's command into an ordinary shell. When the agent quits, the shell is still there, and the tab restores like any other.</p>
-          </li>
-          <li>
-            <h3>Skip permission prompts, if you choose</h3>
-            <p>Settings → Permissions can start each installed agent with its own bypass flag, such as <code>--dangerously-skip-permissions</code> for Claude Code or <code>--yolo</code> for Gemini. It's off by default.</p>
-          </li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="block" id="accounts" aria-labelledby="accounts-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">05</span>Accounts and usage</p>
-          <div>
-            <h2 id="accounts-title">Out of usage? The tab moves to another login</h2>
-            <p class="sec-lede">Add more Claude Code or Codex logins in Settings → Accounts. Each one signs in through the CLI's own login, in its own folder, and shares your conversations, settings, skills and MCP servers through symlinks. Any login can resume any conversation.</p>
-          </div>
-        </header>
-
-        <ol class="cells cells-4 steps">
-          <li>
-            <span class="step">01</span>
-            <h3>Sees the limit</h3>
-            <p>Claude Code writes a 429 record into the conversation and Codex logs a usage-limit event. agterm follows each agent tab's transcript and reacts within a second.</p>
-          </li>
-          <li>
-            <span class="step">02</span>
-            <h3>Picks a login with room</h3>
-            <p>It checks every login's usage through that CLI (no Keychain reads, no model calls) and takes the one with the most left.</p>
-          </li>
-          <li>
-            <span class="step">03</span>
-            <h3>Resumes the conversation</h3>
-            <p>It stops the agent and runs <code class="nw">claude --resume</code> or <code class="nw">codex resume</code> with your original options on the new login, in the same tab, then tells it to continue.</p>
-          </li>
-          <li>
-            <span class="step">04</span>
-            <h3>Tells you</h3>
-            <p>A notification names the account it moved to. A tab switches at most 3 times in 30 minutes, so two empty logins can't loop.</p>
-          </li>
-        </ol>
-
-        <div class="cells cells-2 usage-pair">
-          <figure>
-            <img src="/usage.png?v=1.2.6" width="720" height="780" loading="lazy"
-                 alt="The Usage window for the last 30 days: $108.50 estimated cost, 5.4M tokens, 25 sessions, a bar per day, spend by model and by project, and each login's 5-hour and weekly limits with when they reset.">
-          </figure>
-          <div>
-            <h3>Usage <kbd>⇧⌘U</kbd></h3>
-            <p>Tokens and estimated cost by day, model and project for Claude Code and Codex on this Mac, read from local transcripts at API prices. Under it, how much of each login's 5-hour and weekly limits is left and when they reset.</p>
-            <h3 class="sub">agterm Teams</h3>
-            <p>If your team shares Codex logins in agterm Teams, agterm borrows one once every Codex login of yours is out, lends it to one tab at a time and hands it back when Codex exits. Window → Team Dashboard shows the team's tokens, cost and budget by member and project. Prompts, code and terminal output stay on your Mac.</p>
+<header class="nav">
+  <div class="wrap nav__bar">
+    <a class="skip-link" href="#top">Skip to content</a>
+    <a class="nav__logo" href="#top"><span class="logo-prompt" aria-hidden="true">&gt;</span>agterm</a>
+    <nav class="nav__links" aria-label="Main">
+      <div class="nav__item">
+        <a class="nav__link" href="#tabs">Features <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <div class="nav__menu">
+          <div class="wrap grid">
+            <a class="menu-card span-4" href="#chat">
+              <div class="panel"><img class="frame__img" src="img/chat-1240.webp" srcset="img/chat-620.webp 620w, img/chat-1240.webp 1240w, img/chat-2480.webp 2480w" sizes="410px" width="820" height="489" alt="The Chat view of a Claude Code tab" loading="lazy"></div>
+              <span class="t-card">Chat view</span>
+              <span class="t-small muted">Read any agent as a transcript and reply from the box</span>
+            </a>
+            <a class="menu-card span-4" href="#review">
+              <div class="panel"><img class="frame__img" src="img/changes-1480.webp" srcset="img/changes-740.webp 740w, img/changes-1480.webp 1480w, img/changes-2960.webp 2960w" sizes="410px" width="820" height="304" alt="The changes panel beside a terminal" loading="lazy"></div>
+              <span class="t-card">Changes panel</span>
+              <span class="t-small muted">See the agent's diff, then commit or open a PR</span>
+            </a>
+            <a class="menu-card span-4" href="#accounts">
+              <div class="panel"><img class="frame__img" src="img/usage-720.webp" srcset="img/usage-360.webp 360w, img/usage-720.webp 720w, img/usage-1440.webp 1440w" sizes="410px" width="757" height="820" alt="The Usage window with spend by day" loading="lazy"></div>
+              <span class="t-card">Accounts and usage</span>
+              <span class="t-small muted">Move a tab to another login when one runs out</span>
+            </a>
           </div>
         </div>
       </div>
-    </section>
+      <div class="nav__item"><a class="nav__link" href="#agents">Agents</a></div>
+      <div class="nav__item"><a class="nav__link" href="#install">Install</a></div>
+      <div class="nav__item"><a class="nav__link" href="/changelog">Changelog</a></div>
+    </nav>
+    <div class="nav__actions">
+      <a class="nav__link" href="https://github.com/neelsatyavolu/agterm">GitHub</a>
+      <a class="btn btn--primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
+    </div>
+    <button class="nav__toggle" type="button" aria-expanded="false" aria-label="Menu">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
 
-    <section class="block" id="prompt" aria-labelledby="prompt-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">06</span>At the prompt</p>
-          <div>
-            <h2 id="prompt-title">Folders by name, commands by description</h2>
+<main id="top">
+  <section class="hero hero--triptych" data-enter aria-labelledby="hero-h">
+    <div class="wrap"><div class="hero-text grid hero__grid">
+      <div class="span-3">
+        <h1 id="hero-h">Mac terminal for coding agents</h1>
+        <p class="hero__lead">Runs Claude Code, Codex and 21 other agent CLIs in tabs that show each task and whether it needs you. Free, for macOS 14 or later.</p>
+      </div>
+      <div class="ly-collage span-6 start-4" role="img" aria-label="Screenshots of agterm: a window of agent tabs, tab cards marked working, needs you and done, the cd folder list, the Chat view and the changes panel">
+        <div class="ly-collage__set is-on">
+          <div class="ly-piece pc-window"><img src="img/agterm-window-1240.webp" srcset="img/agterm-window-620.webp 620w, img/agterm-window-1240.webp 1240w, img/agterm-window-2480.webp 2480w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="1240" height="560" alt="" fetchpriority="high" data-source="client" data-subject="the agterm window"></div>
+          <div class="ly-piece pc-tab1"><img src="img/tab-working-544.webp" srcset="img/tab-working-272.webp 272w, img/tab-working-544.webp 544w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="272" height="50" alt="" data-source="client" data-subject="a working tab card"></div>
+          <div class="ly-piece pc-tab2"><img src="img/tab-needs-544.webp" srcset="img/tab-needs-272.webp 272w, img/tab-needs-544.webp 544w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="272" height="50" alt="" data-source="client" data-subject="a needs-you tab card"></div>
+          <div class="ly-piece pc-tab3"><img src="img/tab-done-544.webp" srcset="img/tab-done-272.webp 272w, img/tab-done-544.webp 544w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="272" height="50" alt="" data-source="client" data-subject="a done tab card"></div>
+          <div class="ly-piece pc-cd"><img src="img/cd-suggestions-990.webp" srcset="img/cd-suggestions-495.webp 495w, img/cd-suggestions-990.webp 990w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="495" height="89" alt="" data-source="client" data-subject="cd folder suggestions"></div>
+        </div>
+        <div class="ly-collage__set" aria-hidden="true">
+          <div class="ly-piece pc-chat"><img src="img/chat-1240.webp" srcset="img/chat-620.webp 620w, img/chat-1240.webp 1240w, img/chat-2480.webp 2480w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="1240" height="740" alt="" data-source="client" data-subject="the Chat view"></div>
+          <div class="ly-piece pc-tab4"><img src="img/tab-needs-544.webp" srcset="img/tab-needs-272.webp 272w, img/tab-needs-544.webp 544w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="272" height="50" alt="" data-source="client" data-subject="a needs-you tab card"></div>
+          <div class="ly-piece pc-changes"><img src="img/changes-1480.webp" srcset="img/changes-740.webp 740w, img/changes-1480.webp 1480w, img/changes-2960.webp 2960w" sizes="(max-width: 639px) 90vw, (max-width: 1023px) 80vw, 580px" width="1240" height="461" alt="" data-source="client" data-subject="the changes panel"></div>
+        </div>
+      </div>
+      <div class="span-3 start-10 hero__cta"><a class="btn btn--primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a></div>
+    </div></div>
+  </section>
+
+  <section class="section" id="tabs" aria-labelledby="tabs-h">
+    <div class="wrap">
+      <div class="grid">
+        <h2 class="span-5" id="tabs-h">Every agent's tab in one window</h2>
+        <div class="span-6 start-7 stack-4">
+          <p class="muted">Claude Code writes its task into the terminal title. agterm puts that title on the tab, with the status, the folder, the lines changed and the branch.</p>
+          <p><a class="link" href="#states">See the three states</a></p>
+        </div>
+      </div>
+      <div class="ui app fill" role="img" aria-label="An agterm window: a list of agent tabs with their task, folder, lines changed, branch and status, beside the open tab, where Claude Code runs the web app's tests" data-ui-pause-host>
+        <div class="app__pane app__pane--list">
+          <div class="ui ui-panel ui-win" data-ui="window" data-open="Needs you" data-work="Working" data-done="Done">
+            <div class="ui-win__bar">
+              <span class="ui-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="ui-win__crumb">agterm <i>/</i> <b>Tabs</b></span>
+              <span class="ui-spacer"></span>
+              <span class="ui-win__search" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="ui-win__ph">Search</span></span>
+            </div>
+            <div class="ui-win__body">
+              <nav class="ui-win__side" aria-hidden="true">
+                <span class="ui-win__nav is-on"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>Tabs<em>9</em></span>
+                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>Working<em>1</em></span>
+                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="8" cy="6" r="2.5"/><path d="M3.5 13.5c.6-2.3 2.4-3.5 4.5-3.5s3.9 1.2 4.5 3.5"/></svg>Needs you<em>3</em></span>
+                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg>Done<em>5</em></span>
+                <span class="ui-win__label">Folders</span>
+                <span class="ui-win__nav"><span class="ui-win__hash">~</span>web</span>
+                <span class="ui-win__nav"><span class="ui-win__hash">~</span>api</span>
+              </nav>
+              <div class="ui-win__main">
+                <div class="ui-win__cols" aria-hidden="true"><span>Agent</span><span>Task</span><span>Status</span><span>Time</span></div>
+                <ul class="ui-win__rows">
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="1">CC</span><span class="ui-win__who">Fix login redirect loop</span><span class="ui-win__sub">web · +4 −1 · main</span><span class="ui-win__st" data-st>Working</span><span class="ui-win__age">2m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="1">CC</span><span class="ui-win__who">Rename env vars in workers</span><span class="ui-win__sub">api · +18 −18 · env-rename</span><span class="ui-win__st is-you" data-st>Needs you</span><span class="ui-win__age">6m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="3">CX</span><span class="ui-win__who">Add dark mode tokens</span><span class="ui-win__sub">design · +142 −9 · tokens</span><span class="ui-win__st is-done" data-st>Done</span><span class="ui-win__age">11m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="4">GK</span><span class="ui-win__who">Speed up image resize</span><span class="ui-win__sub">media · +61 −22 · resize</span><span class="ui-win__st is-you" data-st>Needs you</span><span class="ui-win__age">14m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="3">CX</span><span class="ui-win__who">Retry failed webhooks</span><span class="ui-win__sub">billing · +37 −5 · webhooks</span><span class="ui-win__st is-you" data-st>Needs you</span><span class="ui-win__age">19m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="1">CC</span><span class="ui-win__who">Write release notes</span><span class="ui-win__sub">docs · +12 −0 · main</span><span class="ui-win__st is-done" data-st>Done</span><span class="ui-win__age">23m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="5">GM</span><span class="ui-win__who">Split the settings pane</span><span class="ui-win__sub">app · +88 −41 · settings</span><span class="ui-win__st is-done" data-st>Done</span><span class="ui-win__age">31m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="2">AG</span><span class="ui-win__who">Explain the cache layer</span><span class="ui-win__sub">api · +0 −0 · main</span><span class="ui-win__st is-done" data-st>Done</span><span class="ui-win__age">38m</span></li>
+                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="3">CX</span><span class="ui-win__who">Raise test timeouts</span><span class="ui-win__sub">ci · +3 −3 · main</span><span class="ui-win__st is-done" data-st>Done</span><span class="ui-win__age">44m</span></li>
+                </ul>
+              </div>
+            </div>
           </div>
-        </header>
+        </div>
+        <div class="app__pane app__pane--open" data-ui-loop>
+          <div class="ui ui-panel ui-term" data-ui="terminal-run">
+            <div class="ui-term__head">
+              <span class="ui-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="ui-term__title">Fix login redirect loop</span>
+              <span class="ui-meta">claude</span>
+              <span class="ui-spacer"></span>
+              <span class="ui-chip ui-chip--plain ui-term__branch"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="5.5" r="1.5"/><path d="M5 5v6M11 7c0 2.6-6 1.8-6 4"/></svg>main</span>
+            </div>
+            <div class="ui-term__screen" data-term-screen>
+              <div class="ui-term__track" data-term-track>
+                <div class="ui-term__ln ui-term__cmd"><span class="ui-term__cwd">~/<span class="ui-term__up">code/</span>web</span><span class="ui-term__sig">$</span><span class="ui-term__typed" data-term-cmd>npm test</span></div>
+                <div class="ui-term__ln ui-term__meter" data-term-out data-term-meter><span class="ui-term__bar"><i></i></span><span class="ui-term__count" data-term-count>4 of 4 files</span></div>
+                <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">auth/redirect.test.ts</span><span class="ui-term__n">12 tests</span><span class="ui-term__t">318ms</span></div>
+                <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">auth/session.test.ts</span><span class="ui-term__n">18 tests</span><span class="ui-term__t">402ms</span></div>
+                <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">routes/login.test.ts</span><span class="ui-term__n">9 tests</span><span class="ui-term__t">251ms</span></div>
+                <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">routes/callback.test.ts</span><span class="ui-term__n">7 tests</span><span class="ui-term__t">196ms</span></div>
+                <div class="ui-term__ln ui-term__gap" data-term-out aria-hidden="true"></div>
+                <div class="ui-term__ln ui-term__sum" data-term-out><span class="ui-term__key">Test files</span><span class="ui-term__val">4 passed</span><span class="ui-term__dim">(4)</span></div>
+                <div class="ui-term__ln ui-term__sum" data-term-out><span class="ui-term__key">Tests</span><span class="ui-term__val">46 passed</span><span class="ui-term__dim">(46)</span></div>
+                <div class="ui-term__ln ui-term__done" data-term-out data-term-done><span class="ui-term__ok"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 8.3 2.4 2.4 4.6-5"/></svg></span><b>Done</b><span class="ui-term__dim">in 1.17s</span></div>
+                <div class="ui-term__ln ui-term__cmd" data-term-next><span class="ui-term__cwd">~/<span class="ui-term__up">code/</span>web</span><span class="ui-term__sig">$</span><span class="ui-term__typed"></span><i class="ui-term__caret" aria-hidden="true"></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-        <div class="cells cells-2 prompt-pair">
-          <article>
-            <figure class="pane">
-              <img src="/cd-suggestions.png?v=1.0.1" width="495" height="89" alt="A shell line reading cd agter, with a suggestion list under the cursor: agterm in ~/Documents/GitHub, and the hints tab to go, arrows to choose, esc to hide.">
-            </figure>
-            <h3><code class="plain">cd</code> by folder name</h3>
-            <p>Type <code>cd</code> and part of a folder's name. agterm lists matching folders from your home folder (four levels down) and the folders your tabs have visited. <kbd>⇥</kbd> fills in the full path.</p>
-          </article>
-          <article>
-            <dl class="timings" aria-label="Typical ⌘K reply times">
+  <section class="section" id="states" aria-labelledby="states-h">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="states-h">Each agent tab says when it needs you. <span class="muted">agterm reads the agent's own session record, title and bell.</span></h2>
+      </div>
+      <div class="grid">
+        <article class="card card--row card--open span-4">
+          <h3>The agent is working</h3>
+          <p>Working comes from Claude Code's session record, the title spinner, or output that isn't your typing.</p>
+          <div class="panel" role="img" aria-label="Tab card: Fix login redirect loop, working, web, +4 −1, main"><img class="shot" src="img/tab-working-544.webp" srcset="img/tab-working-272.webp 272w, img/tab-working-544.webp 544w" sizes="408px" width="272" height="50" alt="" loading="lazy"></div>
+        </article>
+        <article class="card card--row card--open span-4">
+          <h3>The agent needs you</h3>
+          <p>A permission prompt is on screen in any tab, or the bell rang in a tab you aren't watching.</p>
+          <div class="panel" role="img" aria-label="Tab card: Rename env vars in workers, needs you, api, +18 −18, env-rename"><img class="shot" src="img/tab-needs-544.webp" srcset="img/tab-needs-272.webp 272w, img/tab-needs-544.webp 544w" sizes="408px" width="272" height="50" alt="" loading="lazy"></div>
+        </article>
+        <article class="card card--row card--open span-4">
+          <h3>The agent is done</h3>
+          <p>It finished while you were elsewhere. A notification and a sound can tell you; the notification opens the tab.</p>
+          <div class="panel" role="img" aria-label="Tab card: Add dark mode tokens, done, design, +142 −9, tokens"><img class="shot" src="img/tab-done-544.webp" srcset="img/tab-done-272.webp 272w, img/tab-done-544.webp 544w" sizes="408px" width="272" height="50" alt="" loading="lazy"></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="chat" aria-labelledby="chat-h">
+    <div class="wrap">
+      <div class="grid">
+        <div class="span-5">
+          <h2 id="chat-h">Chat view reads the agent as a transcript</h2>
+          <p class="t-lead">Press <kbd>⌃`</kbd> on a Claude Code, Codex, Grok or agl tab. Edits show as diffs and subagents show what they returned, while the agent keeps running in its terminal.</p>
+          <ul class="facts-list">
+            <li>Type in the box to reply, <kbd>Esc</kbd> to interrupt</li>
+            <li><kbd>/</kbd> lists commands and skills, <kbd>@</kbd> lists files</li>
+            <li>Paste or drop an image to send it</li>
+          </ul>
+          <a class="link" href="#review">See the changes panel</a>
+        </div>
+        <div class="frame frame--split span-6 start-7">
+          <div class="stage stage--fade-br"><img class="shot" src="img/chat-1240.webp" srcset="img/chat-620.webp 620w, img/chat-1240.webp 1240w, img/chat-2480.webp 2480w" sizes="1130px" width="1240" height="740" loading="lazy" alt="The Chat view of the Fix login redirect loop tab: the prompt, folded tool calls, an edit of auth/redirect.ts shown as a diff, a passing npm test and the agent's reply, with a message box at the bottom" data-source="client" data-subject="the Chat view"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="review" aria-labelledby="review-h">
+    <div class="wrap">
+      <div class="grid">
+        <h2 class="span-5" id="review-h">Review an agent's diff, then commit</h2>
+        <p class="span-6 start-7 muted"><kbd>⇧⌘E</kbd> opens every changed file beside the terminal: what the agent changed since it started, what's uncommitted, or the whole branch. It updates as the agent edits.</p>
+      </div>
+      <div class="frame frame--shot">
+        <div class="stage stage--fade-br"><img class="shot" src="img/changes-1480.webp" srcset="img/changes-740.webp 740w, img/changes-1480.webp 1480w, img/changes-2960.webp 2960w" sizes="1400px" width="1480" height="550" loading="lazy" alt="The changes panel beside a Claude Code terminal: one file, +4 −1 since the agent started, with redirect.ts showing the removed line and four added lines" data-source="client" data-subject="the changes panel"></div>
+      </div>
+      <div class="grid feature-names">
+        <div class="span-3"><h3>Commit from the terminal</h3><p><kbd>⌥⌘C</kbd> drafts the message, then commits, pushes or opens a pull request.</p></div>
+        <div class="span-3"><h3>Agent worktrees</h3><p><kbd>⇧⌘N</kbd> starts an agent on a new branch in a folder of its own.</p></div>
+        <div class="span-3"><h3>Hand-off to another agent</h3><p>Continues the conversation in Claude Code, Codex, Grok or Gemini CLI.</p></div>
+        <div class="span-3"><h3>Search past agent conversations</h3><p><kbd>⇧⌘F</kbd> searches past conversations and reopens one in its folder.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section statement" id="how" data-moment="word-highlight" aria-label="How agterm knows">
+    <div class="wrap">
+      <p class="t-label">How it knows</p>
+      <p class="mo-wh__text">agterm reads each agent's own transcript and session record, so the status, the lines changed and the spend on a tab come from the agent itself. There are <strong>no hooks or plugins</strong> to install.</p>
+    </div>
+  </section>
+
+  <section class="section" id="accounts" aria-labelledby="accounts-h">
+    <div class="wrap">
+      <div class="grid">
+        <div class="span-5">
+          <h2 id="accounts-h">Moves agents to another login at the limit</h2>
+          <p class="t-lead">Add more Claude Code or Codex logins in Settings → Accounts. When one runs out, agterm:</p>
+          <ol class="steps-list">
+            <li>Sees the 429 record or usage-limit event within a second.</li>
+            <li>Checks every login's usage and takes the one with the most left.</li>
+            <li>Resumes the conversation on that login, in the same tab.</li>
+            <li>Names the new account in a notification, at most 3 times in 30 minutes.</li>
+          </ol>
+        </div>
+        <div class="frame frame--portrait frame--usage span-6 start-7">
+          <div class="stage stage--fade-br"><img class="shot" src="img/usage-720.webp" srcset="img/usage-360.webp 360w, img/usage-720.webp 720w, img/usage-1440.webp 1440w" sizes="660px" width="720" height="780" loading="lazy" alt="The Usage window for the last 30 days: estimated cost, tokens, sessions, a bar per day, spend by model and project, and each login's 5-hour and weekly limits" data-source="client" data-subject="the Usage window"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="agents" aria-labelledby="agents-h">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="agents-h">Works with 23 agent CLIs. <span class="muted">Each gets tab status, the needs-you flag and lines changed.</span></h2>
+      </div>
+      <div class="agents-frame" role="img" aria-label="The marks of Claude Code, Codex, Grok, Gemini CLI, Cursor Agent, OpenCode, Qwen Code and GitHub Copilot CLI">
+        <ul class="agents-grid" aria-hidden="true">
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40 ic-land" src="assets/icons/claude-code.svg" alt="" width="40" height="25" loading="lazy"></span><span class="t-label">Claude Code</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40 ic-ink" src="assets/icons/codex.svg" alt="" width="40" height="40" loading="lazy"></span><span class="t-label">Codex</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40 ic-ink" src="assets/icons/grok.svg" alt="" width="40" height="38" loading="lazy"></span><span class="t-label">Grok</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40" src="assets/icons/gemini.svg" alt="" width="40" height="40" loading="lazy"></span><span class="t-label">Gemini CLI</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40 ic-ink" src="assets/icons/cursor.svg" alt="" width="35" height="40" loading="lazy"></span><span class="t-label">Cursor Agent</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40 ic-tall" src="assets/icons/opencode-icon.svg" alt="" width="32" height="40" loading="lazy"></span><span class="t-label">OpenCode</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40" src="assets/icons/qwen-icon.svg" alt="" width="40" height="40" loading="lazy"></span><span class="t-label">Qwen Code</span></li>
+          <li><span class="ic-tile ic-tile--72"><img class="ic ic-40 ic-ink" src="assets/icons/github-copilot.svg" alt="" width="40" height="33" loading="lazy"></span><span class="t-label">Copilot CLI</span></li>
+        </ul>
+      </div>
+      <div class="grid agents-more">
+        <p class="span-6">Also Antigravity, Kimi Code, Aider, Amp, Crush, Factory Droid, Kilo Code, Cline, Goose, Auggie, Qodo, Kiro CLI, Continue and Pi. <kbd>⌥⌘1</kbd> to <kbd>⌥⌘3</kbd> start Claude Code, Codex and Grok.</p>
+        <p class="span-6 start-7">And agl, which comes with agterm: a coding agent for models on your Mac through Ollama or LM Studio. Closing its tab unloads the model.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="together" aria-labelledby="together-h">
+    <div class="wrap">
+      <div class="grid">
+        <div class="span-5">
+          <h2 id="together-h">Agents that know about each other</h2>
+          <p class="t-lead">Claude Code and Codex started in agterm get project memory and consult, with nothing to configure.</p>
+          <ul class="facts-list">
+            <li><b>Project memory.</b> Every agent in a repo reads and adds to one set of notes.</li>
+            <li><b>consult.</b> An agent can ask another about its work, or ask Claude, Codex or Grok to review its diff.</li>
+            <li><b>Other Macs.</b> <code>agterm-remote run</code> sends builds and tests to a paired Mac.</li>
+            <li><b>Your phone.</b> agterm Remote, on TestFlight, shows each tab and answers prompts.</li>
+          </ul>
+        </div>
+        <div class="frame frame--split frame--lit span-6 start-7">
+          <div class="stage stage--fade-b"><div class="at-rise fit">
+            <div class="ui ui-panel ui-term" data-ui="terminal-run" data-ui-still>
+              <div class="ui-term__head">
+                <span class="ui-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="ui-term__title">Retry failed webhooks</span>
+                <span class="ui-meta">codex</span>
+                <span class="ui-spacer"></span>
+                <span class="ui-chip ui-chip--plain ui-term__branch"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="5.5" r="1.5"/><path d="M5 5v6M11 7c0 2.6-6 1.8-6 4"/></svg>webhooks</span>
+              </div>
+              <div class="ui-term__screen" data-term-screen>
+                <div class="ui-term__track" data-term-track>
+                  <div class="ui-term__ln ui-term__cmd"><span class="ui-term__cwd">~/<span class="ui-term__up">code/</span>billing</span><span class="ui-term__sig">$</span><span class="ui-term__typed" data-term-cmd>agterm-remote run -- npm test</span></div>
+                  <div class="ui-term__ln ui-term__meter" data-term-out data-term-meter><span class="ui-term__bar"><i></i></span><span class="ui-term__count" data-term-count>3 of 3 files</span></div>
+                  <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">webhooks/retry.test.ts</span><span class="ui-term__n">21 tests</span><span class="ui-term__t">644ms</span></div>
+                  <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">webhooks/sign.test.ts</span><span class="ui-term__n">8 tests</span><span class="ui-term__t">212ms</span></div>
+                  <div class="ui-term__ln ui-term__log" data-term-out data-term-step><svg class="ui-term__tick" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg><span class="ui-term__path">queue/backoff.test.ts</span><span class="ui-term__n">14 tests</span><span class="ui-term__t">389ms</span></div>
+                  <div class="ui-term__ln ui-term__gap" data-term-out aria-hidden="true"></div>
+                  <div class="ui-term__ln ui-term__sum" data-term-out><span class="ui-term__key">Test files</span><span class="ui-term__val">3 passed</span><span class="ui-term__dim">(3)</span></div>
+                  <div class="ui-term__ln ui-term__sum" data-term-out><span class="ui-term__key">Tests</span><span class="ui-term__val">43 passed</span><span class="ui-term__dim">(43)</span></div>
+                  <div class="ui-term__ln ui-term__done" data-term-out data-term-done><span class="ui-term__ok"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 8.3 2.4 2.4 4.6-5"/></svg></span><b>Done</b><span class="ui-term__dim">on the paired Mac</span></div>
+                  <div class="ui-term__ln ui-term__cmd" data-term-next><span class="ui-term__cwd">~/<span class="ui-term__up">code/</span>billing</span><span class="ui-term__sig">$</span><span class="ui-term__typed"></span><i class="ui-term__caret" aria-hidden="true"></i></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="prompt" aria-labelledby="prompt-h">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="prompt-h">Terminal commands by description, folders by name</h2>
+      </div>
+      <div class="grid">
+        <article class="card card--row card--open span-6">
+          <h3>Terminal <code>cd</code> by folder name</h3>
+          <p>Type <code>cd</code> and part of a name: agterm lists matching folders from your home folder and the tabs' history. <kbd>⇥</kbd> fills in the path.</p>
+          <div class="panel" role="img" aria-label="A shell line reading cd agter with a suggestion list under the cursor: agterm in ~/Documents/GitHub"><img class="shot" src="img/cd-suggestions-990.webp" srcset="img/cd-suggestions-495.webp 495w, img/cd-suggestions-990.webp 990w" sizes="495px" width="495" height="89" alt="" loading="lazy"></div>
+        </article>
+        <article class="card card--row card--open span-6">
+          <h3>Terminal commands from <kbd>⌘K</kbd></h3>
+          <p>Describe what you want and the CLI you're signed in to writes it at your prompt. The model gets no tools.</p>
+          <div class="panel" role="img" aria-label="Typical ⌘K reply times: Claude Haiku about 2.5 seconds, Codex at lowest effort about 4 seconds, Grok at low effort about 5 seconds">
+            <dl class="timings" aria-hidden="true" >
               <div><dt>Claude Haiku</dt><dd>~2.5 s</dd></div>
               <div><dt>Codex, lowest effort</dt><dd>~4 s</dd></div>
               <div><dt>Grok, low effort</dt><dd>~5 s</dd></div>
             </dl>
-            <h3><kbd>⌘K</kbd> writes a command</h3>
-            <p>Describe what you want. <kbd>⏎</kbd> puts the command at your prompt to check, and <kbd>⌘⏎</kbd> runs it. It goes through the CLI you're already signed in to, at its fastest setting. The model sees your request, the tab's folder, your shell and the last 20 lines on screen. It has no tools, and the run isn't kept in the CLI's history.</p>
-          </article>
-        </div>
+          </div>
+        </article>
       </div>
-    </section>
-
-    <section class="block" id="together" aria-labelledby="together-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">07</span>Beyond one tab</p>
-          <div>
-            <h2 id="together-title">Agents that know about each other</h2>
-            <p class="sec-lede">Claude Code and Codex started in agterm get two servers, project memory and consult, with nothing to install or configure. Agents in the same repo can see each other's work, and you can follow them from your phone or send their heavy commands to another Mac.</p>
-          </div>
-        </header>
-
-        <ul class="cells cells-2">
-          <li>
-            <h3>Project memory</h3>
-            <p>Every agent in a repo reads and adds to one set of notes about it. With <a class="inline" href="https://agmux.dev">agmux</a> installed, repos agmux knows keep using its memory, so agents in both apps share it.</p>
-          </li>
-          <li>
-            <h3>consult</h3>
-            <p>An agent can list the other agents running in agterm, ask one about its work, leave it a message, or ask Claude, Codex or Grok to review its diff. Agents claim what they take on (a file, a branch, a migration number) on a board per repo, so two of them don't edit the same thing.</p>
-          </li>
-          <li>
-            <h3>Other Macs</h3>
-            <p>Pair a second Mac in Settings → Macs and agents are told to run builds and test suites there with <code>agterm-remote run -- &lt;command&gt;</code>. It copies the project over (git-ignored files stay put), streams the output into the tab and exits with the command's status. The connection is encrypted with a key from the pairing code.</p>
-          </li>
-          <li>
-            <h3>Your phone</h3>
-            <p>agterm Remote, agterm's iPhone app (on TestFlight), pairs with a QR code. Watch any tab's live screen, answer a prompt with a tap, type a reply, stop an agent, or open a new tab in one of your folders. Claude Code and Codex tabs also read as the conversation, and a notification arrives when an agent finishes or needs you.</p>
-          </li>
-        </ul>
-        <p class="footnote">agterm adds both servers when you type <code>claude</code> or <code>codex</code> in its tabs, skips any you configured yourself and edits no config files. OpenCode, Kilo Code, Cursor Agent and Amp get them for that run too. <code>AGTERM_MCP=0</code> turns them off for one run. They need Node.</p>
-      </div>
-    </section>
-
-    <section class="block" id="native" aria-labelledby="native-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">08</span>Native</p>
-          <div>
-            <h2 id="native-title">Light and native</h2>
-          </div>
-        </header>
-
-        <dl class="cells cells-4 stats">
-          <div><dt>Memory, one tab</dt><dd>41 MB</dd></div>
-          <div><dt>Each extra tab</dt><dd>~0.5 MB</dd></div>
-          <div><dt>Opening a tab</dt><dd>~4 ms</dd></div>
-          <div><dt>First prompt</dt><dd>&lt;0.5 s</dd></div>
-        </dl>
-        <p class="footnote">Measured with agterm 1.0 on an M5 Max with macOS 27.2, optimized build, physical memory as Activity Monitor reports it. The first prompt took 220–450 ms after launch; most of that is the shell's own startup files.</p>
-
-        <ul class="cells cells-2 native-points">
-          <li>
-            <h3>No web view</h3>
-            <p>AppKit and the SwiftTerm emulator, drawn with Core Graphics. Your login shell runs as it does in Terminal.app.</p>
-          </li>
-          <li>
-            <h3>Tabs keep running</h3>
-            <p>Shells live in a small helper process, so quitting or updating agterm leaves your agents working. Claude Code and Codex tabs come back in the same conversation with their original flags.</p>
-          </li>
-          <li>
-            <h3>Mac manners</h3>
-            <p>Drag in files or images, drag tabs to reorder them, pick one of five themes and any monospaced font. A see-through window blurs what's behind it. Keep Mac Awake While Agents Run stops the Mac sleeping mid-task, with the lid closed too if you want.</p>
-          </li>
-          <li>
-            <h3>Asks first</h3>
-            <p>Closing a tab or quitting asks before it stops a program that's still running.</p>
-          </li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="block" id="install" aria-labelledby="install-title">
-      <div class="wrap">
-        <header class="sec-head">
-          <p class="label"><span class="num">09</span>Install</p>
-          <div>
-            <h2 id="install-title">Get agterm</h2>
-          </div>
-        </header>
-
-        <div class="cells cells-2 install">
-          <div>
-            <ol class="install-steps">
-              <li>Download <code>agterm.zip</code> from <a class="inline" href="https://github.com/neelsatyavolu/agterm/releases/latest">GitHub Releases</a>, or run <code>brew install --cask neel-xanom/agmux/agterm</code>.</li>
-              <li>Unzip it and move <code>agterm.app</code> to Applications.</li>
-              <li>On first launch, allow Full Disk Access. Programs in a terminal get the terminal's permissions, so without it macOS blocks agents from Desktop, Documents and other apps' data, or keeps asking.</li>
-            </ol>
-            <a class="btn btn-primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
-            <p class="meta install-meta">macOS 14 or later. Signed and notarized; updates itself through Sparkle.</p>
-          </div>
-          <div>
-            <h3>Build from source</h3>
-            <p>Needs Xcode 16 or later (Swift 6) and the Metal toolchain.</p>
-            <dl class="commands">
-              <div><dt><code>swift test</code></dt><dd>Unit tests for the status, title, git and settings logic.</dd></div>
-              <div><dt><code>./install.sh --adhoc</code></dt><dd>Build, sign ad hoc and install to /Applications.</dd></div>
-            </dl>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="foot">
-    <div class="wrap foot-row">
-      <a class="mark" href="/" aria-label="agterm home"><span class="mark-prompt" aria-hidden="true">&gt;</span>agterm</a>
-      <p class="meta">v1.2.6 · MIT licensed · <a href="https://github.com/neelsatyavolu/agterm">Source</a> · <a href="https://github.com/neelsatyavolu/agterm/releases">Releases</a> · <a href="/changelog">Changelog</a> · <a href="/privacy">Privacy</a> · <a href="https://xanom.co">Xanom</a></p>
     </div>
-  </footer>
+  </section>
+
+  <section class="section" id="native" aria-labelledby="native-h">
+    <div class="wrap">
+      <div class="grid">
+        <h2 class="span-5" id="native-h">Light and native on the Mac</h2>
+        <p class="span-6 start-7 t-lead">AppKit and SwiftTerm, no web view. Shells live in a helper process, so quitting or updating agterm leaves your agents running.</p>
+      </div>
+      <div class="frame frame--shot">
+        <div class="stage stage--fade-br"><img class="shot" src="img/agterm-window-1240.webp" srcset="img/agterm-window-620.webp 620w, img/agterm-window-1240.webp 1240w, img/agterm-window-2480.webp 2480w" sizes="1240px" width="1240" height="560" loading="lazy" alt="The agterm window with four tabs: one working, one needing you, one done and a zsh shell, with a Claude Code session in the selected tab" data-source="client" data-subject="the agterm window"></div>
+      </div>
+      <dl class="grid stats">
+        <div class="span-3"><dt>Memory, one tab</dt><dd>41 MB</dd></div>
+        <div class="span-3"><dt>Each extra tab</dt><dd>~0.5 MB</dd></div>
+        <div class="span-3"><dt>Opening a tab</dt><dd>~4 ms</dd></div>
+        <div class="span-3"><dt>First prompt</dt><dd>&lt;0.5 s</dd></div>
+      </dl>
+      <p class="stats-note">Measured with agterm 1.0 on an M5 Max with macOS 27.2, as Activity Monitor reports it.</p>
+    </div>
+  </section>
+
+  <section class="section" id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <div class="grid">
+        <div class="span-5 stack-4">
+          <h2 id="install-h">Install and questions</h2>
+          <p class="muted">agterm is free and MIT licensed.</p>
+          <p class="install-links"><span class="ic-tile ic-tile--40"><img class="ic ic-ink" src="assets/icons/github-icon.svg" alt="" width="40" height="40" loading="lazy"></span><a class="link" href="https://github.com/neelsatyavolu/agterm">Read the source on GitHub</a></p>
+        </div>
+        <div class="faq span-6 start-7">
+          <div class="faq__item"><h3>How do I install it on my Mac?</h3><p>Download agterm.zip from <a class="link" href="https://github.com/neelsatyavolu/agterm/releases/latest">GitHub Releases</a> or run <code>brew install --cask neel-xanom/agmux/agterm</code>, then move agterm.app to Applications.</p></div>
+          <div class="faq__item"><h3>Why does the terminal need Full Disk Access?</h3><p>Programs in a terminal get the terminal's permissions. Without it, macOS blocks agents from Desktop, Documents and other apps' data, or keeps asking.</p></div>
+          <div class="faq__item"><h3>Does the Mac app update itself?</h3><p>Yes. It is signed and notarized, and updates through Sparkle.</p></div>
+          <div class="faq__item"><h3>Can I build the terminal from source?</h3><p>Yes, with Xcode 16 or later and the Metal toolchain: <code>./install.sh --adhoc</code> builds it and installs it to /Applications.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer closing footer--dark ground-inverse" id="contact" aria-labelledby="close-h">
+  <div class="wrap">
+    <div class="closing__cta close--word">
+      <div class="section-head--split">
+        <div><h2 id="close-h">Get agterm for your Mac</h2><p class="t-lead">v1.2.12, 13.8 MB, for macOS 14 or later on Apple silicon and Intel.</p></div>
+        <a class="btn btn--primary" href="https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm.zip">Download for Mac</a>
+      </div>
+      <p class="close__word" aria-hidden="true">&gt;agterm</p>
+    </div>
+    <div class="closing__links">
+      <div class="grid">
+        <div class="span-4 stack-4">
+          <p class="footer__lede">A Mac terminal for coding agents.</p>
+        </div>
+        <div class="span-2 footer__col"><h3>Features</h3><ul><li><a href="#tabs">Tabs</a></li><li><a href="#chat">Chat view</a></li><li><a href="#review">Review</a></li></ul></div>
+        <div class="span-2 footer__col"><h3>Agents</h3><ul><li><a href="#agents">Agent CLIs</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#together">Memory and consult</a></li></ul></div>
+        <div class="span-2 footer__col"><h3>Project</h3><ul><li><a href="https://github.com/neelsatyavolu/agterm">Source</a></li><li><a href="https://github.com/neelsatyavolu/agterm/releases">Releases</a></li><li><a href="/changelog">Changelog</a></li></ul></div>
+        <div class="span-2 footer__col"><h3>Xanom</h3><ul><li><a href="https://xanom.co">xanom.co</a></li><li><a href="https://agmux.dev">agmux</a></li><li><a href="/privacy">Privacy</a></li></ul></div>
+      </div>
+      <div class="footer__legal">
+        <span>&copy; 2026 agterm, MIT licensed</span>
+        <a href="/privacy">Privacy</a>
+        <span>Product names and logos are trademarks of their owners</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="assets/system.js"></script>
+<script type="module" src="assets/motion/motion.js"></script>
+<script type="module" src="assets/layout/layout.js"></script>
 </body>
 </html>
