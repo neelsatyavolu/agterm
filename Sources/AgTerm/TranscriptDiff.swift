@@ -42,6 +42,9 @@ final class TranscriptDiff {
     private var claudePaths: [String: URL] = [:]
     /// Per transcript: how far it has been scanned for a title, and the scan so far.
     private var titles: [String: (offset: UInt64, scanner: ClaudeSessionTitle.Scanner)] = [:]
+    private var codexTitles: [String: (offset: UInt64, scanner: CodexSessionTitle.Scanner)] = [:]
+    /// Per session_index.jsonl: its size when read, and the thread names in it.
+    private var threadNames: [String: (size: UInt64, names: [String: String])] = [:]
     private let lock = NSLock()
 
     /// Claude Code: the session's transcript under ~/.claude/projects, plus its subagents' and
@@ -94,6 +97,46 @@ final class TranscriptDiff {
             usage.model = AgentUsage(own).model
             return usage
         }
+    }
+
+    /// Codex: the session's thread name, else its first prompt, for the tab's title.
+    func codexTitle(cwd: String, since start: Date, completion: @escaping (String?) -> Void) {
+        run(key: "codex-title:" + cwd, completion: completion) {
+            guard let file = Self.codexRollout(cwd: cwd, since: start),
+                  let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? UInt64 else { return nil }
+            let threadName = self.threadName(of: file)
+            self.lock.lock()
+            var scan = self.codexTitles[file.path]
+            self.lock.unlock()
+            if scan == nil || size < scan!.offset { scan = (0, CodexSessionTitle.Scanner()) }
+            guard var (offset, scanner) = scan else { return nil }
+            if offset < size, scanner.title == nil {
+                guard let end = TranscriptFile.read(file.path, from: offset, line: { scanner.feed($0) }) else { return nil }
+                offset = end
+                self.lock.lock()
+                self.codexTitles[file.path] = (offset, scanner)
+                self.lock.unlock()
+            }
+            return CodexSessionTitle.title(threadName: threadName, scanner: scanner)
+        }
+    }
+
+    /// The rollout's name in session_index.jsonl of the Codex home it was written under.
+    private func threadName(of rollout: URL) -> String? {
+        guard let range = rollout.path.range(of: "/sessions/", options: .backwards) else { return nil }
+        let index = String(rollout.path[..<range.lowerBound]) + "/session_index.jsonl"
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: index))?[.size] as? UInt64 else { return nil }
+        lock.lock()
+        var cached = threadNames[index]
+        lock.unlock()
+        if cached?.size != size {
+            let text = (try? String(contentsOfFile: index, encoding: .utf8)) ?? ""
+            cached = (size, ConversationParser.codexThreadNames(text))
+            lock.lock()
+            threadNames[index] = cached
+            lock.unlock()
+        }
+        return cached?.names[CodexTranscript.sessionID(fromPath: rollout.path)]
     }
 
     private func run<T>(key: String, completion: @escaping (T) -> Void, work: @escaping () -> T) {

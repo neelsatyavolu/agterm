@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.12 — 2026-11-11
+- Fixed: A Codex tab is named after its conversation (Codex's thread name, or your first prompt) instead of its folder.
+- Fixed: GPT model names read "GPT-5.1 Codex Max" instead of "gpt-5.1-codex-max".
+
 ## 1.2.11 — 2026-11-09
 - Fixed: A Codex tab's tokens, cost and changed lines in the sidebar and the Chat view's title strip now include its subagents and auto-review threads.
 - Fixed: When Codex starts a subagent, the tab's Chat view and totals stay on the tab's own session instead of switching to the subagent's.

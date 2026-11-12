@@ -117,9 +117,17 @@ final class ModelNameTests: XCTestCase {
         XCTAssertEqual(ModelName.short("claude-opus-4-1@20250805"), "Opus 4.1")
     }
 
+    func testGPTIDs() {
+        XCTAssertEqual(ModelName.short("gpt-6.1-sol"), "GPT-6.1 Sol")
+        XCTAssertEqual(ModelName.short("gpt-5-codex"), "GPT-5 Codex")
+        XCTAssertEqual(ModelName.short("gpt-5.1-codex-max"), "GPT-5.1 Codex Max")
+        XCTAssertEqual(ModelName.short("gpt-4o-mini"), "GPT-4o Mini")
+        XCTAssertEqual(ModelName.short("gpt-5"), "GPT-5")
+    }
+
     func testOtherModelsStayAsTheyAre() {
-        XCTAssertEqual(ModelName.short("gpt-5-codex"), "gpt-5-codex")
         XCTAssertEqual(ModelName.short("grok-4"), "grok-4")
+        XCTAssertEqual(ModelName.short("o3"), "o3")
     }
 
     func testPlaceholders() {

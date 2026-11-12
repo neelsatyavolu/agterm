@@ -501,7 +501,11 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
     }
 
     var needsTranscriptTitle: Bool {
-        agentName == "claude" && ClaudeSessionTitle.isGeneric(parsedTitle.topic)
+        switch agentName {
+        case "claude": ClaudeSessionTitle.isGeneric(parsedTitle.topic)
+        case "codex": CodexSessionTitle.isGeneric(parsedTitle.topic, cwd: cwd)
+        default: false
+        }
     }
 
     func updateTranscriptTitle(_ title: String?) {

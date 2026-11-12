@@ -264,3 +264,34 @@ final class ClaudeSessionTitleTests: XCTestCase {
         XCTAssertFalse(ClaudeSessionTitle.isGeneric("Login page fix"))
     }
 }
+
+final class CodexSessionTitleTests: XCTestCase {
+    func testFirstPromptSkipsAgentsMDAndEnvironment() {
+        // Shape recorded from a Codex rollout: AGENTS.md and the environment come as user messages first.
+        let lines = """
+        {"type":"session_meta","payload":{"id":"t1","cwd":"/p"}}
+        {"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>x</INSTRUCTIONS>"}]}}
+        {"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>x</environment_context>"}]}}
+        {"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Sure"}]}}
+        {"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Continue the Perch work\\nwith more detail"}]}}
+        {"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"later prompt"}]}}
+        """
+        var scanner = CodexSessionTitle.Scanner()
+        lines.split(separator: "\n").forEach { scanner.feed($0) }
+        XCTAssertEqual(scanner.title, "Continue the Perch work")
+    }
+
+    func testThreadNameWins() {
+        var scanner = CodexSessionTitle.Scanner()
+        scanner.feed(#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix it"}]}}"#)
+        XCTAssertEqual(CodexSessionTitle.title(threadName: "Login fix", scanner: scanner), "Login fix")
+        XCTAssertEqual(CodexSessionTitle.title(threadName: nil, scanner: scanner), "fix it")
+    }
+
+    func testGenericTopic() {
+        XCTAssertTrue(CodexSessionTitle.isGeneric("", cwd: "/Users/sam/perch"))
+        XCTAssertTrue(CodexSessionTitle.isGeneric("perch", cwd: "/Users/sam/perch"))
+        XCTAssertTrue(CodexSessionTitle.isGeneric("Codex", cwd: "/Users/sam/perch"))
+        XCTAssertFalse(CodexSessionTitle.isGeneric("Login fix", cwd: "/Users/sam/perch"))
+    }
+}

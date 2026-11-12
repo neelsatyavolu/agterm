@@ -227,6 +227,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
             }
             if session.agentName == "codex", let start = session.agentStartedAt {
                 transcripts.codex(cwd: session.cwd, since: start) { [weak session] usage in session?.updateAgentUsage(usage ?? AgentUsage()) }
+                if session.needsTranscriptTitle {
+                    transcripts.codexTitle(cwd: session.cwd, since: start) { [weak session] title in session?.updateTranscriptTitle(title) }
+                }
                 continue
             }
             if let baseline = session.agentBaseline {
