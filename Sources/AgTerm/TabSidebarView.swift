@@ -46,9 +46,9 @@ final class TabSidebarView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
+        // No scroller: with "Show scroll bars: Always" or a mouse attached, macOS swaps an overlay
+        // scroller for a full-height track beside the cards. The list still scrolls by trackpad and wheel.
+        scroll.hasVerticalScroller = false
         scroll.documentView = list
         addSubview(scroll)
         plusButton.onClick = { [weak self] in

@@ -20,6 +20,11 @@ final class UsageModel: ObservableObject {
 
     /// Reads transcripts again and asks every login for its limits.
     func refresh() {
+        // The last scan (the one at launch, or the window's last) shows while this one runs.
+        if report == .empty, let last = UsageScanner.shared.lastReport {
+            report = last.report
+            updatedAt = last.at
+        }
         scanning = true
         UsageScanner.shared.scan { [weak self] report in
             self?.report = report
@@ -41,6 +46,8 @@ final class UsageWindowController: NSWindowController, NSWindowDelegate {
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: true)
         window.title = "Usage"
+        // The page has its own "Usage" heading; the title stays for the Window menu.
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 560, height: 480)

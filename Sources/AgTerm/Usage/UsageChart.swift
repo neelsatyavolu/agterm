@@ -24,6 +24,14 @@ struct UsageChart: View {
             .frame(height: Self.height, alignment: .bottom)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .bottom) { Rectangle().fill(UsageInk.border).frame(height: 1) }
+            if let first = days.first {
+                HStack {
+                    Text(first.start.formatted(.dateTime.month(.abbreviated).day()))
+                    Spacer()
+                    Text("Today")
+                }
+                .font(.system(size: 11).monospacedDigit()).foregroundStyle(UsageInk.fg3)
+            }
         }
     }
 
@@ -51,7 +59,12 @@ struct UsageChart: View {
 
     private var readout: String {
         if let hovered, days.indices.contains(hovered) { return describe(days[hovered]) }
-        return "Hover a day for its total"
+        // Unhovered: the busiest day and the daily average, so the bars have a scale.
+        guard let peak = days.max(by: { value($0) < value($1) }), value(peak) > 0 else { return "No usage in the last 30 days" }
+        let date = peak.start.formatted(.dateTime.month(.abbreviated).day())
+        guard byCost else { return "Peak \(UsageFormat.tokens(peak.totals.tokens)) tokens on \(date)" }
+        let average = days.map(\.totals.costUSD).reduce(0, +) / Double(max(days.count, 1))
+        return "Peak \(UsageFormat.cost(peak.totals)) on \(date) · \(average.formatted(.currency(code: "USD"))) a day on average"
     }
 
     private func describe(_ day: UsageDay) -> String {
@@ -85,11 +98,18 @@ struct UsageLimits: View {
         var key: String { UsageMonitor.key(provider, id) }
     }
 
-    /// Logins with something to show: a reading, a check under way, or an error.
+    /// Logins with something to show: a reading, a check under way, or an error. Two logins signed
+    /// in to the same account (your own config and an agterm account, say) read the same limits,
+    /// so the account shows once.
     private var logins: [Login] {
-        AccountProvider.allCases.flatMap { provider in
+        var seen = Set<String>()
+        return AccountProvider.allCases.flatMap { provider in
             monitor.ids(provider).map { Login(provider: provider, id: $0) }
         }.filter { monitor.readings[$0.key] != nil || monitor.checking.contains($0.key) || monitor.errors[$0.key] != nil }
+        .filter { login in
+            guard let email = monitor.readings[login.key]?.email?.lowercased(), !email.isEmpty else { return true }
+            return seen.insert(login.provider.rawValue + " " + email).inserted
+        }
     }
 
     private func row(_ login: Login) -> some View {

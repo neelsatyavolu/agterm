@@ -24,6 +24,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
     private(set) var sessions: [TerminalSession] = []
     /// The tabs, each one or more of `sessions`.
     private(set) var groups: [PaneGroup] = []
+    /// Tabs closed in this window, for Reopen Closed Tab (MainWindowController+Reopen).
+    let closedTabs = ClosedTabs()
     /// The selected tab, an index into `groups`.
     private(set) var selected = 0
     var focusObservation: NSKeyValueObservation?
@@ -895,6 +897,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
         let group = groups[index]
         let neighbor = group.layout.neighbor(of: session.tabID, .left, in: container.layoutSpace)
             ?? group.layout.neighbor(of: session.tabID, .up, in: container.layoutSpace)
+        rememberClosed(session)
         end(session)
         if let rest = group.layout.removing(session.tabID), rest.panes.contains(where: { self.session($0) != nil }) {
             group.layout = rest

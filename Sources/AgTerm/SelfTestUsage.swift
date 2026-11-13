@@ -3,6 +3,21 @@ import AgTermCore
 import AppKit
 
 extension SelfTest {
+    /// `AGTERM_USAGE_CHECK=time`: scans this Mac's real transcripts twice (a cold start, then a
+    /// rescan with nothing new) and prints how long each took. Build with `-c release` to time it.
+    static func usageTiming() {
+        let start = Date()
+        UsageScanner.shared.scan { first in
+            let cold = Date().timeIntervalSince(start)
+            let again = Date()
+            UsageScanner.shared.scan { _ in
+                print(String(format: "selftest: usage timing: first scan %.1fs, rescan %.2fs, %d sessions, $%.2f in 30 days",
+                             cold, Date().timeIntervalSince(again), first.summary(.month).totals.sessions, first.summary(.month).totals.costUSD))
+                exit(0)
+            }
+        }
+    }
+
     /// The Usage window: `AGTERM_USAGE_CHECK=1 AGTERM_SELFTEST=<dir>`. Stands in fixture events and
     /// stubbed limits (no transcripts read, no CLI asked), then snapshots the window in Ink and
     /// Paper as `usage-ink.png` and `usage-paper.png` without putting it on screen.
@@ -52,7 +67,7 @@ extension SelfTest {
     }
 
     /// The window's SwiftUI content, drawn without being on screen.
-    private static func snapshotHosted(_ window: NSWindow?, _ path: String) {
+    static func snapshotHosted(_ window: NSWindow?, _ path: String) {
         guard let view = window?.contentView else { return }
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()

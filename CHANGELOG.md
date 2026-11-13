@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.0 — 2026-11-12
+- Fixed: Project memory works in repos agmux doesn't know. Before, every save and session handoff failed there, so agents never kept anything.
+- Changed: Agents see what's saved for the repo, and the latest session handoffs, as soon as they start, and are told more clearly when to save something and when to write a handoff.
+- Changed: For repos agmux doesn't know, the memory's Markdown copies stay in agterm's own folder instead of an `.agmux` folder in the repo.
+- Fixed: Settings panes taller than the screen scroll instead of running off the bottom.
+- Added: Shell → Reopen Closed Tab (⇧⌘T) brings back the tab you closed last, with its history, and resumes the Claude Code, Codex or other agent conversation it was running.
+- Changed: If you had set the new-agent-tab shortcut to ⇧⌘T, it goes back to ⌥⌘T, since ⇧⌘T now reopens closed tabs. You can record another one in Settings → Agents.
+- Added: Shell → Recently Closed lists the last 10 tabs you closed, by agent and folder, to bring back any of them.
+- Added: Window → Project Memory shows what agents saved for the repo of the tab you're in, and their latest session handoffs.
+- Fixed: The Usage window opens with its numbers in a second or two instead of reading every transcript from the last 30 days again; agterm reads them in the background after launch and keeps what it read between launches.
+- Fixed: While the Usage window reads transcripts for the first time, it says so instead of showing $0.00 and empty lists.
+- Fixed: An account signed in both in your own config and as an agterm account shows once under Usage → Limits, not twice.
+- Changed: The Usage chart shows its busiest day, the daily average and the date range.
+- Fixed: The tab sidebar no longer shows a scroll bar when macOS is set to always show them.
+
 ## 1.2.13 — 2026-11-12
 - Added: With Perch installed, every agent agterm starts can use the Perch browser, where you're signed in to your sites. Each agent works in its own Perch tab group, named after the agent and the folder, and its tabs close when it quits. Perch still asks you before anything is sent, posted, bought or deleted.
 - Added: A tab whose agent has Perch tabs open shows a globe with the number of tabs, in the tab bar and the sidebar. Click it to bring those tabs forward in Perch.

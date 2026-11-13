@@ -39,14 +39,16 @@ public struct AgmuxProject: Equatable, Sendable {
         memoryEnv(dataDir: "\(home)/.agmux/projects/\(id)", sessionID: sessionID)
     }
 
-    /// The same, with the per-project stores in `dataDir` (agterm's own folder without agmux).
-    public func memoryEnv(dataDir data: String, sessionID: String) -> [String: String] {
-        [
+    /// The same, with the per-project stores in `dataDir` (agterm's own folder without agmux) and
+    /// the Markdown copies in `projectionDir` (default: the repo's .agmux folder, as agmux does).
+    public func memoryEnv(dataDir data: String, sessionID: String, projectionDir: String? = nil) -> [String: String] {
+        let markdown = projectionDir ?? "\(repoPath)/.agmux"
+        return [
             "AGMUX_PROJECT_ID": id,
             "AGMUX_MEMORY_STORE": "\(data)/memory.json",
             "AGMUX_HANDOFF_STORE": "\(data)/handoffs.json",
-            "AGMUX_MEMORY_MD": "\(repoPath)/.agmux/MEMORY.md",
-            "AGMUX_SESSIONS_MD": "\(repoPath)/.agmux/SESSIONS.md",
+            "AGMUX_MEMORY_MD": "\(markdown)/MEMORY.md",
+            "AGMUX_SESSIONS_MD": "\(markdown)/SESSIONS.md",
             "AGMUX_SESSION_ID": sessionID,
         ]
     }

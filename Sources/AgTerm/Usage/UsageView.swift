@@ -37,16 +37,20 @@ struct UsageView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
-                tiles
-                UsageChart(days: model.report.days, period: model.period)
-                HStack(alignment: .top, spacing: 16) {
-                    UsageRows(title: "Models", rows: summary.models, name: UsageFormat.model)
-                    UsageRows(title: "Projects", rows: summary.projects, name: { $0 })
+                if firstRead {
+                    reading
+                } else {
+                    tiles
+                    UsageChart(days: model.report.days, period: model.period)
+                    HStack(alignment: .top, spacing: 16) {
+                        UsageRows(title: "Models", rows: summary.models, name: UsageFormat.model)
+                        UsageRows(title: "Projects", rows: summary.projects, name: { $0 })
+                    }
                 }
                 UsageLimits(monitor: monitor)
             }
             .padding(.horizontal, 28)
-            .padding(.top, 36)
+            .padding(.top, 12)
             .padding(.bottom, 28)
             // Child views don't take the theme as input; rebuild them all when it changes.
             .id(Theme.palette.id)
@@ -55,6 +59,23 @@ struct UsageView: View {
     }
 
     private var summary: UsageSummary { model.report.summary(model.period) }
+
+    /// No report yet and one being read: zeros here would read as "you used nothing".
+    private var firstRead: Bool { model.scanning && model.updatedAt == nil }
+
+    private var reading: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text("Reading this Mac's Claude Code and Codex transcripts from the last 30 days. "
+                 + "The first time takes a few seconds; after that only new sessions are read.")
+                .font(.system(size: 12)).foregroundStyle(UsageInk.fg2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(UsageInk.surface))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(UsageInk.border))
+    }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {

@@ -1,9 +1,11 @@
 import AgTermCore
 import Foundation
 
-/// Reads Claude Code and Codex transcripts from the last 30 days into a `UsageReport`, only when
-/// the Usage window asks, a file per core. Each file's parser and read position are kept between
-/// scans, so a later scan reads only what was appended since; transcript text itself is never kept.
+/// Reads Claude Code and Codex transcripts from the last 30 days into a `UsageReport`, a file per
+/// core, once shortly after launch and whenever the Usage window asks. Each file's parser and read
+/// position are kept between scans, so a later scan reads only what was appended since, and each
+/// file's events are kept on disk (`UsageCache`), so a relaunch reads only transcripts that
+/// changed. Transcript text itself is never kept.
 final class UsageScanner {
     static let shared = UsageScanner()
 
@@ -14,12 +16,34 @@ final class UsageScanner {
         var modified: Date
     }
 
+    /// A transcript's events as the disk cache had them. Its parser state isn't kept, so if the
+    /// file changes it's read again from the start.
+    private struct CachedEvents: TranscriptLineParser {
+        let events: [UsageEvent]
+        mutating func feed(_ line: String) {}
+    }
+
     private static let chunkSize = 1 << 20
     /// Touched only on `queue`.
     private var entries: [String: Entry] = [:]
+    private var loadedDiskCache = false
+    /// On `queue`: entries changed since the disk cache was last written, and when that was.
+    private var unsaved = false
+    private var savedAt: Date?
+    /// Writing the cache takes seconds, so it's written at most this often; what changed since
+    /// is read again from the transcripts at the next launch.
+    private static let saveInterval: TimeInterval = 600
     private let queue = DispatchQueue(label: "agterm.usage", qos: .utility)
     /// Main thread: callers waiting on the scan in progress.
     private var waiting: [(UsageReport) -> Void] = []
+    /// Main thread: the latest report and when it was made, shown while the next scan runs.
+    private(set) var lastReport: (report: UsageReport, at: Date)?
+
+    private static var cacheURL: URL { AgentIntegration.supportDir.appendingPathComponent("usage-cache.lzfse") }
+    private static var cacheVersion: String {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "dev") \(info?["CFBundleVersion"] as? String ?? "")"
+    }
 
     #if DEBUG
     /// Self-test only: these events stand in for the transcripts.
@@ -41,10 +65,12 @@ final class UsageScanner {
             let events = stub ?? self.readAll(now: now)
             let report = UsageReport.build(events: events, now: now, calendar: .current)
             DispatchQueue.main.async {
+                self.lastReport = (report, Date())
                 let callers = self.waiting
                 self.waiting = []
                 callers.forEach { $0(report) }
             }
+            if stub == nil { self.saveDiskCacheIfDue() }
         }
     }
 
@@ -76,6 +102,10 @@ final class UsageScanner {
             }
         }
         let jobs = claude + codex
+        if !loadedDiskCache {
+            loadedDiskCache = true
+            entries.merge(Self.loadDiskCache()) { current, _ in current }
+        }
         let previous = entries
         // Files are independent, so they're read on every core; each slot is written by one iteration.
         var read = [Entry?](repeating: nil, count: jobs.count)
@@ -87,13 +117,48 @@ final class UsageScanner {
         // Files that aged out or were deleted give their memory back.
         var kept: [String: Entry] = [:]
         var events: [UsageEvent] = []
+        var changed = previous.count != jobs.count
         for (job, entry) in zip(jobs, read) {
             guard let entry else { continue }
             kept[job.found.url.path] = entry
             events += entry.parser.events
+            if previous[job.found.url.path]?.modified != entry.modified { changed = true }
         }
         entries = kept
+        if changed { unsaved = true }
         return events
+    }
+
+    // MARK: Disk cache
+
+    private static func loadDiskCache() -> [String: Entry] {
+        guard let data = try? Data(contentsOf: cacheURL) else { return [:] }
+        return UsageCache.decode(data, version: cacheVersion).mapValues {
+            Entry(parser: CachedEvents(events: $0.events), offset: 0, modified: Date(timeIntervalSinceReferenceDate: $0.modified))
+        }
+    }
+
+    /// On `queue`, after a scan has handed back its report.
+    private func saveDiskCacheIfDue() {
+        guard unsaved, savedAt.map({ Date().timeIntervalSince($0) >= Self.saveInterval }) ?? true else { return }
+        unsaved = false
+        savedAt = Date()
+        // Off this queue, so a scan never waits behind the write; entries are values, so this is a snapshot.
+        let snapshot = entries
+        DispatchQueue.global(qos: .background).async { Self.saveDiskCache(snapshot) }
+    }
+
+    private static func saveDiskCache(_ entries: [String: Entry]) {
+        // Seconds since 2001, Date's own reference: they come back as the same Date, so an
+        // unchanged transcript compares equal. (Via 1970 about half of them don't.)
+        let files = entries.mapValues { UsageCache.File(modified: $0.modified.timeIntervalSinceReferenceDate, events: $0.parser.events) }
+        guard let data = UsageCache.encode(files, version: cacheVersion) else { return }
+        do {
+            try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: cacheURL, options: .atomic)
+        } catch {
+            NSLog("agterm: couldn't save the Usage cache: %@", String(describing: error))
+        }
     }
 
     /// The file brought up to date, reading only the bytes added since the last scan. A file
@@ -102,6 +167,7 @@ final class UsageScanner {
         let url = job.found.url
         var entry = previous ?? Entry(parser: job.makeParser(), offset: 0, modified: .distantPast)
         guard entry.modified != job.found.modified else { return entry }
+        if entry.parser is CachedEvents { entry = Entry(parser: job.makeParser(), offset: 0, modified: .distantPast) }
         guard let handle = try? FileHandle(forReadingFrom: url) else { return previous }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0

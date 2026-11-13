@@ -24,6 +24,10 @@ final class ProjectMemoryTests: XCTestCase {
         let memory = try XCTUnwrap(resolve("/Users/sam/code/other/lib"))
         XCTAssertTrue(memory.project.id.hasPrefix("agterm-"))
         XCTAssertEqual(memory.dataDir, agtermDir + "/" + memory.project.id)
+        // The server's Markdown copies stay with the store, not as untracked files in the repo.
+        let env = memory.env(sessionID: "agterm-1")
+        XCTAssertEqual(env["AGMUX_MEMORY_MD"], memory.dataDir + "/MEMORY.md")
+        XCTAssertEqual(env["AGMUX_SESSIONS_MD"], memory.dataDir + "/SESSIONS.md")
         XCTAssertNil(resolve("/Users/sam/Downloads"), "no memory outside a repo agmux doesn't know")
     }
 

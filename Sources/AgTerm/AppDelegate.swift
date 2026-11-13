@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Read before anything this run could save tabs, so a first launch never looks like an update.
         let previousInstall = FileManager.default.fileExists(atPath: WorkspaceStore.fileURL.path)
+        AgentIntegration.freeReopenShortcut()
         NSApp.mainMenu = buildMenu()
         AgentIntegration.installShellIntegration()
         AgentTerminalView.installScrollSmoothing()
@@ -36,15 +37,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeepAwake.shared.start()
         PerchLink.shared.start()
         MacWorker.update()
+        // Read transcripts in the background once launch has settled, so Window → Usage opens ready.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { UsageScanner.shared.scan { _ in } }
     }
 
     /// Every other installed agent, listed when the menu opens (the PATH is found after launch).
     private let moreAgents = MoreAgentsMenu()
+    private lazy var recentlyClosed = RecentlyClosedMenu { [weak self] in self?.controller?.closedTabs }
 
     private func moreAgentsItem() -> NSMenuItem {
         let item = NSMenuItem(title: "New Tab With Agent", action: nil, keyEquivalent: "")
         let menu = NSMenu(title: "New Tab With Agent")
         menu.delegate = moreAgents
+        item.submenu = menu
+        return item
+    }
+
+    private func recentlyClosedItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Recently Closed", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Recently Closed")
+        menu.delegate = recentlyClosed
         item.submenu = menu
         return item
     }
@@ -208,6 +220,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(submenu("Shell", [
             item("New Tab", #selector(MainWindowController.newTab), "t"),
+            item("Reopen Closed Tab", #selector(MainWindowController.reopenClosedTab), "t", [.command, .shift]),
+            recentlyClosedItem(),
         ] + (!CloudAccount.isEnabled ? [] : [
             item("New Cloud Tab", #selector(MainWindowController.newCloudTab)),
             item("Move All Tabs to Cloud…", #selector(MainWindowController.moveAllToCloud)),
@@ -258,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Team Dashboard", #selector(AppDelegate.showTeamDashboard)),
             item("Usage", #selector(MainWindowController.showUsage), "u", [.command, .shift]),
+            item("Project Memory", #selector(MainWindowController.showProjectMemory)),
             .separator(),
             item("Show Next Tab", #selector(MainWindowController.nextTab), "]", [.command, .shift]),
             item("Show Previous Tab", #selector(MainWindowController.previousTab), "[", [.command, .shift]),

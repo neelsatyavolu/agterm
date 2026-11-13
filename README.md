@@ -58,6 +58,8 @@ The buttons at the top right of the window work on the tab you're typing in; hov
 - **Worktrees (⇧⌘N).** A new branch in its own folder, `~/.agterm/worktrees/<repo>/<branch>`, with ignored `.env`, `.env.*` and `.envrc` files copied in, opened in a new tab running the agent you pick and, optionally, its first task. If the repo has `.agterm/worktree-setup.sh`, the tab runs it first. Remove This Worktree deletes the folder (and, if you tick it, the branch) after saying what would be lost.
 - **Hand off.** Writes the conversation so far to a file in the repo's `.git/agterm/handoffs` and starts Claude Code, Codex, Grok or Gemini CLI in a new tab, told to read it and carry on.
 - **Usage (⇧⌘U).** Tokens and estimated cost by day, model and project, read from Claude Code and Codex transcripts on this Mac (estimates at API prices, not your bill), and each login's limits.
+- **Project memory.** Agents started in agterm share one memory per repo: each starts with what earlier agents saved and their latest handoffs, and saves what the next one should know. Window → Project Memory shows it.
+- **Reopen closed tabs.** ⇧⌘T brings back the tab you closed last and resumes its agent conversation; Shell → Recently Closed lists the last 10.
 
 ## Switching accounts when an agent runs out
 
@@ -107,6 +109,7 @@ agterm reads signals the terminal already has, so it needs no hooks or plugins:
 | Keys | Action |
 |---|---|
 | ⌘T / ⌘W | New tab (in the current tab's folder) / close the tab you're typing in |
+| ⇧⌘T | Reopen the tab you closed last, with its history, resuming the agent conversation it was running |
 | ⌘D / ⇧⌘D | Split right / down: an empty pane opens, then pick another tab (or click one in the tabs) or a new shell to show there. Drag the line between panes to resize. Shell → Unsplit puts each back in its own tab |
 | ⌘[ ⌘], ⌥⌘ + arrows | Move between the panes of a split |
 | ⌃⌘S | View → Tabs on the Left: a sidebar showing each tab's agent and logo, model, spend and run time; with many tabs it shows less so they fit |

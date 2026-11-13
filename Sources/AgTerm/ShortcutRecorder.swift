@@ -18,6 +18,12 @@ extension AgentIntegration {
             NotificationCenter.default.post(name: .agtermShortcutChanged, object: nil)
         }
     }
+
+    /// ⇧⌘T is Reopen Closed Tab now; a new-agent-tab shortcut recorded on it goes back to ⌥⌘T.
+    static func freeReopenShortcut() {
+        guard newAgentTabShortcut == KeyShortcut(key: "t", modifiers: [.command, .shift]) else { return }
+        newAgentTabShortcut = .newAgentTabDefault
+    }
 }
 
 extension KeyShortcut {

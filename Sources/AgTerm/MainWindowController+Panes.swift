@@ -160,6 +160,8 @@ extension MainWindowController {
             return (selectedGroup?.layout.panes.count ?? 0) > 1
         case #selector(splitRight), #selector(splitDown):
             return focusedSession != nil
+        case #selector(reopenClosedTab):
+            return !closedTabs.isEmpty
         case #selector(toggleChat):
             let chat = focusedSession.map { chats[$0.tabID] != nil } ?? false
             item.state = chat ? .on : .off

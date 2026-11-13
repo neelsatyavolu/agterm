@@ -197,6 +197,9 @@ extension MainWindowController {
 
     @objc func showUsage() { UsageWindowController.shared.show() }
 
+    /// Window → Project Memory, for the repo of the tab you're in.
+    @objc func showProjectMemory() { ProjectMemoryWindowController.shared.show(cwd: focusedSession?.cwd ?? NSHomeDirectory()) }
+
     @objc func newWorktreeTab() {
         guard let session = focusedSession, !session.isCloud, session.git != nil, let window, window.attachedSheet == nil else { return NSSound.beep() }
         let cwd = session.cwd, branch = session.git?.branch, agent = session.agentName

@@ -59,6 +59,8 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_CHAT_CHECK"] == "1" { return chatCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
+        if ProcessInfo.processInfo.environment["AGTERM_REOPEN_CHECK"] == "1" { return reopenCheck(controller, outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_MEMORY_CHECK"] == "1" { return memoryCheck(outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_FEATURE_CHECK"] == "1" { return featureCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PERSIST_CHECK"] == "1" { return persistCheck(controller) }
         if ProcessInfo.processInfo.environment["AGTERM_CLOUD_CHECK"] == "1" { return cloudCheck(controller, outDir: outDir) }
@@ -74,6 +76,7 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_AWAKE_CHECK"] == "1" { return awakeCheck(outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_SEARCH_CHECK"] == "1" { return searchCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_USAGE_CHECK"] == "1" { return usageCheck(outDir: outDir) }
+        if ProcessInfo.processInfo.environment["AGTERM_USAGE_CHECK"] == "time" { return usageTiming() }
         if ProcessInfo.processInfo.environment["AGTERM_MACS_CHECK"] == "1" { return macsCheck(outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_WELCOME_CHECK"] == "1" { return welcomeCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_REVIEW_CHECK"] == "1" { return reviewCheck(controller, outDir: outDir) }

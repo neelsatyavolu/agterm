@@ -53,8 +53,15 @@ final class SettingsWindowController: NSWindowController {
 private final class SettingsTabs: NSTabViewController {
     static let width: CGFloat = 600
 
+    /// The tallest a pane gets before it scrolls: the screen's height less the title and toolbar.
+    static var maxPaneHeight: CGFloat { max(300, (NSScreen.main?.visibleFrame.height ?? 900) - 140) }
+
     func add<Pane: View>(_ label: String, symbol: String, _ pane: Pane) {
-        let host = NSHostingController(rootView: pane.formStyle(.grouped).frame(width: Self.width).fixedSize(horizontal: false, vertical: true))
+        // As tall as the pane, up to the screen's height; past that it scrolls.
+        let content = pane.formStyle(.grouped).scrollDisabled(true).frame(width: Self.width).fixedSize(horizontal: false, vertical: true)
+        let root = ScrollView(.vertical) { content }.frame(width: Self.width).frame(maxHeight: Self.maxPaneHeight)
+            .fixedSize(horizontal: false, vertical: true)
+        let host = NSHostingController(rootView: root)
         host.sizingOptions = [.preferredContentSize]
         host.title = label
         let item = NSTabViewItem(viewController: host)
