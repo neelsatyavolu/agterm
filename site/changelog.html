@@ -39,6 +39,28 @@
       </header>
 
       <div class="cl">
+        <section class="cl-release" id="v1.3.0" aria-labelledby="v1.3.0-title">
+          <header class="cl-head">
+            <h2 id="v1.3.0-title"><a href="#v1.3.0">1.3.0</a></h2>
+            <p class="meta"><time datetime="2026-11-12">November 12, 2026</time></p>
+          </header>
+          <ul class="cl-items">
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>Project memory works in repos agmux doesn&#x27;t know. Before, every save and session handoff failed there, so agents never kept anything.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>Agents see what&#x27;s saved for the repo, and the latest session handoffs, as soon as they start, and are told more clearly when to save something and when to write a handoff.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>For repos agmux doesn&#x27;t know, the memory&#x27;s Markdown copies stay in agterm&#x27;s own folder instead of an <code>.agmux</code> folder in the repo.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>Settings panes taller than the screen scroll instead of running off the bottom.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>Shell → Reopen Closed Tab (⇧⌘T) brings back the tab you closed last, with its history, and resumes the Claude Code, Codex or other agent conversation it was running.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>If you had set the new-agent-tab shortcut to ⇧⌘T, it goes back to ⌥⌘T, since ⇧⌘T now reopens closed tabs. You can record another one in Settings → Agents.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>Shell → Recently Closed lists the last 10 tabs you closed, by agent and folder, to bring back any of them.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>Window → Project Memory shows what agents saved for the repo of the tab you&#x27;re in, and their latest session handoffs.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>The Usage window opens with its numbers in a second or two instead of reading every transcript from the last 30 days again; agterm reads them in the background after launch and keeps what it read between launches.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>While the Usage window reads transcripts for the first time, it says so instead of showing $0.00 and empty lists.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>An account signed in both in your own config and as an agterm account shows once under Usage → Limits, not twice.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>The Usage chart shows its busiest day, the daily average and the date range.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>The tab sidebar no longer shows a scroll bar when macOS is set to always show them.</span></li>
+          </ul>
+        </section>
+
         <section class="cl-release" id="v1.2.13" aria-labelledby="v1.2.13-title">
           <header class="cl-head">
             <h2 id="v1.2.13-title"><a href="#v1.2.13">1.2.13</a></h2>
