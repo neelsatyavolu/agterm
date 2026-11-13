@@ -80,6 +80,8 @@ struct CodexRolloutParser {
     var eligibleToolTurns: Set<String> = []
     var firstNativeAt: Date?
     var seenPatches: Set<String> = []
+    /// Every event of a rollout shares one copy of its model and project.
+    var strings = StringPool()
 
     init(sessionID: String, prices: PriceCatalog) {
         self.parsedID = sessionID
@@ -209,8 +211,8 @@ struct CodexRolloutParser {
         // pricing cannot be reconstructed from it.
         let incomplete = model.isEmpty || last == nil || (try? cost.get()) == nil || last.map { $0 != t } == true
             || (prices.requiresCacheWriteUsage(model: model) && !writeReported)
-        var e = UsageEvent(at: at, provider: "Codex", model: model,
-                           projectKey: TeamsLabels.projectKey(workDir: cwd ?? "", private: false), sessionID: parsedID)
+        var e = UsageEvent(at: at, provider: "Codex", model: strings.intern(model),
+                           projectKey: strings.intern(TeamsLabels.projectKey(workDir: cwd ?? "", private: false)), sessionID: parsedID)
         (e.tokensIn, e.tokensOut, e.cacheRead, e.cacheWrite, e.reasoning) =
             (split.uncached, t.output, split.cached, split.cacheWrite, t.reasoning)
         e.costUSD = incomplete ? 0 : ((try? cost.get()) ?? 0)

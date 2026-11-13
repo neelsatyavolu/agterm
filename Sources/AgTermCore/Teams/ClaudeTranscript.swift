@@ -29,6 +29,8 @@ public enum ClaudeTranscript {
         var keyed: [String: Int] = [:]
         // One response's blocks span several lines; a repeated block is still one call.
         var seenToolIDs: Set<String> = []
+        // Every event of a file shares one copy of its model and project.
+        var strings = StringPool()
 
         public init(sessionID: String, fallbackDir: String, prices: PriceCatalog = .builtIn) {
             self.sessionID = sessionID
@@ -75,8 +77,8 @@ public enum ClaudeTranscript {
                 pureInput: tokensIn, pureOutput: tokensOut, cacheRead: cacheRead,
                 cacheWrite: max(cacheWrite - hourWrite, 0), cacheWrite1h: hourWrite))
 
-            var event = UsageEvent(at: at, provider: "ClaudeCode", model: model,
-                                   projectKey: TeamsLabels.projectKey(workDir: cwdSeen ?? fallbackDir, private: false),
+            var event = UsageEvent(at: at, provider: "ClaudeCode", model: strings.intern(model),
+                                   projectKey: strings.intern(TeamsLabels.projectKey(workDir: cwdSeen ?? fallbackDir, private: false)),
                                    sessionID: sessionID)
             (event.tokensIn, event.tokensOut, event.cacheRead, event.cacheWrite) = (tokensIn, tokensOut, cacheRead, cacheWrite)
             switch cost {

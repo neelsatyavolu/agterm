@@ -36,12 +36,14 @@ public enum UsageCache {
         guard lines.next().map(String.init) == magic + "\t" + version else { return [:] }
         var files: [String: File] = [:]
         var path: String?
+        // Provider, model, project and session repeat on nearly every row: keep one copy of each.
+        var strings = StringPool()
         for line in lines {
             let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
             if fields.first == "F", fields.count == 3, let modified = Double(fields[2]) {
                 path = String(fields[1])
                 files[String(fields[1])] = File(modified: modified, events: [])
-            } else if fields.first == "E", let path, let event = event(fields) {
+            } else if fields.first == "E", let path, let event = event(fields, strings: &strings) {
                 files[path]?.events.append(event)
             } else {
                 return [:]
@@ -83,13 +85,13 @@ public enum UsageCache {
         return (["E", String(e.at.timeIntervalSince1970)] + strings + numbers + [String(e.costUSD), flags]).joined(separator: "\t")
     }
 
-    private static func event(_ f: [Substring]) -> UsageEvent? {
+    private static func event(_ f: [Substring], strings: inout StringPool) -> UsageEvent? {
         guard f.count == 15, let at = Double(f[1]), let cost = Double(f[13]) else { return nil }
         let numbers = f[7...12].compactMap { Int($0) }
         let flags = Array(f[14])
         guard numbers.count == 6, flags.count == 4 else { return nil }
-        var e = UsageEvent(at: Date(timeIntervalSince1970: at), provider: String(f[2]), model: String(f[3]),
-                           projectKey: String(f[4]), sessionID: String(f[5]))
+        var e = UsageEvent(at: Date(timeIntervalSince1970: at), provider: strings.intern(f[2]), model: strings.intern(f[3]),
+                           projectKey: strings.intern(f[4]), sessionID: strings.intern(f[5]))
         e.claudeRowKey = f[6].isEmpty ? nil : String(f[6])
         (e.tokensIn, e.tokensOut, e.cacheRead, e.cacheWrite, e.reasoning, e.toolCalls) =
             (numbers[0], numbers[1], numbers[2], numbers[3], numbers[4], numbers[5])

@@ -176,12 +176,16 @@ final class UsageScanner {
         do {
             try handle.seek(toOffset: entry.offset)
             var pending = Data()
-            while let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty {
+            // A pool per chunk: on the scan's worker threads nothing drains until the scan ends,
+            // so every chunk read would otherwise stay in memory until then (gigabytes on a first scan).
+            while try autoreleasepool(invoking: { () throws -> Bool in
+                guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else { return false }
                 pending.append(chunk)
                 let used = feedLines(pending, to: &entry.parser, onlyWith: job.usageLinesOnly ? usageNeedle : nil)
                 entry.offset += UInt64(used)
                 pending = used == pending.count ? Data() : pending.subdata(in: used..<pending.count)
-            }
+                return true
+            }) {}
         } catch {
             NSLog("agterm: couldn't read %@ for Usage: %@", url.path, String(describing: error))
             complete = false

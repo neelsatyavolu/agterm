@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.1 — 2026-11-12
+- Fixed: agterm uses much less memory while it reads your Claude Code and Codex transcripts for Usage. Before, the first read after an update could briefly take over 10 GB and leave the app holding gigabytes afterwards.
+
 ## 1.3.0 — 2026-11-12
 - Fixed: Project memory works in repos agmux doesn't know. Before, every save and session handoff failed there, so agents never kept anything.
 - Changed: Agents see what's saved for the repo, and the latest session handoffs, as soon as they start, and are told more clearly when to save something and when to write a handoff.
