@@ -64,6 +64,8 @@ final class TeamsPricingTests: XCTestCase {
 
     func testPricingAuditVerifiedStandardRates() {
         let cases: [(String, Rates)] = [
+            ("gpt-6.2-astra", Rates(input: 8, output: 40, cacheRead: 0.4, cacheWrite: 10)),
+            ("gpt-6.2-sol", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
             ("gpt-6-astra", Rates(input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5)),
             ("gpt-6.1-sol", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
             ("openai/gpt-6.1-sol", Rates(input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5)),
@@ -117,7 +119,7 @@ final class TeamsPricingTests: XCTestCase {
         let claude = cost("claude-fable-5.1", TokenCostSpec(pureInput: 10_000, pureOutput: 20_000, cacheRead: 30_000,
                                                             cacheWrite: 40_000, cacheWrite1h: 50_000))
         XCTAssertEqual(claude, 0.1 + 1.0 + 0.0075 + 0.5 + 1.0, accuracy: 1e-9)
-        for (model, input, read, write) in [("gpt-6-astra", 10.0, 1.0, 12.5), ("gpt-6.1-sol", 2.0, 0.1, 2.5),
+        for (model, input, read, write) in [("gpt-6.2-astra", 8.0, 0.4, 10.0), ("gpt-6.2-sol", 2.0, 0.1, 2.5), ("gpt-6-astra", 10.0, 1.0, 12.5), ("gpt-6.1-sol", 2.0, 0.1, 2.5),
                                              ("gpt-6.1-terra", 1.0, 0.05, 1.25), ("gpt-6-sol", 2.0, 0.2, 2.5), ("gpt-6-luna", 0.1, 0.01, 0.125)] {
             for prompt in [271_999, 272_000, 272_001] {
                 let multiplier = prompt > 272_000 ? 2.0 : 1.0
@@ -142,7 +144,7 @@ final class TeamsPricingTests: XCTestCase {
 
     func testCacheWriteUsageRequirementUsesOnlyKnownDistinctTariffs() {
         for model in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-                      "openai/gpt-5.6", "claude-sonnet-5", "gpt-6.1-sol", "gpt-6.1-terra", "claude-sonnet-5-5"] {
+                      "openai/gpt-5.6", "claude-sonnet-5", "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6.1-sol", "gpt-6.1-terra", "claude-sonnet-5-5"] {
             XCTAssertTrue(builtIn.requiresCacheWriteUsage(model: model), model)
         }
         for model in ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "grok-4.6", "gpt-6-unknown", "codex-auto-review", ""] {

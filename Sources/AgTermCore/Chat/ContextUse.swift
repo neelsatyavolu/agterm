@@ -42,7 +42,7 @@ public enum ContextWindow {
         "claude-fable-5": 1_000_000, "claude-opus-5": 1_000_000, "claude-opus-4-8": 1_000_000, "claude-opus-4-7": 1_000_000,
         "claude-opus-4-6": 1_000_000, "claude-opus-4-5": 200_000, "claude-sonnet-5": 1_000_000, "claude-sonnet-4-6": 1_000_000,
         "claude-haiku-4-5": 200_000, "opus": 1_000_000, "sonnet": 1_000_000, "haiku": 200_000, "opusplan": 1_000_000,
-        "gpt-6.1-sol": 272_000, "gpt-6-astra": 272_000, "gpt-6-sol": 272_000, "gpt-6-luna": 272_000, "gpt-5.6-sol": 372_000,
+        "gpt-6.2-astra": 272_000, "gpt-6.2-sol": 272_000, "gpt-6.1-sol": 272_000, "gpt-6-astra": 272_000, "gpt-6-sol": 272_000, "gpt-6-luna": 272_000, "gpt-5.6-sol": 372_000,
         "gpt-5.6-terra": 372_000, "gpt-5.6-luna": 372_000, "gpt-5.4": 258_000, "gpt-5.4-mini": 272_000, "gpt-5.3-codex": 200_000,
         "gpt-5.2-codex": 200_000, "o4-mini": 200_000, "o3": 200_000, "codex-mini": 200_000,
         "grok-4.7": 500_000, "grok-4.7-build-fast": 500_000, "grok-4.6": 500_000, "grok-4.5": 500_000,

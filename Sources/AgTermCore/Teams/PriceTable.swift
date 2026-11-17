@@ -36,6 +36,8 @@ enum PriceTable {
         (["claude-haiku-5-5"], Rates(input: 0.10, output: 0.50, cacheRead: 0.01, cacheWrite: 0.125)),
         (["claude-haiku-4-5"], Rates(input: 1.0, output: 5.0, cacheRead: 0.10, cacheWrite: 1.25)),
         (["claude-3-5-haiku"], Rates(input: 0.80, output: 4.0, cacheRead: 0.08, cacheWrite: 1.0)),
+        (["gpt-6.2-astra"], Rates(input: 8.0, output: 40.0, cacheRead: 0.40, cacheWrite: 10.0)),
+        (["gpt-6.2-sol"], Rates(input: 2.0, output: 10.0, cacheRead: 0.10, cacheWrite: 2.50)),
         (["gpt-6-astra"], Rates(input: 10.0, output: 50.0, cacheRead: 1.0, cacheWrite: 12.50)),
         (["gpt-6.1-sol"], Rates(input: 2.0, output: 10.0, cacheRead: 0.10, cacheWrite: 2.50)),
         (["gpt-6.1-terra"], Rates(input: 1.0, output: 5.0, cacheRead: 0.05, cacheWrite: 1.25)),
@@ -70,7 +72,7 @@ enum PriceTable {
     /// has one: 5x on every class once the prompt (cache reads and writes included)
     /// is over 100k.
     private static let openAILong: Set<String> = ["gpt-5.4", "gpt-5.4-2026-03-05", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol",
-        "gpt-daybreak-blue-latest", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna"]
+        "gpt-daybreak-blue-latest", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna"]
     private static let grokLong: Set<String> = ["grok-4.7", "grok-4.6", "grok-4.5", "grok-build-0.1", "grok-4.3",
         "grok-4.20-multi-agent-0309", "grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning"]
 
