@@ -96,6 +96,32 @@ final class PromptReadTests: XCTestCase {
         XCTAssertEqual(prompt?.choices.map(\.selected), [true, false, false])
     }
 
+    func testReadsClaudeMultiSelectWithDescriptions() {
+        let screen = """
+            ←  ☐ Emails  ☐ Old site  ✔ Extras  ✔ Submit  →
+
+            Which other College Apps features should come over to Forge before it's retired?
+
+            ❯ 1. [✔] Forwarded-email inbox
+                 Students forward a portal email to a private address, and the school
+                 and topic get set up for them.
+              2. [ ] Command-line tool
+                 The confidential collegeapps CLI for checking scrapes and fetching logins.
+              3. [ ] Settings
+                 Pick list.
+              4. [ ] Type something
+                 Submit
+            ───────────────────────────────────────
+              5. Chat about this
+
+            Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+            """.components(separatedBy: "\n")
+        let prompt = PermissionPrompt.read(screen)
+        XCTAssertEqual(prompt?.question, "Which other College Apps features should come over to Forge before it's retired?")
+        XCTAssertEqual(prompt?.choices.map(\.key), ["1", "2", "3", "4", "5"])
+        XCTAssertEqual(prompt?.choices[1].label, "[ ] Command-line tool")
+    }
+
     func testReadsBoxedCodexChoices() {
         let prompt = PermissionPrompt.read(["│ Allow command? │", "│ › 1. Yes │", "│   2. No, tell Codex │", "│ esc cancel │"])
         XCTAssertEqual(prompt?.choices.map(\.label), ["Yes", "No, tell Codex"])

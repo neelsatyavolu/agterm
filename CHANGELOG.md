@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.2 — 2026-11-16
+- Fixed: agterm Remote shows every answer to a Claude question that has a description under each answer, such as a multi-select question. Before, it showed only the first one.
+
 ## 1.3.1 — 2026-11-12
 - Fixed: agterm uses much less memory while it reads your Claude Code and Codex transcripts for Usage. Before, the first read after an update could briefly take over 10 GB and leave the app holding gigabytes afterwards.
 

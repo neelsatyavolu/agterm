@@ -11,7 +11,9 @@ import Foundation
 ///     Esc to cancel · Tab to amend         enter confirm · esc skip        1/2:select  │  Tab:next option
 public enum PermissionPrompt {
     /// How far up from the bottom to look, in non-blank lines.
-    static let window = 15
+    static let window = 20
+    /// How many description lines may sit between one answer and the next.
+    static let gap = 4
     /// Claude Code's, Codex's and Gemini CLI's marks for the highlighted answer.
     private static let cursors: Set<Character> = ["❯", "›", "●"]
     private static let borders = CharacterSet(charactersIn: "│┃║|").union(.whitespaces)
@@ -46,12 +48,8 @@ public enum PermissionPrompt {
         guard let cursor = parsed.firstIndex(where: { $0?.selected == true }) else { return nil }
         // The answers are the run of consecutive numbers around the cursor; numbered output above is not.
         var first = cursor, last = cursor
-        while first > 0, let above = parsed[first - 1], let here = parsed[first], Int(above.key) == Int(here.key)! - 1 {
-            first -= 1
-        }
-        while last + 1 < parsed.count, let below = parsed[last + 1], let here = parsed[last], Int(below.key) == Int(here.key)! + 1 {
-            last += 1
-        }
+        while let above = neighbour(of: first, step: -1, in: parsed, tail: tail) { first = above }
+        while let below = neighbour(of: last, step: 1, in: parsed, tail: tail) { last = below }
         // The question is the nearest line above with a "?", up to it (Codex runs on after it),
         // or else the first line of the paragraph above the choices ("Hooks need review").
         let question = tail[..<first].last { $0.contains("?") && !$0.contains("? for shortcuts") }
@@ -59,6 +57,19 @@ public enum PermissionPrompt {
             ?? grokAction(tail[..<first], radio: radioChoice(tail[cursor]) != nil)
             ?? heading(above: rows[first], in: trimmed, from: rows[0])
         return PromptInfo(question: question, choices: parsed[first...last].compactMap { $0 })
+    }
+
+    /// The next answer up (`step` -1) or down (+1) from `index` when its number follows on, past
+    /// up to `gap` lines of description (Claude's question tool puts one under each answer).
+    private static func neighbour(of index: Int, step: Int, in parsed: [PromptChoice?], tail: [String]) -> Int? {
+        guard let key = parsed[index].flatMap({ Int($0.key) }) else { return nil }
+        var next = index + step
+        while parsed.indices.contains(next), abs(next - index) <= gap + 1 {
+            if let choice = parsed[next] { return Int(choice.key) == key + step ? next : nil }
+            if tail[next].contains("?") { return nil }
+            next += step
+        }
+        return nil
     }
 
     /// The top line of the paragraph just above `row`, not looking above `top`.
