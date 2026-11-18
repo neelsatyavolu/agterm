@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.4 — 2026-11-17
+- Fixed: Grok tabs that were already running when agterm restarted or updated show their model, tokens, cost and lines changed, and their conversation in the Chat view. Before, those stayed empty until you started Grok again.
+
 ## 1.3.3 — 2026-11-17
 - Added: Grok tabs show their model, tokens, estimated cost and lines changed, like Claude Code and Codex tabs. They fill in when Grok's first turn ends.
 

@@ -30,7 +30,9 @@ final class TranscriptFollower: @unchecked Sendable {
         /// The tab's agent, when agterm can read its transcript on this Mac.
         @MainActor init?(_ session: TerminalSession) {
             guard !session.isCloud, let name = session.agentName, let agent = TimelineFeed.Agent(rawValue: name) else { return nil }
-            let since = session.agentStartedAt
+            // When the agent's process started, not when agterm saw it: after agterm relaunches,
+            // a running agent's launch record and files are older than this run of agterm.
+            let since = session.agentRunningSince
             let launched = agent == .claude ? nil : TranscriptFollower.launchSession(tabID: session.tabID, agent: agent, since: since)
             self.init(agent: agent, claudeSession: session.claudeSessionID, cwd: session.cwd, since: since,
                       group: agent == .codex || agent == .agl ? session.foregroundGroup : nil,
