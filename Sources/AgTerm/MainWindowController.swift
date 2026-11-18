@@ -218,7 +218,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                 self?.sessions.filter { $0.cwd == path }.forEach { $0.updateGit(summary) }
             }
         }
-        // Agent tabs: what changed since that agent started. Claude and Codex are counted from
+        // Agent tabs: what changed since that agent started. Claude, Codex and Grok are counted from
         // their own transcripts (works outside git repos); other agents from a git snapshot.
         for session in sessions where session.agentName != nil {
             // Every agent gets a snapshot when it starts: the diff panel's Agent view compares with it.
@@ -236,6 +236,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, TabBarDe
                     transcripts.codexTitle(cwd: session.cwd, since: start) { [weak session] title in session?.updateTranscriptTitle(title) }
                 }
                 continue
+            }
+            // Grok writes its totals only when a turn ends, so until its first one the git diff shows.
+            if session.agentName == "grok", let target = TranscriptFollower.Target(session) {
+                transcripts.grok(target) { [weak session] usage in
+                    if let usage { session?.updateAgentUsage(usage) }
+                }
+                if session.agentUsage != nil { continue }
             }
             if let baseline = session.agentBaseline {
                 // On the same schedule as its folder's git status.

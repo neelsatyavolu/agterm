@@ -63,6 +63,21 @@ final class TranscriptDiff {
         }
     }
 
+    /// Grok: the totals Grok writes beside the conversation the tab shows, after each turn.
+    func grok(_ target: TranscriptFollower.Target, completion: @escaping (AgentUsage?) -> Void) {
+        run(key: "grok:" + target.cwd + (target.grokSession ?? ""), completion: completion) {
+            guard let dir = TranscriptFollower.locate(target)?.deletingLastPathComponent(),
+                  let usage = try? String(contentsOf: dir.appendingPathComponent("usage.json"), encoding: .utf8),
+                  let grok = GrokUsage(usage: usage, signals: try? String(contentsOf: dir.appendingPathComponent("signals.json"), encoding: .utf8))
+            else { return nil }
+            var result = AgentUsage(added: grok.added, removed: grok.removed)
+            result.model = grok.model
+            result.tokens = grok.tokens
+            result.costUSD = grok.costUSD
+            return result
+        }
+    }
+
     /// Claude Code: the session's name from its transcript, for when the terminal title has none.
     func claudeTitle(sessionID: String, completion: @escaping (String?) -> Void) {
         run(key: "claude-title:" + sessionID, completion: completion) {

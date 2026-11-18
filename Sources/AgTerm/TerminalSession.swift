@@ -520,7 +520,7 @@ final class TerminalSession: NSObject, AgentTerminalViewDelegate {
         onChange?()
     }
 
-    /// Claude Code and Codex: lines changed, plus the model and spend, from the transcript.
+    /// Claude Code, Codex and Grok: lines changed, plus the model and spend, from the transcript.
     func updateAgentUsage(_ usage: AgentUsage) {
         guard usage != agentUsage || agentDiff?.added != usage.added || agentDiff?.removed != usage.removed else { return }
         agentUsage = usage

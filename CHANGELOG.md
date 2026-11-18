@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.3 — 2026-11-17
+- Added: Grok tabs show their model, tokens, estimated cost and lines changed, like Claude Code and Codex tabs. They fill in when Grok's first turn ends.
+
 ## 1.3.2 — 2026-11-16
 - Fixed: agterm Remote shows every answer to a Claude question that has a description under each answer, such as a multi-select question. Before, it showed only the first one.
 
