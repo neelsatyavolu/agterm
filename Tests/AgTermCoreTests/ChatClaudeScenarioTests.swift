@@ -559,6 +559,8 @@ final class ChatClaudeScenarioTests: XCTestCase {
         case .tool(let t): return "tool \(t.status) \(t.lead) [\(t.verb)] \(cut(t.subject ?? "")) body=\(cut(t.body ?? ""))"
         case .agent(let a): return "agent \(a.status) \(a.label) \(cut(a.title ?? "")) result=\(cut(a.result ?? ""))"
         case .interrupted: return "■ interrupted"
+        case .worked(_, let rows, let ms): return "worked[\(rows.count)] \(ChatTurns.summary(rows).joined(separator: " · ")) \(ms ?? -1)ms"
+        case .changes(_, let edits): return "changes \(edits.map(\.path).joined(separator: ", "))"
         }
     }
 }

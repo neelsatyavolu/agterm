@@ -13,6 +13,7 @@ enum ChatFixtures {
         .codex: ["user", "assistant", "thinking", "command", "edit", "agent", "interrupted"],
         .grok: ["user", "assistant", "thinking", "tools", "command", "agent"],
         .agl: ["user", "assistant", "thinking", "edit", "command"],
+        .agy: ["user", "assistant", "thinking", "tools", "edit", "command", "commands"],
     ]
 
     /// agl's session lines (`~/.agl/sessions/<cwd>/<stamp>-<id>.jsonl`).
@@ -63,11 +64,13 @@ enum ChatFixtures {
         let files: [TimelineFeed.Agent: URL] = [.claude: base.appendingPathComponent("claude.jsonl"),
                                                 .codex: base.appendingPathComponent("codex.jsonl"),
                                                 .grok: base.appendingPathComponent("chat_history.jsonl"),
-                                                .agl: base.appendingPathComponent("agl.jsonl")]
+                                                .agl: base.appendingPathComponent("agl.jsonl"),
+                                                .agy: base.appendingPathComponent("agy.db")]
         try? (claude.joined(separator: "\n") + "\n").write(to: files[.claude]!, atomically: true, encoding: .utf8)
         try? (codex.joined(separator: "\n") + "\n").write(to: files[.codex]!, atomically: true, encoding: .utf8)
         try? (grok.joined(separator: "\n") + "\n").write(to: files[.grok]!, atomically: true, encoding: .utf8)
         try? (agl.joined(separator: "\n") + "\n").write(to: files[.agl]!, atomically: true, encoding: .utf8)
+        AgyFixture.write(to: files[.agy]!)
         return files
     }
 

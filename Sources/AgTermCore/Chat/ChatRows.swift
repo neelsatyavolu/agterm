@@ -62,6 +62,11 @@ public struct ChatEdit: Equatable, Sendable {
     public var preview: ArraySlice<ChatDiffLine> { lines.prefix(ChatRows.editPreviewLines) }
     /// The "… N more lines" count.
     public var hiddenLines: Int { max(0, lines.count - ChatRows.editPreviewLines) }
+
+    /// The same edit with at most `count` diff lines, for a view that shows them all.
+    public func capped(_ count: Int) -> ChatEdit {
+        ChatEdit(id: id, verb: verb, path: path, additions: additions, deletions: deletions, status: status, lines: Array(lines.prefix(count)))
+    }
 }
 
 /// A shell command and what it printed.
@@ -128,11 +133,15 @@ public enum ChatRow: Equatable, Sendable {
     case tool(ChatTool)
     case agent(ChatAgent)
     case interrupted(id: String)
+    /// A finished turn's steps (thinking, tools, commands, edits, narration) folded into one line.
+    case worked(id: String, rows: [ChatRow], durationMs: Int?)
+    /// The files a finished turn changed, once each, with their diffs.
+    case changes(id: String, edits: [ChatEdit])
 
     public var id: String {
         switch self {
         case .user(let id, _, _), .assistant(let id, _, _), .thinking(let id, _), .tools(let id, _, _), .commands(let id, _, _),
-             .interrupted(let id):
+             .interrupted(let id), .worked(let id, _, _), .changes(let id, _):
             return id
         case .edit(let edit): return edit.id
         case .command(let command): return command.id
@@ -143,8 +152,12 @@ public enum ChatRow: Equatable, Sendable {
 
     /// Whether `id` is this row, or a command folded into it.
     public func holds(_ id: String) -> Bool {
-        if case .commands(_, let commands, _) = self, commands.contains(where: { $0.id == id }) { return true }
-        return self.id == id
+        switch self {
+        case .commands(_, let commands, _) where commands.contains(where: { $0.id == id }): return true
+        case .worked(_, let rows, _) where rows.contains(where: { $0.holds(id) }): return true
+        case .changes(_, let edits) where edits.contains(where: { ChatTurns.fileID($0) == id }): return true
+        default: return self.id == id
+        }
     }
 
     /// The case name, for logs and tests.
@@ -160,6 +173,8 @@ public enum ChatRow: Equatable, Sendable {
         case .tool: return "tool"
         case .agent: return "agent"
         case .interrupted: return "interrupted"
+        case .worked: return "worked"
+        case .changes: return "changes"
         }
     }
 }
@@ -170,9 +185,24 @@ public enum ChatRows {
     public static let errorPreviewLines = 8
     public static let screenExcerptLines = 8
 
-    /// `working`: the agent is busy, so a reply at the very end is still streaming.
+    /// `working`: the agent is busy, so a reply at the very end is still streaming. `live`: the
+    /// last turn is still going (working, or waiting on an approval), so its steps stay unfolded;
+    /// every earlier turn folds (`ChatTurns`).
+    public static func build(_ entries: [MobileTimelineEntry], working: Bool, live: Bool) -> [ChatRow] {
+        let (rows, stamps) = steps(entries, working: working)
+        return ChatTurns.fold(rows, stamps: stamps, live: live)
+    }
+
+    /// Every step as its own row, and when each started (ms; 0 when unknown).
     public static func build(_ entries: [MobileTimelineEntry], working: Bool) -> [ChatRow] {
+        steps(entries, working: working).rows
+    }
+
+    static func steps(_ entries: [MobileTimelineEntry], working: Bool) -> (rows: [ChatRow], stamps: [Int]) {
         var rows: [ChatRow] = []
+        var stamps: [Int] = []
+        /// Gives every row added since the last call the time of entry `index`.
+        func stamp(_ index: Int) { stamps += Array(repeating: entries[index].ts, count: rows.count - stamps.count) }
         /// The fold being gathered: the entries in it, and the empty thinking seen since its last one.
         var group: (commands: Bool, members: [Int], held: [Int])?
 
@@ -186,7 +216,9 @@ public enum ChatRows {
             rows.append(open.commands
                 ? .commands(id: id, commands: open.members.map { command(entries[$0], at: $0, in: entries) }, durationMs: ms)
                 : .tools(id: id, tools: open.members.map { ChatTool(entries[$0]) }, durationMs: ms))
+            stamp(start)
             rows += open.held.map { .thinking(id: entries[$0].id, text: entries[$0].text ?? "") }
+            stamp(open.held.first ?? start)
             group = nil
         }
 
@@ -208,6 +240,7 @@ public enum ChatRows {
             } else if edits.isEmpty {
                 closeGroup()
                 if let row = row(e, at: index, in: entries) { rows.append(row) }
+                stamp(index)
             }
             // A command that wrote files shows what it wrote; the command itself only when it printed something.
             if !edits.isEmpty {
@@ -216,6 +249,7 @@ public enum ChatRows {
                     .edit(ChatEdit(id: "\(e.id)#edit\(offset)", verb: edit.verb, path: edit.path, additions: edit.additions,
                                    deletions: edit.deletions, status: .ok, lines: edit.lines))
                 }
+                stamp(index)
             }
         }
         closeGroup()
@@ -223,7 +257,7 @@ public enum ChatRows {
         if working, case let .assistant(id, text, _)? = rows.last {
             rows[rows.count - 1] = .assistant(id: id, text: text, streaming: true)
         }
-        return rows
+        return (rows, stamps)
     }
 
     /// `Read a.swift · Grep "x" · List src`.

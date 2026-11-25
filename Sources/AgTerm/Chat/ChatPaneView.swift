@@ -19,14 +19,17 @@ final class ChatPaneView: NSView {
     private let fixture: TranscriptFollower.Target?
     private var timer: Timer?
     private var reading = false
-    /// What the shown rows were built from: the follower's version and whether the agent worked.
-    private var built: (version: Int, working: Bool)?
+    /// What the shown rows were built from: the follower's version, whether the agent worked, and
+    /// whether its last turn was still going (working, or asking you something).
+    private var built: (version: Int, working: Bool, live: Bool)?
     private var workingSince: Date?
     private var screenReadAt: Date?
     /// The model the transcript names, for the title strip when the tab's usage has none (Grok).
     private(set) var model: String?
-    /// How full the agent's context window is, for the title strip.
+    /// How full the agent's context window is, for the status line.
     private(set) var context: ContextUse?
+    /// The effort the transcript last recorded.
+    private(set) var effort: String?
     /// The transcript named a different model, or the context window filled further.
     var onModel: () -> Void = {}
     /// When the `/` menu's commands were last read; skills added since show up after this long.
@@ -42,7 +45,10 @@ final class ChatPaneView: NSView {
         super.init(frame: session.view.frame)
         let agent = fixture?.agent.rawValue ?? session.agentName ?? "agent"
         composer.agentTitle = agent
-        transcript.placeholder = "waiting for \(agent)'s first reply"
+        composer.agent = TimelineFeed.Agent(rawValue: agent)
+        transcript.placeholder = "Waiting for \(AgentKind.named(agent)?.title ?? agent)'s first reply"
+        composer.onCommand = { [weak self] command in self?.type(command) }
+        if composer.agent == .grok { loadGrokModels() }
         composer.onSend = { [weak self] text, images in self?.type(text, images: images) }
         composer.onKey = { [weak self] key in self?.press(key) }
         card.onKey = { [weak self] key in self?.press(key) }
@@ -82,6 +88,8 @@ final class ChatPaneView: NSView {
     }
 
     var isFixture: Bool { fixture != nil }
+    /// Self-tests: treat the last turn as still going, as when the agent works.
+    var liveOverride: Bool?
     var agentName: String { fixture?.agent.rawValue ?? session?.agentName ?? "agent" }
 
     /// The composer, for the window's first responder.
@@ -152,11 +160,48 @@ final class ChatPaneView: NSView {
         composer.status = status
         composer.answersPrompt = card.isApproval
         composer.drivesScreen = !card.isHidden && !card.isApproval
-        let readsFiles = [.claude, .codex, .grok].contains(fixture?.agent ?? session.agentName.flatMap(TimelineFeed.Agent.init(rawValue:)))
+        let agent = fixture?.agent ?? session.agentName.flatMap(TimelineFeed.Agent.init(rawValue:))
+        let readsFiles = [.claude, .codex, .grok, .agy].contains(agent)
         if composer.mentionsFiles != readsFiles { composer.mentionsFiles = readsFiles }
         // A cloud tab's agent can't read a file saved on this Mac.
-        composer.attachesImages = readsFiles && !session.isCloud
-        readTranscript(working: working)
+        composer.attachesImages = [.claude, .codex, .grok].contains(agent) && !session.isCloud
+        readTranscript(working: working, live: liveOverride ?? (working || !card.isHidden))
+        composer.info = info(session, agent: agent)
+    }
+
+    /// The status line: the model, context, cost, effort and your plan's usage limits.
+    private func info(_ session: TerminalSession, agent: TimelineFeed.Agent?) -> ChatComposerInfo {
+        let usage = session.agentUsage
+        var info = ChatComposerInfo()
+        info.model = (usage?.model ?? model).flatMap(ModelName.short)
+        info.effort = effort ?? (agent == .claude ? Self.claudeSettingsEffort : nil)
+        info.context = context
+        info.tokens = usage?.tokens
+        info.cost = usage.flatMap { UsageText.cost($0.costUSD, incomplete: $0.costIncomplete) }
+        if let provider = agent.flatMap({ AccountProvider(rawValue: $0.rawValue) }), !session.isCloud {
+            let windows = UsageMonitor.shared.reading(provider, AccountStore.native)?.windows ?? []
+            info.limits = windows.prefix(2).map { ChatComposerInfo.Limit(name: $0.name, percent: $0.usedPercent) }
+        }
+        return info
+    }
+
+    /// Claude Code's saved effort (`effortLevel` in its settings), read at most once a minute.
+    private static var claudeSettingsEffort: String? {
+        if let cached = settingsEffort, Date().timeIntervalSince(cached.at) < 60 { return cached.value }
+        let file = AccountStore.nativeClaudeHome.appendingPathComponent("settings.json")
+        let value = (try? Data(contentsOf: file)).flatMap(AgentControls.claudeSettingsEffort)
+        settingsEffort = (Date(), value)
+        return value
+    }
+    private static var settingsEffort: (at: Date, value: String?)?
+
+    /// Grok's model list for the model menu, read once off the main thread.
+    private func loadGrokModels() {
+        let file = AccountStore.nativeGrokHome.appendingPathComponent("models_cache.json")
+        Self.reader.async { [weak self] in
+            let models = (try? Data(contentsOf: file)).map(AgentControls.grokModels(cache:)) ?? []
+            DispatchQueue.main.async { self?.composer.grokModels = models }
+        }
     }
 
     /// The prompt card and the input-mode hint come from the screen; read it only when it changed.
@@ -167,15 +212,15 @@ final class ChatPaneView: NSView {
         let lines = session.screenText().components(separatedBy: "\n")
         if let prompt = PermissionPrompt.read(lines) {
             card.show(.approval(prompt, context: ChatPrompt.context(screen: lines, question: prompt.question)))
-        } else if session.status == .waiting {
-            card.show(.screen(ChatRows.screenExcerpt(lines)))
+        } else if session.status == .waiting, case let excerpt = ChatRows.screenExcerpt(lines), !excerpt.isEmpty {
+            card.show(.screen(excerpt))
         } else {
             card.show(nil)
         }
         composer.status.mode = ChatModeHint.read(lines)
     }
 
-    private func readTranscript(working: Bool) {
+    private func readTranscript(working: Bool, live: Bool) {
         guard !reading, let target = fixture ?? session.flatMap(TranscriptFollower.Target.init) else { return }
         reading = true
         let follower = follower, built = built
@@ -184,8 +229,9 @@ final class ChatPaneView: NSView {
             let version = follower.version
             let model = follower.model
             let context = follower.context
-            let rows = built.map { $0.version == version && $0.working == working } == true
-                ? nil : ChatRows.build(follower.entries, working: working)
+            let effort = follower.effort
+            let rows = built.map { $0.version == version && $0.working == working && $0.live == live } == true
+                ? nil : ChatRows.build(follower.entries, working: working, live: live)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.reading = false
@@ -194,8 +240,9 @@ final class ChatPaneView: NSView {
                     self.context = context
                     self.onModel()
                 }
+                self.effort = effort ?? self.effort
                 guard let rows else { return }
-                self.built = (version, working)
+                self.built = (version, working, live)
                 self.transcript.update(rows)
             }
         }

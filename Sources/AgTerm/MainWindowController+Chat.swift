@@ -80,14 +80,11 @@ extension MainWindowController {
         }
         guard let chat else { return titleStrip.chatInfo = nil }
         if titleStrip.logo == nil { titleStrip.logo = AgentLogo.image(for: chat.agentName) }
-        let usage = focused.agentUsage.flatMap { usage in
-            [UsageText.tokens(usage.tokens), UsageText.cost(usage.costUSD, incomplete: usage.costIncomplete)].compactMap { $0 }
-                .joined(separator: " · ")
-        }
+        // The model, context and cost are on the composer's status line.
         titleStrip.chatInfo = TitleStripView.ChatInfo(
             agent: AgentKind.named(focused.agentName ?? chat.agentName)?.title ?? focused.agentName ?? chat.agentName,
-            model: (focused.agentUsage?.model ?? chat.model).flatMap(ModelName.short), folder: focused.folder.isEmpty ? "~" : focused.folder,
-            branch: focused.git?.branch, usage: usage?.isEmpty == false ? usage : nil, context: chat.context?.text,
+            model: nil, folder: focused.folder.isEmpty ? "~" : focused.folder,
+            branch: focused.git?.branch, usage: nil, context: nil,
             added: focused.agentDiff?.added ?? 0, removed: focused.agentDiff?.removed ?? 0)
     }
 }

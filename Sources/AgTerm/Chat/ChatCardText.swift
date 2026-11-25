@@ -4,7 +4,8 @@ import AppKit
 /// Edit cards and command rows of the transcript.
 enum ChatCardText {
     /// `Edit  path  +a −r` over its diff lines, at most `ChatRows.editPreviewLines` until expanded.
-    static func edit(_ edit: ChatEdit, expanded: Bool, gap: CGFloat) -> NSAttributedString {
+    /// `toggle`: what its "more lines" / "fewer lines" link opens and closes (the edit itself by default).
+    static func edit(_ edit: ChatEdit, expanded: Bool, gap: CGFloat, toggle: String? = nil) -> NSAttributedString {
         let left = ChatStyle.indent, inner = left + 12
         let card = ChatBox(fill: nil, border: Theme.border, left: left, gapAbove: gap, radius: 8)
         let small = ChatStyle.smallFont
@@ -43,7 +44,7 @@ enum ChatCardText {
         if more {
             let style = ChatStyle.paragraph(indent: inner, gap: 4, after: 6)
             let label = expanded ? "▴ fewer lines" : "… \(edit.hiddenLines) more lines"
-            out.append(NSAttributedString(string: label, attributes: ChatStyle.attrs(Theme.fg3, small, style).merging([.link: "toggle:" + edit.id]) { $1 }))
+            out.append(NSAttributedString(string: label, attributes: ChatStyle.attrs(Theme.fg3, small, style).merging([.link: "toggle:" + (toggle ?? edit.id)]) { $1 }))
             out.append(NSAttributedString(string: "\n", attributes: ChatStyle.attrs(Theme.fg3, small, style)))
         }
         out.addAttribute(.chatBox, value: card, range: NSRange(location: 0, length: out.length))

@@ -5,7 +5,7 @@ import Foundation
 /// poll; a file that got shorter or was replaced needs a new feed.
 public struct TimelineFeed {
     public enum Agent: String, Sendable {
-        case claude, codex, grok, agl
+        case claude, codex, grok, agl, agy
     }
 
     public let agent: Agent
@@ -32,6 +32,9 @@ public struct TimelineFeed {
     private var codexSubagents = CodexSubagents()
     private var grok = GrokTimeline()
     private var agl = AglTimeline()
+
+    /// The reasoning effort the latest request used, when the transcript records it (Claude, Codex).
+    public private(set) var effort: String?
 
     /// Strings longer than this in kept Codex records are cut; rows show far less.
     static let codexStringLimit = 256 * 1024
@@ -62,11 +65,17 @@ public struct TimelineFeed {
         return used
     }
 
+    /// Antigravity keeps a database, not a log: its whole conversation, read again whenever it changed.
+    public mutating func load(agySteps steps: [AgyStep]) {
+        entries = AgyTimeline.entries(steps)
+    }
+
     private mutating func consume(_ line: String, start: Int) {
         switch agent {
         case .claude:
             let trimmed = line.rustTrimmed
             guard !trimmed.isEmpty else { return }
+            if trimmed.containsBytes("api-request-blob"), let level = Self.lastEffort(in: trimmed) { effort = level }
             if trimmed.containsBytes("queue-operation") || trimmed.containsBytes("queued_command") {
                 claudeQueue.append((start, trimmed))
             }
@@ -79,6 +88,7 @@ public struct TimelineFeed {
             guard !trimmed.isEmpty, let record = JSONValue.parse(trimmed) else { return }
             if record["type"]?.string == "turn_context", let model = record.pointer("/payload/model")?.string, !model.isEmpty {
                 self.model = model
+                effort = record.pointer("/payload/effort")?.string ?? effort
             }
             if record["type"]?.string == "event_msg", record.pointer("/payload/type")?.string == "token_count",
                let used = record.pointer("/payload/info/last_token_usage/input_tokens")?.int, used > 0 {
@@ -94,7 +104,18 @@ public struct TimelineFeed {
         case .agl:
             agl.feed(line)
             model = agl.model
+        case .agy:
+            break
         }
+    }
+
+    /// The last `"effort":"<level>"` in a line (Claude records it in its request blobs).
+    static func lastEffort(in line: String) -> String? {
+        guard let range = line.range(of: "\"effort\":\"", options: .backwards) else { return nil }
+        let rest = line[range.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        let level = String(rest[..<end])
+        return !level.isEmpty && level.count <= 12 && level.allSatisfy(\.isLetter) ? level : nil
     }
 
     private mutating func rebuild() {
@@ -125,6 +146,8 @@ public struct TimelineFeed {
             entries = grok.entries
         case .agl:
             entries = agl.entries
+        case .agy:
+            break
         }
     }
 }

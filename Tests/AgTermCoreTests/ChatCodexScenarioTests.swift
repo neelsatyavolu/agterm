@@ -32,6 +32,8 @@ final class ChatCodexScenarioTests: XCTestCase {
             case let .tool(t): return "tool[\(t.status)]: \(t.lead) \(t.subject ?? "") | \(t.body?.prefix(60) ?? "-")"
             case let .agent(a): return "agent[\(a.status)]: \(a.title ?? "") | \(a.result?.prefix(60) ?? "-")"
             case .interrupted: return "interrupted"
+            case let .worked(_, rows, _): return "worked: \(ChatTurns.summary(rows).joined(separator: " · "))"
+            case let .changes(_, edits): return "changes: \(edits.map(\.path).joined(separator: ", "))"
             }
         }.joined(separator: "\n")
     }

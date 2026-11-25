@@ -31,6 +31,8 @@ final class ChatPerfScenarioTests: XCTestCase {
             return [GrokTimelineTests.user("<user_query>\n\(user)\n</user_query>"), GrokTimelineTests.assistant(reply)]
         case .agl:
             return [jsonLine(["type": "user", "text": user, "ts": 1]), jsonLine(["type": "assistant", "text": reply, "reasoning": "", "ts": 2])]
+        case .agy:
+            return [] // A database, not lines: see AgyTimelineTests.
         }
     }
 
@@ -51,6 +53,8 @@ final class ChatPerfScenarioTests: XCTestCase {
         case .agl:
             return [jsonLine(["type": "tool_call", "id": "b\(i)", "name": "bash", "arguments": ["command": cmd], "ts": 3]),
                     jsonLine(["type": "tool_result", "id": "b\(i)", "ok": exit == 0, "output": output + "\n[exit code \(exit)]", "ts": 4])]
+        case .agy:
+            return []
         }
     }
 

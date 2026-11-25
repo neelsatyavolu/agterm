@@ -48,6 +48,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 - `Sources/AgTerm/SelfTest.swift` holds them; each `AGTERM_*_CHECK=1` picks one check and prints `selftest:` lines. The quit-and-relaunch check (`AGTERM_PERSIST_CHECK=1`, `persist:` lines) is in `SelfTestPersist.swift`; the beta updates row (`AGTERM_BETA_CHECK=1`, optionally with `AGTERM_BETA_KEY=<key>` to check a real key) in `SelfTestBeta.swift`.
 - `AGTERM_MACS_CHECK=1` (`SelfTestMacs.swift`) turns on Settings → Macs' worker as a launchd job on port 47998, pairs this Mac with itself and runs `agterm-remote` through it; it turns the worker off and restores your paired Macs when done.
 - `AGTERM_WELCOME_CHECK=1` (`SelfTestWelcome.swift`) snapshots the 1.2 welcome window in Ink and Paper.
+- `AGTERM_CHAT_CHECK=1` (`SelfTestChat*.swift`) runs the Chat view on fixtures for all five agents (Antigravity's is a SQLite file, `SelfTestChatAgy.swift`). `AGTERM_CHAT_LIVE_CHECK=claude,codex,grok,agy` (`SelfTestChatLive.swift`) runs the real agents, sends two messages through the composer and checks the replies; it uses their accounts, and `AGTERM_CHAT_LIVE_DIR_CODEX=<folder>` puts Codex in a folder it already trusts. It never answers trust or update prompts.
 - Quitting leaves tab shells running in the sessions helper (`agterm --sessions-helper`), so self-tests end the helper's sessions when they exit.
 - PNG snapshots land in the `AGTERM_SELFTEST` directory; look at them after UI changes.
 - Add a check there for any UI change you can't cover with a unit test.

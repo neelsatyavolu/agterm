@@ -3,11 +3,14 @@ import AgTermCore
 import AppKit
 
 extension SelfTest {
-    /// Chat view: `AGTERM_CHAT_CHECK=1 AGTERM_SELFTEST=<dir>`. Opens four tabs as Claude Code,
-    /// Codex, Grok and agl chats fed from fixture transcripts written to `<dir>/chat-fixtures`, takes
-    /// `chat-<agent>-ink.png` and `-paper.png`, then checks streaming appends, a half-written last
-    /// line, the approval card, the composer typing into the terminal, ⌃` and back, split panes
-    /// each with their own view, the composer's `/` and `@` menus and image paste, and a 12,000-row transcript opening in time.
+    /// Chat view: `AGTERM_CHAT_CHECK=1 AGTERM_SELFTEST=<dir>`. Opens five tabs as Claude Code,
+    /// Codex, Grok, agl and Antigravity chats fed from fixture transcripts written to
+    /// `<dir>/chat-fixtures`, takes `chat-<agent>-ink.png` and `-paper.png`, then checks finished
+    /// turns folding (and opening), a live turn, streaming appends, a half-written last line,
+    /// Antigravity steps arriving and finishing, the approval card, the composer typing into the
+    /// terminal, its model and effort menu and send button, ⌃` and back, split panes each with
+    /// their own view, the composer's `/` and `@` menus and image paste, and a 12,000-row
+    /// transcript opening in time.
     static func chatCheck(_ controller: MainWindowController, outDir: String) {
         guard let window = controller.window else { exit(1) }
         let wasLeft = controller.tabsOnLeft
@@ -15,9 +18,7 @@ extension SelfTest {
         UserDefaults.standard.set(true, forKey: MainWindowController.tabsOnLeftKey)
         controller.applyTabPlacement()
         window.setContentSize(NSSize(width: 1180, height: 780))
-        controller.newTab()
-        controller.newTab()
-        controller.newTab()
+        for _ in 0..<4 { controller.newTab() }
         controller.showWindow(nil)
         // The first shots are named "ink": start in Ink whatever the saved theme is.
         Preferences.shared.update { $0.themeID = "ink" }
@@ -36,7 +37,7 @@ extension SelfTest {
         }
 
         after(1.0) {
-            let agents: [TimelineFeed.Agent] = [.claude, .codex, .grok, .agl]
+            let agents = Self.chatAgents
             for (index, agent) in agents.enumerated() {
                 let session = controller.sessions[index]
                 controller.focus(session.tabID)
@@ -46,19 +47,21 @@ extension SelfTest {
                 for (index, agent) in agents.enumerated() {
                     let session = controller.sessions[index]
                     guard let chat = controller.chats[session.tabID] else { report("\(agent) chat open", false); continue }
-                    let kinds = Set(chat.transcript.rows.map(\.kindName))
+                    let kinds = Set(flat(chat.transcript.rows).map(\.kindName))
                     report("\(agent) rows", kinds.isSuperset(of: ChatFixtures.expectedKinds[agent]!),
+                           flat(chat.transcript.rows).map(\.kindName).joined(separator: ","))
+                    report("\(agent) finished turns fold", chat.transcript.rows.contains { $0.kindName == "worked" },
                            chat.transcript.rows.map(\.kindName).joined(separator: ","))
                 }
                 let claude = controller.sessions[0]
                 controller.focus(claude.tabID)
                 report("terminal hidden under chat", claude.view.isHidden && controller.chats[claude.tabID]?.isHidden == false)
                 report("composer has focus", window.firstResponder === controller.chats[claude.tabID]?.responder)
-                report("title strip shows Chat control", controller.titleStrip.chatMode == true && controller.titleStrip.chatInfo != nil)
-                report("title strip shows the context window", controller.titleStrip.chatInfo?.context == "184k / 1M",
-                       controller.titleStrip.chatInfo?.context ?? "none")
-                report("title strip shows the model", controller.titleStrip.chatInfo?.model == "Opus 5.5"
-                       && controller.titleStrip.logo != nil, controller.titleStrip.chatInfo?.model ?? "none")
+                report("title strip shows Chat control", controller.titleStrip.chatMode == true && controller.titleStrip.chatInfo != nil
+                       && controller.titleStrip.logo != nil)
+                let info = controller.chats[claude.tabID]?.composer.info
+                report("status line shows the context window", info?.context?.text == "184k / 1M", info?.context?.text ?? "none")
+                report("status line shows the model", info?.model == "Opus 5.5", info?.model ?? "none")
                 if let transcript = controller.chats[claude.tabID]?.transcript {
                     let scrolls = transcript.scrolls
                     after(1.0) {
@@ -80,9 +83,19 @@ extension SelfTest {
         }
     }
 
+    static let chatAgents: [TimelineFeed.Agent] = [.claude, .codex, .grok, .agl, .agy]
+
+    /// Rows with every finished turn's steps in line, for checks about what a transcript holds.
+    static func flat(_ rows: [ChatRow]) -> [ChatRow] {
+        rows.flatMap { row -> [ChatRow] in
+            if case .worked(_, let steps, _) = row { return flat(steps) }
+            return [row]
+        }
+    }
+
     private static func snapshots(_ controller: MainWindowController, _ window: NSWindow, _ outDir: String, _ theme: String,
                                   done: @escaping () -> Void) {
-        let names = ["claude", "codex", "grok", "agl"]
+        let names = chatAgents.map(\.rawValue)
         func shoot(_ index: Int) {
             guard index < names.count else { return done() }
             controller.focus(controller.sessions[index].tabID)
@@ -100,14 +113,27 @@ extension SelfTest {
         let claude = controller.sessions[0]
         controller.focus(claude.tabID)
         guard let chat = controller.chats[claude.tabID], let file = files[.claude] else { return done() }
-        let before = chat.transcript.rows.count
+        // Replies stream in while the agent works, when its turn is still open.
+        chat.liveOverride = true
+        after(1.0) { streamChecks(controller, window, outDir, chat, claude, file, files, report: report, done: done) }
+    }
+
+    /// Rows that count as steps, without the per-turn changes lists.
+    private static func steps(_ rows: [ChatRow]) -> Int { flat(rows).filter { $0.kindName != "changes" }.count }
+
+    private static func streamChecks(_ controller: MainWindowController, _ window: NSWindow, _ outDir: String, _ chat: ChatPaneView,
+                                     _ claude: TerminalSession, _ file: URL, _ files: [TimelineFeed.Agent: URL],
+                                     report: @escaping (String, Bool, String) -> Void,
+                                     done: @escaping () -> Void) {
+        let before = steps(chat.transcript.rows)
         let first = chat.transcript.first
         let length = chat.transcript.textLength
         ChatFixtures.append(file, ChatFixtures.claudeReply("s1", "Streamed in after the chat opened."))
         ChatFixtures.append(file, "{\"type\":\"assistant\",\"uuid\":\"half", newline: false)
         after(1.2) {
-            report("appended reply shows", chat.transcript.rows.count == before + 1, "\(before) → \(chat.transcript.rows.count)")
-            report("half-written line waits", chat.transcript.rows.count == before + 1, "")
+            let after1 = steps(chat.transcript.rows)
+            report("appended reply shows", after1 == before + 1, "\(before) → \(after1)")
+            report("half-written line waits", after1 == before + 1, "")
             report("update kept the loaded rows", chat.transcript.first == first, "")
             // The new reply lands before the queued message, so only the last row or two are redone.
             let replaced = chat.transcript.lastReplaced
@@ -116,7 +142,8 @@ extension SelfTest {
             ChatFixtures.append(file, "\",\"timestamp\":\"2026-11-08T12:10:00Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Finished the line.\"}]}}")
             claude.view.send(txt: "clear; printf ' Bash command\\n\\n   swift build\\n   Build the project\\n\\n Do you want to proceed?\\n ❯ 1. Yes\\n   2. No\\n\\n Esc to cancel\\n'\r")
             after(1.5) {
-                report("finished line shows", chat.transcript.rows.count == before + 2, "")
+                report("finished line shows", steps(chat.transcript.rows) == before + 2, "")
+                chat.liveOverride = nil
                 report("approval card from the screen", chat.card.isApproval && !chat.card.isHidden, "")
                 snapshot(window, "\(outDir)/chat-approval-ink.png")
                 chat.card.show(.screen(["Select model", "❯ Default (recommended)", "  Opus 5.5", "  Sonnet 5", "Enter to confirm · Esc to exit"]))
@@ -126,6 +153,7 @@ extension SelfTest {
                 chat.composer.send()
                 after(1.2) {
                     report("composer typed into the terminal", screenLine(claude, containing: "chat-typed-ok") != nil, "")
+                    composerCheck(chat, claude, report: report)
                     controller.toggleChat()
                     report("⌃` shows the terminal", controller.chats[claude.tabID] == nil && !claude.view.isHidden
                            && window.firstResponder === claude.view, "")
@@ -133,11 +161,16 @@ extension SelfTest {
                     controller.setChat(true, for: claude, fixture: .init(agent: .claude, cwd: outDir, fixed: file))
                     report("chat shows again", controller.chats[claude.tabID] != nil, "")
                     otherPrompts(controller, window, outDir, report: report) {
+                    turnCheck(controller, window, outDir, report: report) {
+                    agyLiveCheck(controller, files, report: report) {
                     slashCheck(controller, window, outDir, report: report) {
                     splitCheck(controller, window, outDir, report: report) {
                         foldCheck(controller, window, outDir, report: report)
                         largeCheck(controller, outDir, report: report)
+                        rewriteCheck(outDir, report: report)
                         scrollCheck(report: report, done: done)
+                    }
+                    }
                     }
                     }
                     }
@@ -191,6 +224,9 @@ extension SelfTest {
             window.setContentSize(NSSize(width: 980, height: 700))
             after(0.5) {
                 report("resize follows", claude.view.frame.size == chat.frame.size, "")
+                // Shell output has pushed the approval's question off the part of the screen that's read.
+                report("an approval without its question keeps its answers", chat.card.isHidden || chat.card.frame.height > 50,
+                       "\(chat.card.frame.height)pt")
                 snapshot(window, "\(outDir)/chat-split-ink.png")
                 done()
             }
@@ -202,11 +238,13 @@ extension SelfTest {
     private static func foldCheck(_ controller: MainWindowController, _ window: NSWindow, _ outDir: String,
                                   report: (String, Bool, String) -> Void) {
         guard let transcript = controller.chats[controller.sessions[0].tabID]?.transcript else { return report("folded commands", false, "") }
-        let runs = transcript.rows.compactMap { row -> (String, [ChatCommand])? in
+        // The runs are inside finished turns: open them first.
+        for worked in transcript.rows where worked.kindName == "worked" { transcript.toggle(worked.id) }
+        let runs = flat(transcript.rows).compactMap { row -> (String, [ChatCommand])? in
             if case let .commands(id, commands, _) = row { return (id, commands) }
             return nil
         }
-        let edits = transcript.rows.compactMap { row -> ChatEdit? in
+        let edits = flat(transcript.rows).compactMap { row -> ChatEdit? in
             if case let .edit(edit) = row, edit.id.contains("#edit") { return edit }
             return nil
         }

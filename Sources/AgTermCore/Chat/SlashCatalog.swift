@@ -25,6 +25,7 @@ public enum SlashCatalog {
         case .codex: files(in: homes.codex.appendingPathComponent("prompts"), prefix: "prompts:")
         case .grok: grok(cwd: cwd, homes: homes)
         case .agl: []
+        case .agy: agy(cwd: cwd, homes: homes)
         }
         return unique(SlashBuiltins.list(agent) + found)
     }
@@ -45,6 +46,17 @@ public enum SlashCatalog {
             [".grok", ".agents", ".claude"].flatMap { skillsAndCommands(dir.appendingPathComponent($0)) }
         }
         return project + skillsAndCommands(homes.grok) + skillsAndCommands(homes.claude)
+    }
+
+    /// Antigravity reads `.agents/` and `.gemini/` skills in the project, then `~/.gemini/skills`
+    /// and its own `~/.gemini/antigravity-cli/skills`.
+    static func agy(cwd: String, homes: Homes) -> [SlashCommand] {
+        let project = folders(from: cwd, homes: homes).flatMap { dir in
+            [".agents", ".gemini"].flatMap { skills(in: dir.appendingPathComponent($0).appendingPathComponent("skills")) }
+        }
+        let gemini = homes.user.appendingPathComponent(".gemini")
+        return project + skills(in: gemini.appendingPathComponent("skills"))
+            + skills(in: gemini.appendingPathComponent("antigravity-cli/skills"))
     }
 
     // MARK: Claude plugins

@@ -103,6 +103,7 @@ final class TimelineFeedTests: XCTestCase {
                                           "payload": ["type": "message", "role": "assistant", "content": [["type": "output_text", "text": "partial reply"]]]])
             case .grok: line = GrokTimelineTests.assistant("partial reply")
             case .agl: line = jsonLine(["type": "assistant", "text": "partial reply", "reasoning": "", "ts": 1])
+            case .agy: continue // A database, not lines.
             }
             var feed = TimelineFeed(agent: agent)
             let data = Data((line + "\n").utf8)

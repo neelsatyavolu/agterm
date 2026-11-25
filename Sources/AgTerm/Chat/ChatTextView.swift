@@ -1,7 +1,7 @@
 import AppKit
 
-/// The transcript's text view (TextKit 1): draws each `ChatBox` (cards, wells, the user's band)
-/// behind its paragraphs, only for what's in the dirty rect.
+/// The transcript's text view (TextKit 1): draws each `ChatBox` (cards, wells, your message's
+/// bubble) behind its paragraphs, only for what's in the dirty rect.
 final class ChatTextView: NSTextView {
     /// Every row ends in a newline, so TextKit lays out an empty line after the last one in these
     /// attributes; a hairline keeps it from adding a row gap and a line of space above the composer.
@@ -11,6 +11,7 @@ final class ChatTextView: NSTextView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        drawBoxes(.chatRail, in: dirtyRect)
         drawBoxes(.chatBox, in: dirtyRect)
         drawBoxes(.chatLineBox, in: dirtyRect)
         super.draw(dirtyRect)
@@ -28,6 +29,7 @@ final class ChatTextView: NSTextView {
             let box = storage.attribute(key, at: index, longestEffectiveRange: &range, in: all) as? ChatBox
             defer { index = max(NSMaxRange(range), index + 1) }
             guard let box else { continue }
+            if let pad = box.hug { drawHugging(box, pad: pad, range: range, manager: manager, container: container); continue }
             var area = rect(of: range, gapAbove: box.gapAbove, manager: manager, container: container)
             area.size.height -= box.bottomInset
             draw(box, rect: area)
@@ -44,10 +46,38 @@ final class ChatTextView: NSTextView {
         return NSRect(x: 0, y: top.minY + gapAbove + origin.y, width: 0, height: bottom.maxY - top.minY - gapAbove)
     }
 
+    /// A box around exactly the glyphs of `range` (less its trailing newline), `pad` out from them.
+    private func drawHugging(_ box: ChatBox, pad: NSSize, range: NSRange, manager: NSLayoutManager, container: NSTextContainer) {
+        let text = (textStorage?.string ?? "") as NSString
+        var chars = range
+        while chars.length > 0, text.character(at: NSMaxRange(chars) - 1) == 0x0A { chars.length -= 1 }
+        let glyphs = manager.glyphRange(forCharacterRange: chars, actualCharacterRange: nil)
+        guard glyphs.length > 0 else { return }
+        // Line by line: over several lines, one bounding rect spans each line's whole width.
+        var tight = NSRect.null
+        manager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, _, lineGlyphs, _ in
+            let part = NSIntersectionRange(lineGlyphs, glyphs)
+            guard part.length > 0 else { return }
+            tight = tight.union(manager.boundingRect(forGlyphRange: part, in: container))
+        }
+        guard !tight.isNull else { return }
+        tight = tight.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y).insetBy(dx: -pad.width, dy: -pad.height)
+        let path = NSBezierPath(roundedRect: tight, xRadius: box.radius, yRadius: box.radius)
+        box.fill?.setFill()
+        path.fill()
+        if let border = box.border {
+            border.setStroke()
+            let edge = NSBezierPath(roundedRect: tight.insetBy(dx: 0.5, dy: 0.5), xRadius: box.radius, yRadius: box.radius)
+            edge.lineWidth = 1
+            edge.stroke()
+        }
+    }
+
     private func draw(_ box: ChatBox, rect line: NSRect) {
         guard line.height > 0 else { return }
         let right = box.fullWidth ? bounds.width : textContainerOrigin.x + (textContainer?.size.width ?? bounds.width)
-        let rect = NSRect(x: textContainerOrigin.x + box.left, y: line.minY, width: right - textContainerOrigin.x - box.left, height: line.height)
+        let width = box.width ?? right - textContainerOrigin.x - box.left
+        let rect = NSRect(x: textContainerOrigin.x + box.left, y: line.minY, width: width, height: line.height)
         if box.fullWidth { return drawBand(box, NSRect(x: 0, y: rect.minY, width: bounds.width, height: rect.height)) }
         let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: box.radius, yRadius: box.radius)
         if let fill = box.fill {

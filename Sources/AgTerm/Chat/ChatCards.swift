@@ -47,12 +47,12 @@ final class ChatPromptCard: NSView {
         case .approval(let info, let context):
             context.forEach { stack.addArrangedSubview(label($0, Theme.fg2, ChatStyle.smallFont)) }
             if let question = info.question { stack.addArrangedSubview(label(question, Theme.fg, ChatStyle.boldFont)) }
-            stack.setCustomSpacing(10, after: stack.arrangedSubviews.last ?? stack)
+            spaceAfterLast(10)
             info.choices.forEach { stack.addArrangedSubview(button($0)) }
             stack.addArrangedSubview(button(PromptChoice(key: ChatInput.escape, label: "Esc  cancel", selected: false)))
         case .screen(let lines):
             lines.forEach { stack.addArrangedSubview(label($0, Theme.fg2, ChatStyle.smallFont)) }
-            stack.setCustomSpacing(10, after: stack.arrangedSubviews.last ?? stack)
+            spaceAfterLast(10)
             stack.addArrangedSubview(label("↑↓ ⏎ ⇥ Esc go to the agent from an empty box · ⌃` terminal", Theme.fg3, ChatStyle.smallFont))
         case nil:
             break
@@ -61,6 +61,14 @@ final class ChatPromptCard: NSView {
     }
 
     func applyAppearance() { show(content, force: true) }
+
+    /// Extra space after the last row so far. With no rows yet (a prompt whose question isn't
+    /// on screen) there's nothing to space: NSStackView raises for a view it doesn't arrange,
+    /// which would leave the card without its buttons.
+    private func spaceAfterLast(_ spacing: CGFloat) {
+        guard let last = stack.arrangedSubviews.last else { return }
+        stack.setCustomSpacing(spacing, after: last)
+    }
 
     private func label(_ text: String, _ color: NSColor, _ font: NSFont) -> NSTextField {
         let field = NSTextField(labelWithString: text)

@@ -1,8 +1,9 @@
 import AgTermCore
 import AppKit
 
-/// The bottom of the Chat view: a status line (working / idle / needs approval, the agent's
-/// input mode), then the message box. What you type goes to the agent's terminal.
+/// The bottom of the Chat view: what the agent is doing (working / needs approval), the message
+/// box with its toolbar (model and effort, permission mode, `/`, `@`, send or stop), and a
+/// status line under it. What you type, and every control, goes to the agent's terminal.
 final class ChatComposer: NSView, NSTextViewDelegate {
     struct Status: Equatable {
         enum State: Equatable { case idle, working(seconds: Int), approval, waiting, exited }
@@ -21,10 +22,28 @@ final class ChatComposer: NSView, NSTextViewDelegate {
     var answersPrompt = false
     var agentTitle = "agent" { didSet { updatePlaceholder() } }
     /// The agent reads `@path` as a file (Claude Code, Codex, Grok): `@` opens a list of the folder's files.
-    var mentionsFiles = false { didSet { updatePlaceholder() } }
+    var mentionsFiles = false { didSet { updatePlaceholder(); updateBar() } }
     /// Pasted or dropped images go to the agent as attachments (not for agl, or a cloud tab's agent).
     var attachesImages = false
-    var status = Status() { didSet { if status != oldValue { statusLine.needsDisplay = true } } }
+    var status = Status() { didSet { if status != oldValue { statusLine.needsDisplay = true; updateBar() } } }
+    /// The agent, for its model and effort menu.
+    var agent: TimelineFeed.Agent? { didSet { if agent != oldValue { updateBar() } } }
+    /// Grok's models, for its menu.
+    var grokModels: [AgentControls.Model] = []
+    /// The status line's facts, also the model chip's title.
+    var info = ChatComposerInfo() {
+        didSet {
+            guard info != oldValue else { return }
+            infoLine.info = info
+            // Nothing to say (an agent whose transcript names no model): no empty line under the box.
+            let shown = info != ChatComposerInfo()
+            infoHeight.constant = shown ? 16 : 0
+            infoGap.constant = shown ? 8 : 0
+            updateBar()
+        }
+    }
+    /// A command the toolbar chose (`/model opus`, `/effort high`), to type into the agent.
+    var onCommand: (String) -> Void = { _ in }
     /// The agent's slash commands for the `/` menu; asked for with `onWantsCommands` when you type `/`.
     var commands: [SlashCommand] = [] { didSet { updateMenu() } }
     var onWantsCommands: () -> Void = {}
@@ -34,7 +53,14 @@ final class ChatComposer: NSView, NSTextViewDelegate {
 
     let input = ComposerTextView()
     private let statusLine = StatusLineView()
+    private let infoLine = ChatInfoLine()
     private let box = NSView()
+    private lazy var modelChip = ChatChip("Model", target: self, action: #selector(showModelMenu(_:)))
+    private lazy var modeChip = ChatChip("Mode", target: self, action: #selector(cycleMode))
+    private lazy var commandsChip = ChatChip("/  Commands", target: self, action: #selector(startCommand))
+    private lazy var filesChip = ChatChip("@  Files", target: self, action: #selector(startMention))
+    private lazy var sendButton = ChatSendButton(target: self, action: #selector(sendOrStop))
+    private let toolbar = NSStackView()
     let slashMenu = ChatSlashMenu()
     private var menuHeight: NSLayoutConstraint!
     private var menuGap: NSLayoutConstraint!
@@ -52,15 +78,16 @@ final class ChatComposer: NSView, NSTextViewDelegate {
     /// Messages you sent, oldest first, for ↑ and ↓; `recalled` is the one in the box.
     private var history: [String] = []
     private var recalled: Int?
-    /// The accent `›` before the text; a subview, since the box's layer covers what this view draws.
-    private let prompt = NSTextField(labelWithString: "›")
-    private var boxHeight: NSLayoutConstraint!
+    private var inputHeight: NSLayoutConstraint!
+    private var infoHeight: NSLayoutConstraint!
+    private var infoGap: NSLayoutConstraint!
+    static let toolbarHeight: CGFloat = 30
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         statusLine.composer = self
         box.wantsLayer = true
-        box.layer?.cornerRadius = 10
+        box.layer?.cornerRadius = 12
         box.layer?.borderWidth = 1
         input.composer = self
         input.isRichText = false
@@ -75,15 +102,27 @@ final class ChatComposer: NSView, NSTextViewDelegate {
         input.delegate = self
         slashMenu.onChoose = { [weak self] item in self?.complete(item) }
         slashMenu.isHidden = true
-        for view in [statusLine, slashMenu, box, input, prompt] as [NSView] {
+        toolbar.orientation = .horizontal
+        toolbar.spacing = 6
+        toolbar.alignment = .centerY
+        toolbar.setHuggingPriority(.defaultLow, for: .horizontal)
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        for view in [modelChip, modeChip, commandsChip, filesChip, spacer, sendButton] { toolbar.addArrangedSubview(view) }
+        modelChip.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        sendButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for view in [statusLine, slashMenu, box, input, toolbar, infoLine] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
         }
         addSubview(statusLine)
         addSubview(slashMenu)
         addSubview(box)
+        addSubview(infoLine)
         box.addSubview(input)
-        box.addSubview(prompt)
-        boxHeight = box.heightAnchor.constraint(equalToConstant: 40)
+        box.addSubview(toolbar)
+        inputHeight = input.heightAnchor.constraint(equalToConstant: 18)
+        infoHeight = infoLine.heightAnchor.constraint(equalToConstant: 0)
+        infoGap = infoLine.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 0)
         menuHeight = slashMenu.heightAnchor.constraint(equalToConstant: 0)
         menuGap = box.topAnchor.constraint(equalTo: slashMenu.bottomAnchor, constant: 0)
         NSLayoutConstraint.activate([
@@ -98,29 +137,35 @@ final class ChatComposer: NSView, NSTextViewDelegate {
             menuGap,
             box.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            box.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
-            boxHeight,
-            prompt.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
-            prompt.firstBaselineAnchor.constraint(equalTo: input.topAnchor, constant: ChatStyle.font.ascender),
-            input.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 34),
-            input.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
-            input.topAnchor.constraint(equalTo: box.topAnchor, constant: 11),
-            input.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -11),
+            input.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
+            input.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
+            input.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
+            inputHeight,
+            toolbar.topAnchor.constraint(equalTo: input.bottomAnchor, constant: 8),
+            toolbar.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 8),
+            toolbar.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -8),
+            toolbar.heightAnchor.constraint(equalToConstant: Self.toolbarHeight),
+            toolbar.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -8),
+            infoGap,
+            infoLine.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
+            infoLine.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
+            infoHeight,
+            infoLine.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
         ])
+        updateBar()
         applyAppearance()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func applyAppearance() {
-        box.layer?.backgroundColor = Theme.color(Theme.palette.bg.mixed(with: Theme.palette.fg, 0.05)).cgColor
-        box.layer?.borderColor = Theme.color(Theme.palette.fg, alpha: 0.14).cgColor
-        input.font = ChatStyle.font
-        prompt.font = ChatStyle.boldFont
-        prompt.textColor = Theme.accent
+        box.layer?.backgroundColor = Theme.color(Theme.palette.bg.mixed(with: Theme.palette.fg, Theme.palette.isDark ? 0.05 : 0.025)).cgColor
+        box.layer?.borderColor = Theme.color(Theme.palette.fg, alpha: Theme.palette.isDark ? 0.14 : 0.18).cgColor
+        input.font = ChatStyle.prose
         input.textColor = Theme.fg
         input.insertionPointColor = Theme.accent
-        input.typingAttributes = [.font: ChatStyle.font, .foregroundColor: Theme.fg]
+        input.typingAttributes = [.font: ChatStyle.prose, .foregroundColor: Theme.fg]
+        [modelChip, modeChip, commandsChip, filesChip, sendButton, infoLine].forEach { $0.needsDisplay = true }
         slashMenu.applyAppearance()
         textDidChange(Notification(name: NSText.didChangeNotification))
         needsDisplay = true
@@ -128,19 +173,136 @@ final class ChatComposer: NSView, NSTextViewDelegate {
         input.needsDisplay = true
     }
 
-    /// The box grows with what you type, up to six lines.
+    /// The box grows with what you type, up to eight lines.
     func textDidChange(_ notification: Notification) {
         guard let manager = input.layoutManager, let container = input.textContainer else { return }
         manager.ensureLayout(for: container)
-        let lineHeight = manager.defaultLineHeight(for: ChatStyle.font)
+        let lineHeight = manager.defaultLineHeight(for: ChatStyle.prose)
         let used = max(lineHeight, manager.usedRect(for: container).height)
-        boxHeight.constant = min(used, lineHeight * 6) + 22
+        inputHeight.constant = ceil(min(used, lineHeight * 8))
         if let index = recalled, history[index] != input.string { recalled = nil }
         updateMenu()
+        updateBar()
     }
 
     private func updatePlaceholder() {
-        input.placeholder = "Message \(agentTitle)   ⏎ send · ⇧⏎ newline · / commands" + (mentionsFiles ? " · @ files" : "")
+        let name = AgentKind.named(agentTitle)?.title ?? agentTitle
+        input.placeholder = "Message \(name)   ⏎ send · ⇧⏎ newline"
+    }
+
+    // MARK: The toolbar
+
+    /// Below this width the `/` and `@` chips drop their words.
+    static let compactWidth: CGFloat = 620
+
+    override func layout() {
+        super.layout()
+        let compact = bounds.width < Self.compactWidth
+        let titles = compact ? ("/", "@") : ("/  Commands", "@  Files")
+        if commandsChip.title != titles.0 {
+            commandsChip.title = titles.0
+            filesChip.title = titles.1
+            [commandsChip, filesChip].forEach { $0.invalidateIntrinsicContentSize() }
+        }
+    }
+
+    /// Chip titles and which chips show, from the agent, the status and what you've typed.
+    private func updateBar() {
+        let model = info.model ?? AgentKind.named(agentTitle)?.title ?? agentTitle
+        modelChip.title = [model, info.effort].compactMap { $0 }.joined(separator: " · ") + "  ▾"
+        modelChip.isHidden = agent == nil
+        if let mode = status.mode {
+            modeChip.title = mode
+            let lower = mode.lowercased()
+            modeChip.tone = ["bypass", "dangerous", "yolo", "skip"].contains { lower.contains($0) } ? .danger
+                : lower.contains("plan") ? .accent : .warn
+        }
+        modeChip.isHidden = status.mode == nil
+        filesChip.isHidden = !mentionsFiles
+        let empty = input.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if case .working = status.state, empty { sendButton.mode = .stop } else { sendButton.mode = empty ? .disabled : .send }
+        [modelChip, modeChip].forEach { $0.invalidateIntrinsicContentSize(); $0.needsDisplay = true }
+    }
+
+    /// The model and effort menu: the agent's models and levels where its commands take them,
+    /// else its own pickers.
+    @objc private func showModelMenu(_ sender: NSView) {
+        guard let menu = modelMenu() else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    /// The menu's items each carry the command they type (self-tests read them).
+    func modelMenu() -> NSMenu? {
+        guard let agent else { return nil }
+        let menu = NSMenu()
+        let name = AgentKind.named(agent.rawValue)?.title ?? agent.rawValue
+        let models = AgentControls.models(agent, grokModels: grokModels)
+        menu.addItem(.sectionHeader(title: "Model"))
+        for model in models {
+            let item = menu.addItem(withTitle: model.title, action: #selector(chooseCommand(_:)), keyEquivalent: "")
+            item.representedObject = AgentControls.modelCommand(model)
+            item.target = self
+            if Self.isCurrent(model, info.model) { item.state = .on }
+        }
+        let picker = menu.addItem(withTitle: models.isEmpty ? "Choose in \(name)…" : "More in \(name)…", action: #selector(chooseCommand(_:)), keyEquivalent: "")
+        picker.representedObject = AgentControls.modelPicker(agent)
+        picker.target = self
+        let efforts = AgentControls.efforts(agent)
+        if !efforts.isEmpty || AgentControls.effortPicker(agent) != nil {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "Effort"))
+            for level in efforts {
+                let item = menu.addItem(withTitle: level.capitalized, action: #selector(chooseCommand(_:)), keyEquivalent: "")
+                item.representedObject = AgentControls.effortCommand(level)
+                item.target = self
+                if level == info.effort { item.state = .on }
+            }
+            if efforts.isEmpty, let command = AgentControls.effortPicker(agent) {
+                let item = menu.addItem(withTitle: "Choose in \(name)…", action: #selector(chooseCommand(_:)), keyEquivalent: "")
+                item.representedObject = command
+                item.target = self
+            }
+        }
+        return menu
+    }
+
+    /// Self-tests: the toolbar's state.
+    var sendMode: ChatSendButton.Mode { sendButton.mode }
+    var shownChips: [String] { [modelChip, modeChip, commandsChip, filesChip].filter { !$0.isHidden }.map(\.title) }
+
+    /// Whether the shown model name is this choice (`Opus 5.5` is `opus`; Grok's ids and names).
+    static func isCurrent(_ model: AgentControls.Model, _ shown: String?) -> Bool {
+        guard let shown = shown?.lowercased() else { return false }
+        return shown == model.title.lowercased() || shown == model.argument.lowercased()
+            || shown.hasPrefix(model.title.lowercased() + " ") || shown.hasPrefix(model.argument.lowercased() + " ")
+    }
+
+    @objc private func chooseCommand(_ item: NSMenuItem) {
+        guard let command = item.representedObject as? String else { return }
+        onCommand(command)
+    }
+
+    /// ⇧⇥, as in the terminal: the agent moves to its next permission mode.
+    @objc private func cycleMode() { onKey(ChatInput.backTab) }
+
+    @objc private func startCommand() { begin("/") }
+
+    @objc private func startMention() {
+        let text = input.string
+        begin(text.isEmpty || text.hasSuffix(" ") || text.hasSuffix("\n") ? "@" : " @")
+    }
+
+    /// Puts `prefix` at the end of the box and opens its menu.
+    private func begin(_ prefix: String) {
+        window?.makeFirstResponder(input)
+        if prefix == "/" { input.string = "/" } else { input.string += prefix }
+        input.setSelectedRange(NSRange(location: (input.string as NSString).length, length: 0))
+        textDidChange(Notification(name: NSText.didChangeNotification))
+    }
+
+    @objc private func sendOrStop() {
+        if sendButton.mode == .stop { return onKey(ChatInput.escape) }
+        send()
     }
 
     // MARK: The / and @ menus
@@ -258,8 +420,9 @@ final class ChatComposer: NSView, NSTextViewDelegate {
         return true
     }
 
+    /// A hairline between the transcript and the composer.
     override func draw(_ dirtyRect: NSRect) {
-        Theme.color(Theme.palette.fg, alpha: 0.08).setFill()
+        Theme.border.setFill()
         NSRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1).fill()
     }
 
@@ -353,7 +516,7 @@ final class ComposerTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard string.isEmpty, !placeholder.isEmpty else { return }
-        let attributes: [NSAttributedString.Key: Any] = [.font: ChatStyle.font, .foregroundColor: Theme.fg4]
+        let attributes: [NSAttributedString.Key: Any] = [.font: ChatStyle.prose, .foregroundColor: Theme.fg3]
         var text = NSAttributedString(string: placeholder, attributes: attributes)
         // In a narrow pane, drop the key hints rather than cut them off.
         if text.size().width > bounds.width, let short = placeholder.components(separatedBy: "   ").first {
@@ -365,7 +528,7 @@ final class ComposerTextView: NSTextView {
     override var isFlipped: Bool { true }
 }
 
-/// `● working 14s  esc to interrupt                accept edits on ⇧⇥   ⌃\` terminal`
+/// `● working 14s  esc to interrupt                                ⌃\` terminal`
 private final class StatusLineView: NSView {
     weak var composer: ChatComposer?
 
@@ -377,18 +540,18 @@ private final class StatusLineView: NSView {
         case .approval: (Theme.warn, "needs approval", "answer below, or y / n")
         case .waiting: (Theme.warn, "waiting for you", "↑↓ ⏎ to answer, or ⌃` terminal")
         case .exited: (Theme.danger, "exited", nil)
-        case .idle: (Theme.fg3, "idle", nil)
+        case .idle: (NSColor.clear, "", nil)
         }
         let mid = bounds.midY
         dot.setFill()
         NSBezierPath(ovalIn: NSRect(x: 0, y: mid - 3.5, width: 7, height: 7)).fill()
-        var x: CGFloat = 16
+        var x: CGFloat = label.isEmpty ? 0 : 16
         for (text, color) in [(label, Theme.fg2), (hint ?? "", Theme.fg3)] where !text.isEmpty {
             let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
             string.draw(at: NSPoint(x: x, y: mid - string.size().height / 2))
             x += string.size().width + 14
         }
-        let right = [status.mode.map { "\($0) ⇧⇥" }, "⌃` terminal"].compactMap { $0 }.joined(separator: "   ")
+        let right = "⌃` terminal"
         let string = NSAttributedString(string: right, attributes: [.font: font, .foregroundColor: Theme.fg3])
         let width = string.size().width
         if bounds.width - width > x { string.draw(at: NSPoint(x: bounds.width - width, y: mid - string.size().height / 2)) }

@@ -4,6 +4,12 @@
 - Added: Agents can send builds and tests to a Windows PC. Download agterm-worker.exe from Settings → Macs & PCs and open it on the PC, then paste the pairing code it copies into Settings on your Mac. `agterm-remote run --mac <PC> -- "<command>"` copies the repo over and runs the command in PowerShell there, with its output in the tab.
 - Added: When you pair a Mac or PC, agents already running in your tabs get a short note saying it's there and how to use it. Before, only agents started afterwards knew.
 - Fixed: When agterm reopens a Claude Code tab, the instructions agterm gives Claude no longer show up as text in Claude's prompt box, and Claude gets them as they are now, with the latest project memory, instead of the ones from when the tab first started. Codex, Grok and agl tabs reopened with multi-line options were affected the same way.
+- Added: The Chat view works for Antigravity (`agy`) tabs: its replies, thinking, reads, searches, edits with their diffs and commands with their output, as it works.
+- Added: The Chat view's message box has controls for the agent's model and effort, its permission mode, slash commands and files. Each one types the agent's own command (`/model`, `/effort`, ⇧⇥), and where an agent's command takes no choice, it opens the agent's own picker.
+- Added: A status line under the Chat view's message box shows the model, how full the context window is, tokens, cost, effort and your plan's usage limits.
+- Changed: The Chat view reads more like a chat. Your messages are bubbles on the right, replies are in the system font with code still in the terminal font, and each finished turn folds its steps into one line ("Worked 1m 12s · read 3 · edited 2 · ran 4") that opens to show them, followed by the files the turn changed, each opening to its diff. The turn the agent is working on keeps every step in view.
+- Changed: While an agent works, the Chat view's send button turns into a stop button, which interrupts it like Esc.
+- Fixed: In the Chat view, an approval whose question had scrolled out of view showed an empty card. It now shows its answers.
 - Changed: Settings → Macs is now Settings → Macs & PCs, and `agterm-remote list` shows whether each one is a Mac or a PC, and which PowerShell a PC has.
 
 ## 1.3.4 — 2026-11-17

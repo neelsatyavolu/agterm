@@ -57,6 +57,9 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AGTERM_PERCH_CHECK"] == "1" { return perchCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_PANES_CHECK"] == "1" { return panesCheck(controller, outDir: outDir) }
         if ProcessInfo.processInfo.environment["AGTERM_CHAT_CHECK"] == "1" { return chatCheck(controller, outDir: outDir) }
+        if let agents = ProcessInfo.processInfo.environment["AGTERM_CHAT_LIVE_CHECK"] {
+            return chatLiveCheck(controller, agents: agents, outDir: outDir)
+        }
         if ProcessInfo.processInfo.environment["AGTERM_PAUSE_CHECK"] == "1" { return pauseCheck(controller) }
         if let fakes = ProcessInfo.processInfo.environment["AGTERM_RESTORE_CHECK"] { return restoreCheck(controller, fakes: fakes) }
         if ProcessInfo.processInfo.environment["AGTERM_REOPEN_CHECK"] == "1" { return reopenCheck(controller, outDir: outDir) }

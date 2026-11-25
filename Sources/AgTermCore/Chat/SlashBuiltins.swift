@@ -2,7 +2,8 @@ import Foundation
 
 /// The commands each agent has built in, as its own `/` menu describes them. Claude Code's
 /// come from its menu (v2.1), Codex's from its binary (0.167), Grok's from its user guide
-/// (`~/.grok/docs/user-guide/04-slash-commands.md`) and agl's from `agl/src/tui/app.rs`.
+/// (`~/.grok/docs/user-guide/04-slash-commands.md`), agl's from `agl/src/tui/app.rs` and
+/// Antigravity's from the commands its binary names (agy 1.5).
 /// A command an older version lacks only gets an "unknown command" from the agent.
 enum SlashBuiltins {
     static func list(_ agent: TimelineFeed.Agent) -> [SlashCommand] {
@@ -11,6 +12,7 @@ enum SlashBuiltins {
         case .codex: codex
         case .grok: grok
         case .agl: agl
+        case .agy: agy
         }
         return pairs.map { SlashCommand($0.0, $0.1) }
     }
@@ -156,5 +158,33 @@ enum SlashBuiltins {
         ("clear", "Start a new conversation"),
         ("help", "Keys and commands"),
         ("exit", "Quit agl"),
+    ]
+
+    static let agy: [(String, String)] = [
+        ("add-dir", "Add a working directory"),
+        ("agents", "Manage subagents"),
+        ("compact", "Summarize the conversation to free up context"),
+        ("config", "Open the config panel"),
+        ("context", "Show context usage"),
+        ("copy", "Copy the last response"),
+        ("diff", "Show the changes made in this conversation"),
+        ("effort", "Set the reasoning effort"),
+        ("fork", "Fork the conversation"),
+        ("help", "Show help and available commands"),
+        ("hooks", "Manage hooks"),
+        ("logout", "Sign out"),
+        ("mcp", "Manage MCP servers"),
+        ("model", "Switch the model"),
+        ("permissions", "Manage tool permissions"),
+        ("plan", "Plan before making changes"),
+        ("plugin", "Manage plugins"),
+        ("quota", "Show your quota"),
+        ("resume", "Resume a conversation"),
+        ("rewind", "Rewind the conversation to an earlier step"),
+        ("settings", "Open settings"),
+        ("skills", "List available skills"),
+        ("tasks", "List background tasks"),
+        ("title", "Rename the conversation"),
+        ("usage", "Show usage"),
     ]
 }

@@ -41,6 +41,10 @@ enum ChatRowText {
             return subagent(agent, expanded: expanded, gap: gap)
         case .interrupted:
             return line([("■ interrupted", Theme.danger)], gap: gap)
+        case .worked(let id, let rows, let durationMs):
+            return worked(id: id, rows: rows, durationMs: durationMs, open: open, gap: gap)
+        case .changes(_, let edits):
+            return changes(edits, open: open, gap: gap)
         }
     }
 
@@ -53,17 +57,87 @@ enum ChatRowText {
 
     // MARK: Rows
 
+    /// Your message: a bubble on the right, fitted to the text, in the system font. A message
+    /// still in the agent's queue is dimmed and says so.
     private static func user(_ text: String, queued: Bool, gap: CGFloat) -> NSAttributedString {
-        let gutter = 2 * ChatStyle.charWidth
-        let style = ChatStyle.paragraph(indent: ChatStyle.indent - gutter, hanging: gutter, gap: gap + 11, after: 11)
-        let band = ChatBox(fill: Theme.color(Theme.palette.fg, alpha: 0.04), border: Theme.color(Theme.palette.fg, alpha: 0.07),
-                           left: 0, gapAbove: gap, fullWidth: true, radius: 0)
-        let out = NSMutableAttributedString(string: "› ", attributes: ChatStyle.attrs(Theme.accent, ChatStyle.boldFont, style))
-        let body = text.isEmpty ? " " : text.replacingOccurrences(of: "\n", with: "\u{2028}")
-        out.append(NSAttributedString(string: body, attributes: ChatStyle.attrs(queued ? Theme.fg3 : Theme.fg, ChatStyle.font, style)))
-        if queued { out.append(NSAttributedString(string: "  queued", attributes: ChatStyle.attrs(Theme.fg3, ChatStyle.smallFont, style))) }
-        out.append(NSAttributedString(string: "\n", attributes: ChatStyle.attrs(Theme.fg, ChatStyle.font, style)))
-        out.addAttribute(.chatBox, value: band, range: NSRange(location: 0, length: out.length))
+        let pad = NSSize(width: 14, height: 9)
+        let style = NSMutableParagraphStyle()
+        style.alignment = .right
+        style.firstLineHeadIndent = ChatStyle.indent + 64
+        style.headIndent = ChatStyle.indent + 64
+        style.tailIndent = -pad.width
+        style.paragraphSpacingBefore = gap + 16 + pad.height
+        style.paragraphSpacing = pad.height + 6
+        style.lineSpacing = ChatStyle.proseLeading
+        style.lineBreakMode = .byWordWrapping
+        let body = text.isEmpty ? " " : text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: "\u{2028}")
+        let out = NSMutableAttributedString(string: body, attributes: ChatStyle.attrs(queued ? Theme.fg3 : Theme.fg, ChatStyle.prose, style))
+        if queued { out.append(NSAttributedString(string: "\u{2028}queued", attributes: ChatStyle.attrs(Theme.fg3, ChatStyle.smallFont, style))) }
+        out.append(NSAttributedString(string: "\n", attributes: ChatStyle.attrs(Theme.fg, ChatStyle.prose, style)))
+        let bubble = ChatBox(fill: Theme.color(Theme.palette.fg, alpha: Theme.palette.isDark ? 0.075 : 0.055),
+                             border: queued ? Theme.border : nil, left: 0, hug: pad, radius: 10)
+        out.addAttribute(.chatBox, value: bubble, range: NSRange(location: 0, length: out.length))
+        return out
+    }
+
+    /// `▸ Worked 1m 12s · thought · read 3 · edited 2 · ran 1`; opened, the turn's steps, indented
+    /// beside a thin rule, each opening on its own as it does while the turn runs.
+    private static func worked(id: String, rows: [ChatRow], durationMs: Int?, open: Set<String>, gap: CGFloat) -> NSAttributedString {
+        let expanded = open.contains(id)
+        var parts: [(String, NSColor)] = [("\(expanded ? "▾" : "▸") ", Theme.fg3), ("Worked", Theme.fg2)]
+        if let time = ChatStyle.duration(durationMs) { parts.append((" " + time, Theme.fg2)) }
+        for part in ChatTurns.summary(rows) {
+            parts.append((" · ", Theme.fg4))
+            parts.append((part, part.hasSuffix("failed") ? Theme.danger : Theme.fg3))
+        }
+        let out = NSMutableAttributedString(attributedString: line(parts, gap: gap, toggle: id, font: ChatStyle.smallFont))
+        guard expanded else { return out }
+        let steps = NSMutableAttributedString()
+        for row in rows { steps.append(render(row, open: open)) }
+        let shift: CGFloat = 16
+        out.append(shifted(steps, by: shift))
+        out.addAttribute(.chatRail, value: ChatBox(fill: Theme.border, left: 4, width: 1, radius: 0),
+                         range: NSRange(location: out.length - steps.length, length: steps.length))
+        return out
+    }
+
+    /// `2 files changed` over a row per file (`auth/redirect.ts  +4 −1 ▸`), each opening to its diff.
+    private static func changes(_ edits: [ChatEdit], open: Set<String>, gap: CGFloat) -> NSAttributedString {
+        let small = ChatStyle.smallFont
+        let out = NSMutableAttributedString(attributedString: line([("\(edits.count) file\(edits.count == 1 ? "" : "s") changed", Theme.fg3)],
+                                                                   gap: gap + 4, font: small))
+        for edit in edits {
+            let id = ChatTurns.fileID(edit)
+            let expanded = open.contains(id)
+            var parts: [(String, NSColor)] = [(expanded ? "▾ " : "▸ ", Theme.fg3), (edit.path, Theme.fg)]
+            if edit.verb == "Write" { parts.append(("  new", Theme.fg3)) }
+            if edit.verb == "Delete" { parts.append(("  deleted", Theme.fg3)) }
+            parts.append(("  +\(edit.additions)", Theme.ok))
+            parts.append((" −\(edit.deletions)", Theme.danger))
+            out.append(line(parts, gap: 3, toggle: id, font: small))
+            if expanded {
+                out.append(ChatCardText.edit(edit.capped(bodyLines * 2), expanded: true, gap: 6, toggle: id))
+            }
+        }
+        return out
+    }
+
+    /// The same text moved `dx` to the right: its paragraphs, and the boxes drawn behind them.
+    static func shifted(_ text: NSAttributedString, by dx: CGFloat) -> NSAttributedString {
+        let out = NSMutableAttributedString(attributedString: text)
+        let all = NSRange(location: 0, length: out.length)
+        out.enumerateAttribute(.paragraphStyle, in: all) { value, range, _ in
+            guard let style = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle else { return }
+            style.firstLineHeadIndent += dx
+            style.headIndent += dx
+            out.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+        for key in [NSAttributedString.Key.chatBox, .chatLineBox] {
+            out.enumerateAttribute(key, in: all) { value, range, _ in
+                guard let box = value as? ChatBox else { return }
+                out.addAttribute(key, value: box.moved(by: dx), range: range)
+            }
+        }
         return out
     }
 

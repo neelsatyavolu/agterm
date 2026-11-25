@@ -14,8 +14,8 @@ final class TranscriptFollower: @unchecked Sendable {
         var cwd: String
         /// When the agent started: Codex and Grok files written before it aren't this run's.
         var since: Date?
-        /// The agent's process group: Codex holds its rollout open, which finds a resumed one;
-        /// agl names its session in `~/.agl/run/<pid>.json`.
+        /// The agent's process group: Codex holds its rollout open, which finds a resumed one, and
+        /// Antigravity its conversation's database; agl names its session in `~/.agl/run/<pid>.json`.
         var group: pid_t?
         /// The Grok conversation agterm started or resumed for this run (`--session-id`, `--resume`, `-c`).
         var grokSession: String?
@@ -35,7 +35,7 @@ final class TranscriptFollower: @unchecked Sendable {
             let since = session.agentRunningSince
             let launched = agent == .claude ? nil : TranscriptFollower.launchSession(tabID: session.tabID, agent: agent, since: since)
             self.init(agent: agent, claudeSession: session.claudeSessionID, cwd: session.cwd, since: since,
-                      group: agent == .codex || agent == .agl ? session.foregroundGroup : nil,
+                      group: [.codex, .agl, .agy].contains(agent) ? session.foregroundGroup : nil,
                       grokSession: agent == .grok ? launched : nil, codexSession: agent == .codex ? launched : nil,
                       typing: agent == .grok ? session.typingStops.filter { stop in since.map { stop >= $0 } ?? false } : [])
         }
@@ -63,6 +63,9 @@ final class TranscriptFollower: @unchecked Sendable {
 
     private(set) var path: URL?
     private(set) var feed: TimelineFeed?
+    /// Antigravity: the steps read so far, and the database's size and date when they were read.
+    private var agySteps: [AgyStep] = []
+    private var agyStamp: String?
     /// Bumped whenever `feed` changes, so readers can tell an update from a repeat.
     private(set) var version = 0
     private var size: UInt64 = 0
@@ -72,6 +75,8 @@ final class TranscriptFollower: @unchecked Sendable {
 
     var entries: [MobileTimelineEntry] { feed?.entries ?? [] }
     var model: String? { feed?.model }
+    /// The reasoning effort of the latest request, when the transcript records it (Claude, Codex).
+    var effort: String? { feed?.effort }
 
     /// How full the agent's context window is; nil until its transcript counts tokens.
     var context: ContextUse? {
@@ -98,6 +103,7 @@ final class TranscriptFollower: @unchecked Sendable {
                 return restart()
             }
         }
+        if target.agent == .agy { return refreshAgy() }
         guard let path, let attributes = try? FileManager.default.attributesOfItem(atPath: path.path),
               let fileSize = attributes[.size] as? UInt64 else { return false }
         let fileDate = attributes[.modificationDate] as? Date
@@ -105,7 +111,7 @@ final class TranscriptFollower: @unchecked Sendable {
         guard let handle = try? FileHandle(forReadingFrom: path) else { return false }
         defer { try? handle.close() }
         var changed = false
-        if feed == nil || fileSize < UInt64(feed!.offset) {
+        if feed == nil || fileSize < UInt64(feed!.offset) || rewritten(handle) {
             feed = TimelineFeed(agent: target.agent, offset: Self.firstLineStart(handle, from: fileSize))
             changed = true
         }
@@ -116,6 +122,7 @@ final class TranscriptFollower: @unchecked Sendable {
         else { return bump(changed) }
         changed = current.feed(chunk: chunk) > 0 || changed
         feed = current
+        remember(handle, before: current.offset)
         return bump(changed)
     }
 
@@ -128,7 +135,51 @@ final class TranscriptFollower: @unchecked Sendable {
         return Int(start) + (newline - window.startIndex) + 1
     }
 
+    // MARK: Rewrites
+
+    /// The bytes just before where the next read starts, to notice a file rewritten in place.
+    private var lastBytes: (offset: Int, bytes: Data)?
+    static let checkBytes = 256
+
+    private func remember(_ handle: FileHandle, before offset: Int) {
+        let start = max(0, offset - Self.checkBytes)
+        guard (try? handle.seek(toOffset: UInt64(start))) != nil, let bytes = try? handle.read(upToCount: offset - start) else {
+            return lastBytes = nil
+        }
+        lastBytes = (offset, bytes)
+    }
+
+    /// Whether the text before where reading left off changed: an agent rewrote its file in place
+    /// (Grok can), so reading on from the old offset would repeat or garble rows.
+    private func rewritten(_ handle: FileHandle) -> Bool {
+        guard let last = lastBytes, last.offset == feed?.offset else { return false }
+        let start = max(0, last.offset - last.bytes.count)
+        guard (try? handle.seek(toOffset: UInt64(start))) != nil, let now = try? handle.read(upToCount: last.bytes.count) else { return true }
+        return now != last.bytes
+    }
+
+    /// Reads the steps that may have changed: from the first one still running (agy updates a
+    /// step in place until it's done) or, when all are done, only the new ones.
+    private func refreshAgy() -> Bool {
+        guard let path else { return false }
+        let stamp = AgyConversations.stamp(path)
+        guard stamp != agyStamp else { return false }
+        let from = agySteps.first { !$0.isSettled }?.index ?? (agySteps.last.map { $0.index + 1 } ?? 0)
+        guard let fresh = AgyConversations.steps(path, from: from) else { return false }
+        agyStamp = stamp
+        let kept = agySteps.filter { $0.index < from }
+        guard feed == nil || kept + fresh != agySteps else { return false }
+        agySteps = kept + fresh
+        var current = feed ?? TimelineFeed(agent: .agy)
+        current.load(agySteps: agySteps)
+        feed = current
+        return bump(true)
+    }
+
     private func restart() -> Bool {
+        lastBytes = nil
+        agySteps = []
+        agyStamp = nil
         feed = nil
         size = 0
         modified = nil
@@ -162,6 +213,11 @@ final class TranscriptFollower: @unchecked Sendable {
         case .agl:
             // The shell makes agl its job's group leader, so the group id is agl's pid.
             return target.group.flatMap { AglSessions.running(pid: $0) }
+        case .agy:
+            // The database it has open; else the one it last had (between conversations), else the
+            // newest started here since the run began.
+            return target.group.flatMap(AgyConversations.open(group:)) ?? following
+                ?? target.since.flatMap { AgyConversations.newest(cwd: target.cwd, since: $0.addingTimeInterval(-5)) }
         }
     }
 
