@@ -39,6 +39,25 @@
       </header>
 
       <div class="cl">
+        <section class="cl-release" id="v1.4.0" aria-labelledby="v1.4.0-title">
+          <header class="cl-head">
+            <h2 id="v1.4.0-title"><a href="#v1.4.0">1.4.0</a></h2>
+            <p class="meta"><time datetime="2026-11-25">November 25, 2026</time></p>
+          </header>
+          <ul class="cl-items">
+            <li><span class="cl-kind cl-added">Added</span><span>Agents can send builds and tests to a Windows PC. Download agterm-worker.exe from Settings → Macs &amp; PCs and open it on the PC, then paste the pairing code it copies into Settings on your Mac. <code>agterm-remote run --mac &lt;PC&gt; -- &quot;&lt;command&gt;&quot;</code> copies the repo over and runs the command in PowerShell there, with its output in the tab.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>When you pair a Mac or PC, agents already running in your tabs get a short note saying it&#x27;s there and how to use it. Before, only agents started afterwards knew.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>When agterm reopens a Claude Code tab, the instructions agterm gives Claude no longer show up as text in Claude&#x27;s prompt box, and Claude gets them as they are now, with the latest project memory, instead of the ones from when the tab first started. Codex, Grok and agl tabs reopened with multi-line options were affected the same way.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>The Chat view works for Antigravity (<code>agy</code>) tabs: its replies, thinking, reads, searches, edits with their diffs and commands with their output, as it works.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>The Chat view&#x27;s message box has controls for the agent&#x27;s model and effort, its permission mode, slash commands and files. Each one types the agent&#x27;s own command (<code>/model</code>, <code>/effort</code>, ⇧⇥), and where an agent&#x27;s command takes no choice, it opens the agent&#x27;s own picker.</span></li>
+            <li><span class="cl-kind cl-added">Added</span><span>A status line under the Chat view&#x27;s message box shows the model, how full the context window is, tokens, cost, effort and your plan&#x27;s usage limits.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>The Chat view reads more like a chat. Your messages are bubbles on the right, replies are in the system font with code still in the terminal font, and each finished turn folds its steps into one line (&quot;Worked 1m 12s · read 3 · edited 2 · ran 4&quot;) that opens to show them, followed by the files the turn changed, each opening to its diff. The turn the agent is working on keeps every step in view.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>While an agent works, the Chat view&#x27;s send button turns into a stop button, which interrupts it like Esc.</span></li>
+            <li><span class="cl-kind cl-fixed">Fixed</span><span>In the Chat view, an approval whose question had scrolled out of view showed an empty card. It now shows its answers.</span></li>
+            <li><span class="cl-kind cl-changed">Changed</span><span>Settings → Macs is now Settings → Macs &amp; PCs, and <code>agterm-remote list</code> shows whether each one is a Mac or a PC, and which PowerShell a PC has.</span></li>
+          </ul>
+        </section>
+
         <section class="cl-release" id="v1.3.4" aria-labelledby="v1.3.4-title">
           <header class="cl-head">
             <h2 id="v1.3.4-title"><a href="#v1.3.4">1.3.4</a></h2>
