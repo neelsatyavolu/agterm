@@ -173,3 +173,18 @@ private extension JSONDecoder {
 private extension JSONEncoder {
     static var iso: JSONEncoder { let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; return e }
 }
+
+extension TeamSessions {
+    /// Tells every agent already running in a tab here that `pairing` can now run its commands:
+    /// they started without `RemoteInstructions`. Main thread.
+    func announcePaired(_ pairing: MacPairing) {
+        let note = RemoteInstructions.pairedNote(.init(name: pairing.name, isWindows: pairing.isWindows))
+        for tab in tabs() where !tab.isCloud {
+            tab.pollProcess()
+            guard tab.agentName != nil else { continue }
+            deliver(note, to: tab, allowed: { true }) { result in
+                if case .failure(let error) = result { NSLog("agterm: couldn't tell a tab about %@: %@", pairing.name, "\(error)") }
+            }
+        }
+    }
+}

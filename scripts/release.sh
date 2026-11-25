@@ -103,6 +103,9 @@ if [ -n "${AGTERM_ANALYTICS_SERVICE:-}" ]; then
 fi
 scripts/bundle.sh >/dev/null
 rm -rf "$OUT" && mkdir -p "$OUT"
+# The Windows PC worker (Settings → Macs & PCs links to the latest release's copy).
+scripts/windows-worker.sh >/dev/null
+cp .build/windows/agterm-worker.exe "$OUT/agterm-worker.exe"
 
 if [ "$DRY_RUN" = 0 ]; then
     echo "Notarizing (a few minutes)…"
@@ -168,10 +171,10 @@ git tag "$TAG"
 git push origin "$TAG"
 if [ "$IS_BETA" = 1 ]; then
     gh release create "$TAG" --repo "$REPO" --title "agterm $VERSION" --notes "$NOTES" --prerelease --latest=false \
-        "$ARCHIVE"
+        "$ARCHIVE" "$OUT/agterm-worker.exe"
 else
     gh release create "$TAG" --repo "$REPO" --title "agterm $VERSION" --notes "$NOTES" \
-        "$ARCHIVE" "$OUT/agterm.zip" "$OUT/appcast.xml"
+        "$ARCHIVE" "$OUT/agterm.zip" "$OUT/appcast.xml" "$OUT/agterm-worker.exe"
 fi
 if ! gh release view "$BETA_TAG" --repo "$REPO" >/dev/null 2>&1; then
     gh release create "$BETA_TAG" --repo "$REPO" --title "agterm beta feed" --prerelease --latest=false \

@@ -1,8 +1,9 @@
 import Foundation
 
-/// How one Mac reaches another that lets it run tasks (Settings → Macs). The worker Mac shows
-/// this as a pairing code, `agterm-mac:` plus base64url JSON, and the other Mac pastes it. The
-/// secret keys the TLS link (a pre-shared key, so no certificates) and the gateway's token.
+/// How one Mac reaches another computer that lets it run tasks (Settings → Macs & PCs): a Mac,
+/// or a Windows PC running agterm-worker (`windows-worker/`). The worker shows this as a pairing
+/// code, `agterm-mac:` plus base64url JSON, and the other Mac pastes it. The secret keys the TLS
+/// link (a pre-shared key, so no certificates) and the gateway's token.
 public struct MacPairing: Codable, Equatable, Sendable {
     public static let prefix = "agterm-mac:"
     /// 32 random bytes as base64url, without padding.
@@ -15,13 +16,24 @@ public struct MacPairing: Codable, Equatable, Sendable {
     public var host: String
     public var port: UInt16
     public var secret: String
+    /// "windows" for a Windows PC; nil for a Mac (codes from Macs carry none).
+    public var system: String?
+    /// Its local network addresses, tried after `host` (Windows PCs send them: `.local` names
+    /// don't always resolve to a PC).
+    public var addresses: [String]?
 
-    public init(name: String, host: String, port: UInt16, secret: String) {
+    public static let windows = "windows"
+
+    public init(name: String, host: String, port: UInt16, secret: String, system: String? = nil, addresses: [String]? = nil) {
         self.name = name
         self.host = host
         self.port = port
         self.secret = secret
+        self.system = system
+        self.addresses = addresses
     }
+
+    public var isWindows: Bool { system == Self.windows }
 
     public var code: String {
         let data = (try? JSONEncoder.sorted.encode(self)) ?? Data()

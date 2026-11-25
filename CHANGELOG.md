@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0 — Unreleased
+- Added: Agents can send builds and tests to a Windows PC. Download agterm-worker.exe from Settings → Macs & PCs and open it on the PC, then paste the pairing code it copies into Settings on your Mac. `agterm-remote run --mac <PC> -- "<command>"` copies the repo over and runs the command in PowerShell there, with its output in the tab.
+- Added: When you pair a Mac or PC, agents already running in your tabs get a short note saying it's there and how to use it. Before, only agents started afterwards knew.
+- Changed: Settings → Macs is now Settings → Macs & PCs, and `agterm-remote list` shows whether each one is a Mac or a PC, and which PowerShell a PC has.
+
 ## 1.3.4 — 2026-11-17
 - Fixed: Grok tabs that were already running when agterm restarted or updated show their model, tokens, cost and lines changed, and their conversation in the Chat view. Before, those stayed empty until you started Grok again.
 

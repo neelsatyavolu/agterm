@@ -2,8 +2,8 @@ import AgTermCore
 import AppKit
 import SwiftUI
 
-/// Settings → Macs: let your other Macs run tasks on this one, and pick the Macs this one's
-/// agents can send tasks to with `agterm-remote`.
+/// Settings → Macs & PCs: let your other Macs run tasks on this one, and pick the Macs and
+/// Windows PCs this one's agents can send tasks to with `agterm-remote`.
 struct MacsPane: View {
     @State private var workerOn = MacWorker.isEnabled
     @State private var paired = MacPairings.all
@@ -43,6 +43,16 @@ struct MacsPane: View {
             }
 
             Section {
+                LabeledContent("Download agterm-worker.exe") {
+                    Button("Download") { NSWorkspace.shared.open(Self.windowsWorkerURL) }
+                }
+            } header: {
+                Text("Windows PCs")
+            } footer: {
+                Footnote("On the PC, open agterm-worker.exe (Windows may warn that it's from an unknown publisher: More info → Run anyway). It starts with Windows from then on and copies its pairing code to the clipboard; paste it below. If Windows Firewall asks, allow it on private networks. Commands sent to a PC run in PowerShell.")
+            }
+
+            Section {
                 ForEach(paired, id: \.name) { mac in row(mac) }
                 LabeledContent {
                     Button("Add") { add() }.disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -53,9 +63,9 @@ struct MacsPane: View {
                     Text(addError).foregroundStyle(.red)
                 }
             } header: {
-                Text("Macs this Mac can use")
+                Text("Computers this Mac can use")
             } footer: {
-                Footnote("Agents in agterm tabs are told about these Macs and run heavy commands there with agterm-remote run -- <command>, which copies the repo over (git-ignored files stay here), runs the command there and shows its output in the tab. You can use it too. The first Mac is the default. Get a code from the other Mac's Settings → Macs.")
+                Footnote("Agents in agterm tabs are told about these computers, including agents already running when you add one, and run heavy commands there with agterm-remote run -- <command>, which copies the repo over (git-ignored files stay here), runs the command there and shows its output in the tab. You can use it too. The first one is the default. Get a code from the other Mac's Settings → Macs & PCs, or from agterm-worker on a PC.")
             }
         }
         .onAppear { paired = MacPairings.all }
@@ -73,7 +83,7 @@ struct MacsPane: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(mac.name)
-                Text(status(mac)).font(.caption).foregroundStyle(.secondary)
+                Text((mac.isWindows ? "Windows PC · " : "Mac · ") + status(mac)).font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -96,15 +106,19 @@ struct MacsPane: View {
 
     private func add() {
         guard let pairing = MacPairing(code: code) else {
-            addError = "That isn't a pairing code. Copy it from the other Mac's Settings → Macs."
+            addError = "That isn't a pairing code. Copy it from the other Mac's Settings → Macs & PCs, or from agterm-worker on a PC."
             return
         }
+        let isNew = MacPairings.find(pairing.name)?.name != pairing.name
         MacPairings.add(pairing)
+        if isNew { TeamSessions.shared.announcePaired(pairing) }
         paired = MacPairings.all
         code = ""
         addError = nil
         check(pairing)
     }
+
+    static let windowsWorkerURL = URL(string: "https://github.com/neelsatyavolu/agterm/releases/latest/download/agterm-worker.exe")!
 
     private func copyCode() {
         NSPasteboard.general.clearContents()

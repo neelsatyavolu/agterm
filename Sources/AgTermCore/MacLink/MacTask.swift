@@ -1,6 +1,6 @@
 import Foundation
 
-/// `agterm-remote`, the command agents use to run something on a paired Mac: what it was asked
+/// `agterm-remote`, the command agents use to run something on a paired Mac or Windows PC: what it was asked
 /// to do, where the project goes on the other Mac, and the command that runs there.
 public enum MacTask {
     /// The folder on the worker Mac that holds every project sent to it.
@@ -21,12 +21,15 @@ public enum MacTask {
         public var back = false
         /// A shell command line, run by the other Mac's login shell.
         public var command: String
+        /// The same for a Windows PC's PowerShell: differs only when several words were quoted.
+        public var windowsCommand: String
 
-        public init(mac: String? = nil, sync: Bool = true, back: Bool = false, command: String) {
+        public init(mac: String? = nil, sync: Bool = true, back: Bool = false, command: String, windowsCommand: String? = nil) {
             self.mac = mac
             self.sync = sync
             self.back = back
             self.command = command
+            self.windowsCommand = windowsCommand ?? command
         }
     }
 
@@ -38,16 +41,16 @@ public enum MacTask {
         usage: agterm-remote run [--mac <name>] [--no-sync] [--back] -- <command…>
                agterm-remote list
 
-        run    Copies this folder's git repo (or the folder) to the other Mac, runs the command
-               there in its login shell, shows its output as it runs and exits with its status.
-               Ctrl-C stops it there.
-               --mac <name>  a paired Mac other than the first
+        run    Copies this folder's git repo (or the folder) to the other computer, runs the
+               command there (a Mac's login shell, a Windows PC's PowerShell), shows its output
+               as it runs and exits with its status. Ctrl-C stops it there.
+               --mac <name>  a paired Mac or PC other than the first
                --no-sync     don't copy first; use what the last run copied
                --back        afterwards, copy back files the command made or changed
                              (files you changed here meanwhile are kept)
                One word after -- is run as a command line ("make -j8 && ./test");
                several are quoted as separate words.
-        list   The Macs paired in agterm Settings → Macs, and whether each answers.
+        list   The computers paired in agterm Settings → Macs & PCs, and whether each answers.
         """
 
     /// Parses the words after `agterm-remote`.
@@ -66,6 +69,7 @@ public enum MacTask {
             switch word {
             case "--":
                 run.command = commandLine(Array(rest))
+                run.windowsCommand = commandLine(Array(rest), quote: powershellQuoted)
                 rest = []
             case "--mac":
                 guard let name = rest.first, !name.isEmpty else { throw UsageError(description: "--mac needs a name") }
@@ -76,6 +80,7 @@ public enum MacTask {
             default:
                 guard !word.hasPrefix("-") else { throw UsageError(description: "unknown option \(word)") }
                 run.command = commandLine([word] + rest)
+                run.windowsCommand = commandLine([word] + rest, quote: powershellQuoted)
                 rest = []
             }
         }
@@ -84,8 +89,16 @@ public enum MacTask {
     }
 
     /// One word is a command line as written; several are quoted word by word.
-    static func commandLine(_ words: [String]) -> String {
-        words.count == 1 ? words[0] : words.map(quoted).joined(separator: " ")
+    static func commandLine(_ words: [String], quote: (String) -> String = quoted) -> String {
+        words.count == 1 ? words[0] : words.map(quote).joined(separator: " ")
+    }
+
+    /// `word` in single quotes for PowerShell, unless it needs none.
+    public static func powershellQuoted(_ word: String) -> String {
+        let plain = !word.isEmpty && word.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || "-_./:=+\\".unicodeScalars.contains($0)
+        }
+        return plain ? word : "'" + word.replacingOccurrences(of: "'", with: "''") + "'"
     }
 
     /// `word` in single quotes for a POSIX shell, unless it needs none.

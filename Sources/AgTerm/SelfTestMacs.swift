@@ -52,13 +52,13 @@ extension SelfTest {
             report("list says ready", list.stdout.contains("agterm-selftest (default)") && list.stdout.contains("ready"), list.stdout + list.stderr)
 
             DispatchQueue.main.async {
-                SettingsWindowController.shared.show(pane: "Macs")
+                SettingsWindowController.shared.show(pane: "Macs & PCs")
                 after(1) {
                     snapshotSettings("\(outDir)/macs-settings.png")
                     DispatchQueue.global().async {
                         MacPairings.remove(named: "agterm-selftest")
                         let gone = shell([wrapper, "run", "--", "true"], in: repo)
-                        report("no Mac paired is explained", gone.status == 255 && gone.stderr.contains("no Mac is paired"), gone.stderr)
+                        report("no Mac paired is explained", gone.status == 255 && gone.stderr.contains("no Mac or PC is paired"), gone.stderr)
                         MacWorker.setEnabled(false) {
                             // It gives running commands a few seconds to stop first.
                             var stopped = false

@@ -4,7 +4,7 @@ import CryptoKit
 import Foundation
 
 /// `agterm-remote` (a wrapper in agterm's bin folder runs `agterm --remote …`): runs a command
-/// on a paired Mac for an agent or for you. `run` copies the project there with rsync (as Move
+/// on a paired Mac (or Windows PC: `WindowsRemote`) for an agent or for you. `run` copies the project there with rsync (as Move
 /// to Cloud does, through `agterm --cloud-pipe`), runs the command in that Mac's login shell,
 /// passes its output through as it comes and exits with its status; 255 if the Mac can't be
 /// reached or the link drops, as ssh does. `AGTERM_MAC_PAIRING` (a pairing code) stands in for
@@ -37,16 +37,29 @@ enum MacRemote {
     }
 
     private static let notPaired = """
-        no Mac is paired. On the other Mac, turn on agterm Settings → Macs → "Let my other Macs run tasks on this Mac" \
-        and copy its pairing code; then add it in Settings → Macs on this one.
+        no Mac or PC is paired. On the other Mac, turn on agterm Settings → Macs & PCs → "Let my other Macs run tasks \
+        on this Mac" and copy its pairing code (on a Windows PC, run agterm-worker.exe); then add it in Settings → \
+        Macs & PCs on this one.
         """
 
     private static func list() -> Int32 {
         let macs = pairings
         guard !macs.isEmpty else { fail(notPaired) }
         for (index, mac) in macs.enumerated() {
-            let problem = MacHost(mac).check()
-            print("\(mac.name)\(index == 0 ? " (default)" : "")  \(mac.host):\(mac.port)  \(problem.map { "not reachable: \($0)" } ?? "ready")")
+            var problem: String?
+            var system = "Mac, runs its login shell"
+            if mac.isWindows {
+                do {
+                    let shell = try MacHost(mac).info().shell
+                    system = "Windows PC, runs " + (shell == "pwsh" ? "PowerShell 7" : "Windows PowerShell 5.1 (no &&)")
+                } catch {
+                    system = "Windows PC, runs PowerShell"
+                    problem = MacHost.explain(error)
+                }
+            } else {
+                problem = MacHost(mac).check()
+            }
+            print("\(mac.name)\(index == 0 ? " (default)" : "")  \(system)  \(mac.host):\(mac.port)  \(problem.map { "not reachable: \($0)" } ?? "ready")")
         }
         return 0
     }
@@ -55,7 +68,7 @@ enum MacRemote {
         let macs = pairings
         guard !macs.isEmpty else { fail(notPaired) }
         guard let pairing = task.mac.map({ name in macs.first { $0.name.caseInsensitiveCompare(name) == .orderedSame } }) ?? macs.first else {
-            fail("no paired Mac is called \(task.mac ?? ""); paired: \(macs.map(\.name).joined(separator: ", "))")
+            fail("nothing paired is called \(task.mac ?? ""); paired: \(macs.map(\.name).joined(separator: ", "))")
         }
         let host = MacHost(pairing)
         let home = NSHomeDirectory()
@@ -76,6 +89,10 @@ enum MacRemote {
         defer { close(lock) }
         // Files changed here from now on are newer than what comes back, whatever the clocks say.
         let started = Date()
+        if pairing.isWindows {
+            return WindowsRemote.perform(task, on: host, name: pairing.name, folder: folder, remote: remote,
+                                         remoteCwd: MacTask.remoteCwd(cwd, folder: folder, remote: remote), started: started)
+        }
         if task.sync {
             note("copying \(folder) to \(pairing.name)…")
             do {
@@ -114,7 +131,7 @@ enum MacRemote {
     }
 
     /// Files under `folder` (relative paths) modified after `date`, leaving out .git and rebuildable folders.
-    private static func changedHere(in folder: String, since date: Date) -> [String] {
+    static func changedHere(in folder: String, since date: Date) -> [String] {
         let skip = Set(CloudMovePlan.excluded + [".git"])
         let root = URL(fileURLWithPath: folder)
         guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey]) else { return [] }
@@ -147,7 +164,7 @@ enum MacRemote {
     }
 
     /// Runs `argv` there with no input, writing its output here as it comes; its exit status.
-    private static func stream(_ argv: [String], on host: MacHost, name: String) -> Int32 {
+    static func stream(_ argv: [String], on host: MacHost, name: String) -> Int32 {
         let connection: WireConnection
         do {
             connection = try host.exec(argv)

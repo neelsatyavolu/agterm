@@ -2,12 +2,14 @@ import AgTermCore
 import Foundation
 import Security
 
-/// Settings → Macs, as stored: the Macs this one may run tasks on (their pairing codes) and,
+/// Settings → Macs & PCs, as stored: the Macs and Windows PCs this one may run tasks on (their pairing codes) and,
 /// when this Mac lets others run tasks here, its own secret. Secrets live in the Keychain; the
 /// names of paired Macs also go in UserDefaults, so an agent's launch can tell whether to
 /// mention `agterm-remote` without reading the Keychain. Any thread.
 enum MacPairings {
     static let namesKey = "pairedMacNames"
+    /// Which of `names` are Windows PCs, so agents are told to write PowerShell for them.
+    static let windowsNamesKey = "pairedWindowsNames"
     private static let service = (Bundle.main.bundleIdentifier ?? "agterm-dev") + ".macs"
     private static let pairedAccount = "paired"
     private static let workerAccount = "worker-secret"
@@ -19,6 +21,12 @@ enum MacPairings {
     }
 
     static var names: [String] { UserDefaults.standard.stringArray(forKey: namesKey) ?? [] }
+
+    /// The paired computers as agents are told of them, without reading the Keychain.
+    static var computers: [RemoteInstructions.Computer] {
+        let windows = Set(UserDefaults.standard.stringArray(forKey: windowsNamesKey) ?? [])
+        return names.map { RemoteInstructions.Computer(name: $0, isWindows: windows.contains($0)) }
+    }
 
     /// Adds `pairing`, replacing a Mac with the same name.
     static func add(_ pairing: MacPairing) {
@@ -39,6 +47,7 @@ enum MacPairings {
     private static func save(_ pairings: [MacPairing]) {
         if let data = try? JSONEncoder().encode(pairings) { write(data, to: pairedAccount) }
         UserDefaults.standard.set(pairings.map(\.name), forKey: namesKey)
+        UserDefaults.standard.set(pairings.filter(\.isWindows).map(\.name), forKey: windowsNamesKey)
     }
 
     // MARK: This Mac as a worker

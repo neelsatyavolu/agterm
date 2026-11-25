@@ -14,6 +14,7 @@ agterm is a macOS terminal for coding agents (SwiftPM, AppKit), plus agterm Remo
 | `Tests/AgTermCoreTests/` | XCTest for `AgTermCore` |
 | `Tests/AgTermSessionKitTests/` | XCTest for the session helper (runs a server in-process) |
 | `site/` | agterm.dev landing page (Vercel) |
+| `windows-worker/` | agterm-worker (Rust): the Windows PC side of Settings → Macs & PCs, speaking the same TLS-PSK link and `SessionWire` frames as a Mac worker; built with `scripts/windows-worker.sh` (cross-compiles with mingw-w64) and attached to each release as `agterm-worker.exe`; see `windows-worker/README.md` |
 | `agl/` | agl, the local-model coding agent (Rust). agterm.app ships it as `Contents/MacOS/agl` and links it into its bin folder, first on PATH in tabs; see `agl/README.md` |
 | `teams/` | agterm Teams (teams.agterm.dev, formerly agmux Teams): Worker, D1 and web UI, shared with agmux, which still calls teams.agmux.dev; see `teams/README.md` |
 | `cloud/` | agterm Cloud: the machine image (`Dockerfile`, `entrypoint.sh`) and the control plane Worker (`control/`, TypeScript, D1); see `docs/cloud-sessions-plan.md` |

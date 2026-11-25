@@ -39,9 +39,9 @@ enum Welcome {
     static var groups: [Group] {
         [
             Group(title: "New in 1.2", features: [
-                Feature(symbol: "desktopcomputer", title: "Run heavy work on your other Macs",
-                        detail: "Pair another Mac and agents send builds, test suites and renders there with agterm-remote. The project is copied over, output streams back into the tab.",
-                        control: .button("Set Up…") { SettingsWindowController.shared.show(pane: "Macs") }),
+                Feature(symbol: "desktopcomputer", title: "Run heavy work on your other Macs and PCs",
+                        detail: "Pair another Mac or a Windows PC and agents send builds, test suites and renders there with agterm-remote. The project is copied over, output streams back into the tab.",
+                        control: .button("Set Up…") { SettingsWindowController.shared.show(pane: "Macs & PCs") }),
                 Feature(symbol: "cpu", title: "agl, the local-model agent",
                         detail: "With agl on your PATH, start it like any other agent, read it in Chat and on your phone, and get it back after a relaunch.",
                         control: .none),
