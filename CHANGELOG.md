@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0 — Unreleased
+## 1.4.0 — 2026-11-25
 - Added: Agents can send builds and tests to a Windows PC. Download agterm-worker.exe from Settings → Macs & PCs and open it on the PC, then paste the pairing code it copies into Settings on your Mac. `agterm-remote run --mac <PC> -- "<command>"` copies the repo over and runs the command in PowerShell there, with its output in the tab.
 - Added: When you pair a Mac or PC, agents already running in your tabs get a short note saying it's there and how to use it. Before, only agents started afterwards knew.
 - Fixed: When agterm reopens a Claude Code tab, the instructions agterm gives Claude no longer show up as text in Claude's prompt box, and Claude gets them as they are now, with the latest project memory, instead of the ones from when the tab first started. Codex, Grok and agl tabs reopened with multi-line options were affected the same way.
