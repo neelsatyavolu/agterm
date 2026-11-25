@@ -32,6 +32,26 @@ final class AgentResumeTests: XCTestCase {
         XCTAssertNil(AgentResume.commandLine(argv: [], claudeSessionID: nil))
     }
 
+    func testArgumentsAgtermAddedAreLeftForTheNextLaunch() {
+        let instructions = "## Other agents on this Mac (consult)\nYou are one of several coding agents."
+        let argv = ["claude", "--mcp-config", #"{"mcpServers":{"consult":{}}}"#, "--append-system-prompt", instructions,
+                    "--model", "opus", "fix the bug"]
+        XCTAssertEqual(AgentResume.commandLine(argv: argv, claudeSessionID: "s"), "command claude --resume s --model opus")
+    }
+
+    func testYourOwnSystemPromptAndConfigAreKept() {
+        let argv = ["claude", "--mcp-config", #"{"mcpServers":{"consult":{}}}"#, "--append-system-prompt", "Be brief.",
+                    "--mcp-config", "servers.json"]
+        XCTAssertEqual(AgentResume.commandLine(argv: argv, claudeSessionID: "s"),
+                       "command claude --resume s --append-system-prompt Be\\ brief. --mcp-config servers.json")
+    }
+
+    func testMultiLineArgumentsStayOneCommand() {
+        let argv = ["claude", "--append-system-prompt", "Use memory.\n\nIt's shared."]
+        XCTAssertEqual(AgentResume.commandLine(argv: argv, claudeSessionID: "s", prompt: "line one\nline two"),
+                       "command claude --resume s 'line one\nline two' --append-system-prompt 'Use memory.\n\nIt'\\''s shared.'")
+    }
+
     func testArgumentsWithSpacesAreEscaped() {
         XCTAssertEqual(AgentResume.commandLine(argv: ["claude", "--add-dir", "/My Code"], claudeSessionID: "s"),
                        #"command claude --resume s --add-dir /My\ Code"#)

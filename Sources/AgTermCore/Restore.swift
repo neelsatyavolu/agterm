@@ -159,7 +159,9 @@ public enum AgentResume {
     /// Claude Code's per-process record. Returns nil for programs that shouldn't be rerun.
     /// `prompt`, if given, is sent as the first message of the resumed session.
     public static func commandLine(argv: [String], claudeSessionID: String?, prompt: String? = nil) -> String? {
-        guard let args = claudeArguments(argv) else { return nil }
+        guard let launched = claudeArguments(argv) else { return nil }
+        // What agterm added at launch is left out: the next launch adds it again, up to date.
+        let args = Array(launched.dropFirst(AgentLaunch.claudeAddedArgumentCount(launched)))
         if args.contains("-p") || args.contains("--print") { return nil }
 
         var kept: [String] = []
@@ -185,7 +187,7 @@ public enum AgentResume {
         }
         let session = claudeSessionID.map { ["--resume", $0] } ?? ["--continue"]
         // The prompt goes straight after the session, before any option that takes several values.
-        return (["command", "claude"] + (session + (prompt.map { [$0] } ?? []) + kept).map(ShellEscape.path)).joined(separator: " ")
+        return (["command", "claude"] + (session + (prompt.map { [$0] } ?? []) + kept).map(ShellEscape.argument)).joined(separator: " ")
     }
 
     /// Codex options that take a value; everything else starting with "-" is a switch.
@@ -222,7 +224,7 @@ public enum AgentResume {
             if arg.hasPrefix("-"), arg != "--last", arg != "--all" { kept.append(arg) }
             i += 1
         }
-        return (["command", "codex", "resume", sessionID] + ((prompt.map { [$0] } ?? []) + kept).map(ShellEscape.path))
+        return (["command", "codex", "resume", sessionID] + ((prompt.map { [$0] } ?? []) + kept).map(ShellEscape.argument))
             .joined(separator: " ")
     }
 
@@ -268,7 +270,7 @@ public enum AgentResume {
             if arg.hasPrefix("-") { kept.append(arg) }
             i += 1
         }
-        return (["command", "grok", "--resume", sessionID] + ((prompt.map { [$0] } ?? []) + kept).map(ShellEscape.path))
+        return (["command", "grok", "--resume", sessionID] + ((prompt.map { [$0] } ?? []) + kept).map(ShellEscape.argument))
             .joined(separator: " ")
     }
 
@@ -298,7 +300,7 @@ public enum AgentResume {
             i += 1
         }
         let id = session.deletingPathExtension().lastPathComponent
-        return (["command", "agl", "--resume", id] + kept.map(ShellEscape.path)).joined(separator: " ")
+        return (["command", "agl", "--resume", id] + kept.map(ShellEscape.argument)).joined(separator: " ")
     }
 
     /// Agents whose conversation id agterm can't read: each one's own way to continue its
@@ -317,7 +319,7 @@ public enum AgentResume {
     public static func continueCommandLine(agent: String, argv: [String]) -> String? {
         guard let kind = AgentKind.named(agent), let flags = continueLatest[kind.id],
               !argv.dropFirst().contains(where: { ["-p", "--print", "--prompt"].contains($0) }) else { return nil }
-        return (["command", kind.command] + flags.map(ShellEscape.path)).joined(separator: " ")
+        return (["command", kind.command] + flags.map(ShellEscape.argument)).joined(separator: " ")
     }
 
     /// A Codex rollout's session id, from its first line (`session_meta.payload.id`).

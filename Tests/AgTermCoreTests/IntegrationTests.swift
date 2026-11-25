@@ -34,6 +34,11 @@ final class AgentLaunchTests: XCTestCase {
     let memory = MCPServer(name: "agmux-memory", command: "/usr/local/bin/node", args: ["/A/memory.mjs"], env: ["AGMUX_PROJECT_ID": "p1"])
     let consult = MCPServer(name: "consult", command: "/usr/local/bin/node", args: ["/A/consult.mjs"], env: [:])
 
+    func testReopenedClaudeLeavesOutWhatAgtermAdded() throws {
+        let args = try XCTUnwrap(AgentLaunch.claude(userArgs: ["--model", "opus"], servers: [memory], instructions: Perch.instructions))
+        XCTAssertEqual(AgentResume.commandLine(argv: ["claude"] + args, claudeSessionID: "s"), "command claude --resume s --model opus")
+    }
+
     func testClaudeGetsOneMCPConfigAndInstructions() throws {
         let args = try XCTUnwrap(AgentLaunch.claude(userArgs: ["--resume", "s"], servers: [memory, consult], instructions: "Use memory."))
         XCTAssertEqual(args.first, "--mcp-config")

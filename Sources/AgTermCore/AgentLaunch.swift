@@ -110,6 +110,29 @@ public enum AgentLaunch {
         return args.isEmpty ? nil : args + userArgs
     }
 
+    /// First lines of the instruction blocks agterm gives agents; the joined instructions start
+    /// with one of them. Keep in step with the blocks (`addingMCP` checks this in debug builds).
+    public static let instructionHeadings = [
+        "## Project memory (agmux-memory)", "## Other agents on this Mac (consult)", "## Perch browser",
+        "## Other computers (agterm-remote)",
+    ]
+
+    /// Whether `text` is instructions agterm wrote, rather than a system prompt of your own.
+    public static func isAgtermInstructions(_ text: String) -> Bool {
+        instructionHeadings.contains { text.hasPrefix($0 + "\n") }
+    }
+
+    /// How many of Claude's leading arguments `claude(userArgs:…)` added: its inline MCP config
+    /// and its instructions, which always come before your own arguments.
+    public static func claudeAddedArgumentCount(_ args: [String]) -> Int {
+        var count = 0
+        if args.count >= 2, args[0] == "--mcp-config", args[1].hasPrefix(#"{"mcpServers":"#) { count = 2 }
+        if args.count >= count + 2, args[count] == "--append-system-prompt", isAgtermInstructions(args[count + 1]) {
+            count += 2
+        }
+        return count
+    }
+
     /// Arguments for `codex`: one `-c mcp_servers.<name>={…}` override per server.
     /// `instructions` go in as `developer_instructions` unless the arguments already set them.
     public static func codex(userArgs: [String], servers: [MCPServer], instructions: String = "") -> [String]? {
